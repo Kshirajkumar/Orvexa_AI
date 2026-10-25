@@ -3,7 +3,9 @@
 
 const API_ORIGIN = String(
   import.meta.env.VITE_API_URL
-    || (import.meta.env.DEV ? 'http://127.0.0.1:5000' : 'https://taxflow-ai.onrender.com')
+    || (import.meta.env.DEV
+      ? 'http://127.0.0.1:5000'
+      : import.meta.env.API_URL || 'https://taxflow-ai.onrender.com')
 ).replace(/\/$/, '');
 const API_BASE_URL = `${API_ORIGIN}/api/v1`;
 
@@ -1038,6 +1040,8 @@ export interface MessageTemplate {
   id: string;
   template_key?: string | null;
   user_id?: string | null;
+  source?: 'default' | 'private';
+  country_code?: string | null;
   name: string;
   cat: string;
   body: string;
@@ -1048,6 +1052,7 @@ export async function fetchTemplates(): Promise<MessageTemplate[]> {
   const response = await authRequest<{ success: boolean; message?: string; data?: MessageTemplate[] }>(
     `${API_BASE_URL}/templates`,
     { method: 'GET', headers: authHeaders() },
+    true,
   );
   if (!response.success) throw new Error(response.message || 'Could not load templates.');
   return response.data || [];
@@ -1106,13 +1111,24 @@ export interface TelegramMessageSchedule {
   client?: { id: string; name: string; country_id: string };
 }
 
+const FALLBACK_COUNTRY_TIMEZONES: SupportedCountryTimezone[] = [
+  { country_id: '10000000-0000-4000-8000-000000000001', country_code: 'IN', country_name: 'India', timezone_name: 'Asia/Kolkata', is_default: true },
+  { country_id: '10000000-0000-4000-8000-000000000002', country_code: 'US', country_name: 'United States', timezone_name: 'America/New_York', is_default: true },
+  { country_id: '10000000-0000-4000-8000-000000000002', country_code: 'US', country_name: 'United States', timezone_name: 'America/Chicago', is_default: false },
+  { country_id: '10000000-0000-4000-8000-000000000002', country_code: 'US', country_name: 'United States', timezone_name: 'America/Denver', is_default: false },
+  { country_id: '10000000-0000-4000-8000-000000000002', country_code: 'US', country_name: 'United States', timezone_name: 'America/Los_Angeles', is_default: false },
+  { country_id: '10000000-0000-4000-8000-000000000003', country_code: 'AE', country_name: 'United Arab Emirates', timezone_name: 'Asia/Dubai', is_default: true },
+  { country_id: '10000000-0000-4000-8000-000000000004', country_code: 'SG', country_name: 'Singapore', timezone_name: 'Asia/Singapore', is_default: true },
+  { country_id: '10000000-0000-4000-8000-000000000005', country_code: 'GB', country_name: 'United Kingdom', timezone_name: 'Europe/London', is_default: true },
+];
+
 export async function fetchSupportedCountryTimezones(): Promise<SupportedCountryTimezone[]> {
   const response = await authRequest<{ success: boolean; message?: string; data?: SupportedCountryTimezone[] }>(
     `${API_BASE_URL}/schedules/timezones`,
     { method: 'GET', headers: authHeaders() },
   );
   if (!response.success) throw new Error(response.message || 'Could not load country time zones.');
-  return response.data || [];
+  return response.data || FALLBACK_COUNTRY_TIMEZONES;
 }
 
 export async function fetchTelegramSchedules(): Promise<TelegramMessageSchedule[]> {
@@ -1133,7 +1149,7 @@ export async function createTelegramSchedule(data: {
   scheduledLocal?: string;
   localTime?: string;
 }): Promise<TelegramMessageSchedule> {
-  const response = await authRequest<{ success: boolean; message?: string; data?: TelegramMessageSchedule }>(
+  let response = await authRequest<{ success: boolean; message?: string; data?: TelegramMessageSchedule }>(
     `${API_BASE_URL}/schedules`,
     {
       method: 'POST',

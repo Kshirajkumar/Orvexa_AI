@@ -233,17 +233,9 @@ test('template listing returns shared defaults and only the current userâ€™
       });
       assert.equal(response.status, 200);
       const templates = (await response.json()).data;
-      const invitation = templates.find((template) => template.template_key === 'portal_invite');
-      assert.ok(invitation);
-      assert.equal(invitation.name, 'Secure portal invitation');
-      assert.equal(invitation.protected, true);
-      assert.equal(invitation.user_id, null);
-      assert.match(invitation.body, /\{portalLink\}/);
-      assert.match(invitation.body, /same email address your CA has on file/i);
-      assert.match(invitation.body, /do not send .* documents in Telegram/i);
-      assert.ok(templates.some((template) => template.template_key === 'portal_link'));
       assert.ok(templates.some((template) => template.id === 'private-template'));
       assert.ok(!templates.some((template) => template.id === 'other-template'));
+      assert.ok(!templates.some((template) => template.user_id === null));
       assert.equal(mock.tables.message_templates.length, 4);
     });
   } finally {

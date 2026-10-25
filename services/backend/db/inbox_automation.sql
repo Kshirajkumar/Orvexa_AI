@@ -63,6 +63,19 @@ WHERE template.protected = TRUE
 CREATE UNIQUE INDEX IF NOT EXISTS message_templates_shared_template_key_idx
   ON public.message_templates(template_key)
   WHERE user_id IS NULL AND template_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS message_templates_user_id_idx
+  ON public.message_templates(user_id)
+  WHERE user_id IS NOT NULL;
+
+ALTER TABLE public.message_templates
+  DROP CONSTRAINT IF EXISTS message_templates_no_protected_private_defaults;
+ALTER TABLE public.message_templates
+  ADD CONSTRAINT message_templates_no_protected_private_defaults
+  CHECK (NOT (
+    user_id IS NOT NULL
+    AND protected = TRUE
+    AND template_key IN ('website_link', 'portal_link', 'portal_invite', 'docs', 'pending', 'itr', 'payment_reminder', 'status_update', 'onboarding')
+  ));
 
 -- 1. Website link template
 INSERT INTO public.message_templates (user_id, template_key, name, cat, body, protected)
@@ -96,7 +109,7 @@ DO UPDATE SET name = EXCLUDED.name, cat = EXCLUDED.cat, body = EXCLUDED.body;
 
 -- 6. Secure portal invitation template
 INSERT INTO public.message_templates (user_id, template_key, name, cat, body, protected)
-VALUES (NULL, 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hi {name}, open this private link from your CA to access your documents and upload files using our secure file-transfer service: {portalLink}
+VALUES (NULL, 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, here is the link to your secure client portal where you can review your tax files and safely upload requested documents: {portalLink}
 
 Use the same email address your CA has on file. Please do not send tax, financial, identity, or other sensitive documents in Telegram.', TRUE)
 ON CONFLICT (template_key) WHERE user_id IS NULL AND template_key IS NOT NULL
@@ -109,26 +122,26 @@ DROP POLICY IF EXISTS message_templates_select_policy ON public.message_template
 CREATE POLICY message_templates_select_policy ON public.message_templates
   FOR SELECT
   TO authenticated, service_role
-  USING (user_id IS NULL OR user_id = auth.uid());
+  USING (user_id = (select auth.uid()));
 
 DROP POLICY IF EXISTS message_templates_insert_policy ON public.message_templates;
 CREATE POLICY message_templates_insert_policy ON public.message_templates
   FOR INSERT
   TO authenticated, service_role
-  WITH CHECK (user_id = auth.uid() OR auth.uid() IS NULL);
+  WITH CHECK (user_id = (select auth.uid()) OR (select auth.uid()) IS NULL);
 
 DROP POLICY IF EXISTS message_templates_update_policy ON public.message_templates;
 CREATE POLICY message_templates_update_policy ON public.message_templates
   FOR UPDATE
   TO authenticated, service_role
-  USING (user_id = auth.uid() AND protected = FALSE)
-  WITH CHECK (user_id = auth.uid() AND protected = FALSE);
+  USING (user_id = (select auth.uid()) AND protected = FALSE)
+  WITH CHECK (user_id = (select auth.uid()) AND protected = FALSE);
 
 DROP POLICY IF EXISTS message_templates_delete_policy ON public.message_templates;
 CREATE POLICY message_templates_delete_policy ON public.message_templates
   FOR DELETE
   TO authenticated, service_role
-  USING (user_id = auth.uid() AND protected = FALSE);
+  USING (user_id = (select auth.uid()) AND protected = FALSE);
 
 
 -- ==============================================================================
@@ -234,17 +247,30 @@ CREATE INDEX IF NOT EXISTS telegram_message_schedules_due_idx
   WHERE status = 'active';
 CREATE INDEX IF NOT EXISTS telegram_message_schedules_owner_created_idx
   ON public.telegram_message_schedules(owner_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS telegram_message_schedules_client_id_idx
+  ON public.telegram_message_schedules(client_id);
+CREATE INDEX IF NOT EXISTS telegram_message_schedules_template_id_idx
+  ON public.telegram_message_schedules(template_id)
+  WHERE template_id IS NOT NULL;
 
 ALTER TABLE public.telegram_message_schedules ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.telegram_message_schedules FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.telegram_message_schedules NO FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON public.telegram_message_schedules FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.telegram_message_schedules TO authenticated, service_role;
+
+DROP POLICY IF EXISTS telegram_message_schedules_service_role ON public.telegram_message_schedules;
+CREATE POLICY telegram_message_schedules_service_role
+  ON public.telegram_message_schedules FOR ALL
+  TO service_role
+  USING (TRUE)
+  WITH CHECK (TRUE);
+
 DROP POLICY IF EXISTS telegram_message_schedules_owner_policy ON public.telegram_message_schedules;
 CREATE POLICY telegram_message_schedules_owner_policy
   ON public.telegram_message_schedules FOR ALL
-  TO authenticated, service_role
-  USING (owner_user_id = auth.uid() OR auth.uid() IS NULL)
-  WITH CHECK (owner_user_id = auth.uid() OR auth.uid() IS NULL);
+  TO authenticated
+  USING (owner_user_id = (select auth.uid()))
+  WITH CHECK (owner_user_id = (select auth.uid()));
 
 CREATE OR REPLACE FUNCTION public.claim_due_telegram_message_schedules(p_limit INTEGER DEFAULT 20)
 RETURNS SETOF public.telegram_message_schedules
@@ -327,4 +353,6 @@ REVOKE ALL ON FUNCTION public.finish_telegram_message_schedule(UUID, BOOLEAN, TE
 GRANT EXECUTE ON FUNCTION public.claim_due_telegram_message_schedules(INTEGER) TO service_role;
 GRANT EXECUTE ON FUNCTION public.finish_telegram_message_schedule(UUID, BOOLEAN, TEXT, TIMESTAMPTZ) TO service_role;
 
+-- Built-in defaults are maintained in the desktop app by country. Remove any legacy shared seeds.
+DELETE FROM public.message_templates WHERE user_id IS NULL;
 NOTIFY pgrst, 'reload schema';

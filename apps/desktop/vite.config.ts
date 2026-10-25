@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  // The Vercel project already provides API_URL. Expose only the non-secret
+  // API origin alongside the normal VITE_ variables; never expose credentials.
+  envPrefix: ['VITE_', 'API_'],
   server: { 
     port: 5173,
     strictPort: true,

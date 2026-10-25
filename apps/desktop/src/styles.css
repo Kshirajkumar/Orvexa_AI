@@ -576,12 +576,477 @@ button.file-artifact-main:hover .file-artifact-copy>b{color:var(--blue)}
 .wa-template-card p{flex:1;min-height:70px;margin:9px 0 12px;padding:10px 11px;font-size:11.5px}
 .wa-template-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .wa-template-footer>.chip{display:inline-flex;align-items:center;gap:5px}
-.wa-tab-empty{display:flex;min-height:220px;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--tx3);text-align:center}
+.wa-tab-empty{position:relative;display:flex;min-height:260px;flex-direction:column;align-items:center;justify-content:center;gap:8px;overflow:hidden;color:var(--tx3);text-align:center;background:radial-gradient(circle at 50% 20%,color-mix(in srgb,var(--blue) 10%,transparent),transparent 48%),linear-gradient(145deg,color-mix(in srgb,var(--card) 96%,var(--blue)),var(--card));animation:waEmptyReveal .36s ease both}
+.wa-tab-empty::before,.wa-tab-empty::after{content:"";position:absolute;pointer-events:none;border:1px solid color-mix(in srgb,var(--cyan) 15%,transparent);border-radius:50%;animation:waEmptyOrbit 8s linear infinite}
+.wa-tab-empty::before{width:180px;height:180px;top:-96px;right:-40px}
+.wa-tab-empty::after{width:260px;height:260px;bottom:-180px;left:-80px;animation-direction:reverse;animation-duration:11s}
 .wa-tab-empty>.ic{margin-bottom:3px;color:var(--blue)}
 .wa-tab-empty>b{color:var(--tx)}
-.wa-tab-empty>span{font-size:11.5px}
-@media(max-width:1050px){.wa-reminder-card{grid-template-columns:65px minmax(0,1fr)}.wa-reminder-actions{grid-column:2;justify-content:flex-start}.wa-template-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:700px){.wa-template-grid{grid-template-columns:1fr}.wa-reminder-card{grid-template-columns:1fr}.wa-reminder-actions{grid-column:1}.wa-reminder-client{flex-wrap:wrap}}
+.wa-tab-empty>span{position:relative;z-index:1;max-width:420px;font-size:11.5px;line-height:1.55}
+.wa-tab-empty>.wa-tab-empty-icon,.wa-tab-empty>.btn{position:relative;z-index:1}
+@keyframes waEmptyReveal{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes waEmptyOrbit{from{transform:rotate(0deg) translateX(4px)}to{transform:rotate(360deg) translateX(4px)}}
+@media(prefers-reduced-motion:reduce){.wa-tab-empty{animation:none}.wa-tab-empty::before,.wa-tab-empty::after{animation:none}}
+/* ── Reminders header layout ── */
+.wa-reminders-header{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px;margin-bottom:14px}
+.wa-reminders-banner{flex:1;min-width:200px;align-items:flex-start !important}
+.wa-reminders-banner span{line-height:1.45}
+.wa-reminders-actions-row{display:flex;align-items:center;gap:8px;flex-shrink:0}
+
+/* ── Notice cards (success / error) ── */
+.wa-reminders-notice-card{display:flex;align-items:center;gap:9px;margin-bottom:12px;padding:10px 14px;border-radius:9px;font-size:12px;line-height:1.4}
+.wa-reminders-notice-card .ic{flex:none}
+.wa-reminders-notice-card span{flex:1;min-width:0}
+.wa-reminders-notice-success{border:1px solid color-mix(in srgb,var(--green) 30%,var(--line));background:color-mix(in srgb,var(--green) 8%,var(--card));color:var(--tx2)}
+.wa-reminders-notice-success .ic{color:var(--green)}
+.wa-reminders-notice-error{border:1px solid color-mix(in srgb,var(--red) 30%,var(--line));background:color-mix(in srgb,var(--red) 8%,var(--card));color:var(--red)}
+.wa-reminders-notice-dismiss{margin-left:auto;flex:none;opacity:.65}
+
+/* ── Schedule skeleton ── */
+.wa-sched-skeleton{opacity:.7;pointer-events:none}
+
+/* ── Tab empty icon ── */
+.wa-tab-empty-icon{display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:14px;background:color-mix(in srgb,var(--blue) 12%,var(--card));color:var(--blue);margin-bottom:6px}
+
+/* ── Templates tab header ── */
+.wa-tpl-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.wa-tpl-header-left{display:flex;align-items:center;gap:12px;min-width:0}
+.wa-tpl-header-icon{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:11px;background:color-mix(in srgb,var(--blue) 14%,var(--card));color:var(--blue);flex:none}
+.wa-tpl-title{margin:0;font-size:17px;font-weight:700;line-height:1.2}
+.wa-tpl-subtitle{margin:2px 0 0;font-size:11.5px;color:var(--tx3)}
+
+/* ── Template editor card ── */
+.wa-tpl-editor {
+  margin-bottom: 24px;
+  padding: 24px;
+  border-radius: 14px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--card) 96%, var(--blue)), var(--card));
+  border: 1px solid color-mix(in srgb, var(--blue) 26%, var(--line));
+  box-shadow: 0 10px 30px color-mix(in srgb, #000 20%, transparent);
+  position: relative;
+  overflow: hidden;
+}
+.wa-tpl-editor::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--blue), var(--cyan), #8b5cf6);
+}
+.wa-tpl-editor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.wa-tpl-editor-heading-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.wa-tpl-editor-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--blue) 30%, transparent), color-mix(in srgb, var(--cyan) 20%, transparent));
+  border: 1px solid color-mix(in srgb, var(--blue) 40%, var(--line));
+  color: var(--cyan);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--blue) 25%, transparent);
+  flex: none;
+}
+.wa-tpl-editor-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--tx);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wa-tpl-editor-sub {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--tx3);
+}
+.wa-tpl-preset-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--cyan) 30%, var(--line));
+}
+.wa-tpl-preset-select-wrap label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cyan);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.wa-tpl-preset-select {
+  background: transparent;
+  border: none;
+  color: var(--tx);
+  font-size: 11.5px;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+}
+.wa-tpl-preset-select option {
+  background: var(--bg2);
+  color: var(--tx);
+}
+
+/* ── Form Rows and Inputs ── */
+.wa-tpl-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.wa-tpl-input-wrap label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tx2);
+  margin-bottom: 7px;
+}
+.wa-tpl-input-wrap label .ic {
+  color: var(--blue);
+}
+.wa-tpl-char-count {
+  margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--tx3);
+}
+
+/* ── Dynamic Variables Instruction Banner (Big, Clear, Prominent) ── */
+.wa-tpl-instruction-banner {
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--blue) 8%, var(--bg2)), color-mix(in srgb, var(--cyan) 5%, var(--bg2)));
+  border: 1px solid color-mix(in srgb, var(--blue) 25%, var(--line));
+}
+.wa-tpl-instruction-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.wa-tpl-instruction-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--blue) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--blue) 40%, transparent);
+  color: var(--cyan);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.wa-tpl-instruction-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--tx);
+}
+.wa-tpl-instruction-text {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--tx2);
+}
+.wa-tpl-tokens-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 9px;
+  margin-bottom: 12px;
+}
+.wa-tpl-token-card {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 70%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--blue) 18%, var(--line));
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.16s ease;
+}
+.wa-tpl-token-card:hover {
+  background: color-mix(in srgb, var(--blue) 12%, var(--card));
+  border-color: var(--blue);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--blue) 15%, transparent);
+}
+.wa-tpl-token-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.wa-tpl-token-code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--cyan);
+  background: color-mix(in srgb, var(--cyan) 10%, transparent);
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+.wa-tpl-token-name {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--tx2);
+}
+.wa-tpl-token-desc {
+  font-size: 10px;
+  color: var(--tx3);
+  line-height: 1.35;
+}
+.wa-tpl-instruction-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--tx3);
+}
+.wa-tpl-instruction-footer .ic {
+  color: var(--amber);
+  flex: none;
+}
+
+/* ── Split Editor & Live Preview ── */
+.wa-tpl-body-preview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.wa-tpl-live-preview {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg2) 80%, var(--panel));
+  border: 1px dashed color-mix(in srgb, var(--line) 80%, var(--blue));
+}
+.wa-tpl-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--tx3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+.wa-tpl-preview-header .ic {
+  color: var(--cyan);
+}
+.wa-tpl-preview-bubble {
+  position: relative;
+  padding: 14px 16px;
+  border-radius: 14px 14px 14px 4px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--blue) 16%, var(--panel)), color-mix(in srgb, var(--cyan) 10%, var(--panel)));
+  border: 1px solid color-mix(in srgb, var(--blue) 25%, var(--line));
+  color: var(--tx);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-shadow: 0 4px 16px color-mix(in srgb, #000 15%, transparent);
+}
+.wa-tpl-preview-empty {
+  color: var(--tx3);
+  font-style: italic;
+}
+.wa-tpl-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+/* ── Templates section labels ── */
+.wa-tpl-section-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.wa-tpl-section-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.wa-tpl-section-badge.green {
+  background: color-mix(in srgb, var(--green) 14%, var(--card));
+  color: var(--green);
+  border: 1px solid color-mix(in srgb, var(--green) 30%, var(--line));
+}
+.wa-tpl-section-badge.violet {
+  background: color-mix(in srgb, #8b5cf6 16%, var(--card));
+  color: #a78bfa;
+  border: 1px solid color-mix(in srgb, #8b5cf6 34%, var(--line));
+}
+.wa-tpl-section-desc {
+  font-size: 11.5px;
+  color: var(--tx3);
+}
+
+/* ── Template card redesign ── */
+.wa-template-card {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.wa-template-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px color-mix(in srgb, #000 24%, transparent);
+}
+.wa-template-card--shared {
+  border-top: 3px solid color-mix(in srgb, var(--green) 60%, var(--line));
+}
+.wa-template-card--private {
+  border-top: 3px solid color-mix(in srgb, #8b5cf6 70%, var(--line));
+  background: linear-gradient(145deg, color-mix(in srgb, #8b5cf6 6%, var(--card)), var(--card));
+}
+.wa-template-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.wa-tpl-card-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--blue) 12%, var(--card));
+  color: var(--blue);
+  border: 1px solid color-mix(in srgb, var(--blue) 25%, var(--line));
+}
+.wa-template-card--private .wa-tpl-card-icon {
+  background: color-mix(in srgb, #8b5cf6 14%, var(--card));
+  color: #a78bfa;
+  border-color: color-mix(in srgb, #8b5cf6 28%, var(--line));
+}
+.wa-tpl-card-meta {
+  flex: 1;
+  min-width: 0;
+}
+.wa-tpl-card-name {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+  margin-bottom: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wa-tpl-card-chips {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.wa-tpl-card-preview {
+  flex: 1;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg2);
+  font-size: 11.5px;
+  color: var(--tx2);
+  line-height: 1.55;
+  min-height: 64px;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
+
+/* ── Private Template Empty State ── */
+.wa-private-tpl-empty {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 22px 24px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, color-mix(in srgb, #8b5cf6 6%, var(--card)), var(--card));
+  border: 1px dashed color-mix(in srgb, #8b5cf6 28%, var(--line));
+  margin-bottom: 16px;
+}
+.wa-private-tpl-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  background: color-mix(in srgb, #8b5cf6 14%, var(--card));
+  color: #a78bfa;
+  flex: none;
+}
+.wa-private-tpl-empty-text {
+  flex: 1;
+}
+.wa-private-tpl-empty-text b {
+  display: block;
+  font-size: 13px;
+  color: var(--tx);
+  margin-bottom: 3px;
+}
+.wa-private-tpl-empty-text p {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--tx3);
+  line-height: 1.45;
+}
+
+@media(max-width:1050px) {
+  .wa-reminder-card{grid-template-columns:65px minmax(0,1fr)}
+  .wa-reminder-actions{grid-column:2;justify-content:flex-start}
+  .wa-template-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .wa-tpl-body-preview-grid{grid-template-columns:1fr}
+}
+@media(max-width:700px) {
+  .wa-template-grid{grid-template-columns:1fr}
+  .wa-reminder-card{grid-template-columns:1fr}
+  .wa-reminder-actions{grid-column:1}
+  .wa-reminder-client{flex-wrap:wrap}
+  .wa-tpl-form-grid{grid-template-columns:1fr}
+  .wa-tpl-tokens-grid{grid-template-columns:1fr}
+}
 
 /* Template Skeleton Shimmer Styles */
 @keyframes templateShimmer {
@@ -3901,6 +4366,7 @@ body.sidebar-collapsed.chat-hidden .shell {
 .main-inbox .wa-footer-channel{margin-left:auto;font-family:var(--mono);font-size:7px;white-space:nowrap}
 .main-inbox .wa-f:not(.telegram-composer){flex:none;padding:8px 10px;background:var(--bg2)}
 .main-inbox .wa-reminders,.main-inbox .wa-template-grid{min-height:0;flex:1;overflow:auto;padding:14px}
+.main-inbox #inbox-panel-templates{min-height:0;flex:1;overflow-y:auto;overflow-x:hidden;padding:0 2px 24px}
 @keyframes waComposerEnter{from{opacity:0;transform:translateY(9px) scale(.985)}to{opacity:1;transform:none}}
 @keyframes waStatusPulse{50%{opacity:.45;transform:scale(.8)}}
 @media(max-width:1150px){

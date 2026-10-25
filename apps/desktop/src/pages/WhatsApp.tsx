@@ -34,6 +34,73 @@ import type { ChatMsg, Reminder } from '../types';
 
 const TELEGRAM_MIGRATION_COMMAND = 'Set-Location .\\services\\backend; npm run migrate:telegram';
 
+const TEMPLATE_COUNTRIES = [
+  { code: 'IN', name: 'India' },
+  { code: 'US', name: 'United States' },
+  { code: 'AE', name: 'United Arab Emirates' },
+  { code: 'SG', name: 'Singapore' },
+  { code: 'GB', name: 'United Kingdom' },
+] as const;
+
+type TemplateCountryCode = typeof TEMPLATE_COUNTRIES[number]['code'];
+
+function builtInTemplate(countryCode: TemplateCountryCode, key: string, name: string, cat: string, body: string): MessageTemplate {
+  return {
+    id: `default-${countryCode}-${key}`,
+    user_id: null,
+    template_key: key,
+    name,
+    cat,
+    body,
+    protected: true,
+    source: 'default',
+    country_code: countryCode,
+  };
+}
+
+const BUILT_IN_TEMPLATES: Record<TemplateCountryCode, MessageTemplate[]> = {
+  IN: [
+    builtInTemplate('IN', 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, please review your tax documents and upload pending files securely here: {portalLink}'),
+    builtInTemplate('IN', 'itr_return', 'ITR filing documents', 'Income tax', 'Hello {name}, please upload Form 16, 26AS/AIS, bank interest certificates, and investment proofs for your ITR: {portalLink}'),
+    builtInTemplate('IN', 'gst_return', 'GST return documents', 'GST', 'Hello {name}, please upload your sales and purchase invoices, GSTR-2B, and expense records for {period}: {portalLink}'),
+    builtInTemplate('IN', 'tds_form16', 'TDS / Form 16 request', 'TDS', 'Hello {name}, please upload your Form 16, TDS certificates, and 26AS/AIS for {period}: {portalLink}'),
+    builtInTemplate('IN', 'missing_document', 'Missing document follow-up', 'Utility', 'Hello {name}, we are still waiting for your {doc} for {period}. Please upload it securely here: {portalLink}'),
+    builtInTemplate('IN', 'fee_reminder', 'Professional fee reminder', 'Payment', 'Hello {name}, this is a reminder for the professional fee invoice for {period}. Please complete payment at your convenience.'),
+  ],
+  US: [
+    builtInTemplate('US', 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, please review your tax documents and upload pending files securely here: {portalLink}'),
+    builtInTemplate('US', 'individual_return', 'Individual tax return documents', 'Income tax', 'Hello {name}, please upload your W-2, 1099s, mortgage interest, deductions, and investment statements for {period}: {portalLink}'),
+    builtInTemplate('US', 'business_return', 'Business tax return documents', 'Business tax', 'Hello {name}, please upload your income statement, balance sheet, bank statements, and 1099 records for {period}: {portalLink}'),
+    builtInTemplate('US', 'estimated_tax', 'Quarterly estimated tax reminder', 'Payment', 'Hello {name}, your quarterly estimated tax payment is due on {due}. Please review the payment details with your CA.'),
+    builtInTemplate('US', 'missing_document', 'Missing document follow-up', 'Utility', 'Hello {name}, we are still waiting for your {doc} for {period}. Please upload it securely here: {portalLink}'),
+    builtInTemplate('US', 'fee_reminder', 'Professional fee reminder', 'Payment', 'Hello {name}, this is a reminder for the professional fee invoice for {period}. Please complete payment at your convenience.'),
+  ],
+  AE: [
+    builtInTemplate('AE', 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, please review your tax documents and upload pending files securely here: {portalLink}'),
+    builtInTemplate('AE', 'vat_return', 'VAT return documents', 'VAT', 'Hello {name}, please upload your sales invoices, purchase invoices, VAT summary, and supporting records for {period}: {portalLink}'),
+    builtInTemplate('AE', 'corporate_tax', 'Corporate tax documents', 'Corporate tax', 'Hello {name}, please upload your financial statements, trial balance, and corporate tax records for {period}: {portalLink}'),
+    builtInTemplate('AE', 'trn_documents', 'TRN and registration documents', 'Compliance', 'Hello {name}, please upload your TRN certificate, trade licence, and registration documents securely here: {portalLink}'),
+    builtInTemplate('AE', 'missing_document', 'Missing document follow-up', 'Utility', 'Hello {name}, we are still waiting for your {doc} for {period}. Please upload it securely here: {portalLink}'),
+    builtInTemplate('AE', 'fee_reminder', 'Professional fee reminder', 'Payment', 'Hello {name}, this is a reminder for the professional fee invoice for {period}. Please complete payment at your convenience.'),
+  ],
+  SG: [
+    builtInTemplate('SG', 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, please review your tax documents and upload pending files securely here: {portalLink}'),
+    builtInTemplate('SG', 'gst_return', 'GST return documents', 'GST', 'Hello {name}, please upload your sales records, purchase invoices, GST reconciliation, and supporting records for {period}: {portalLink}'),
+    builtInTemplate('SG', 'corporate_tax', 'Corporate income tax documents', 'Income tax', 'Hello {name}, please upload your financial statements, tax computation, and supporting records for {period}: {portalLink}'),
+    builtInTemplate('SG', 'ir8a', 'IR8A / payroll documents', 'Payroll', 'Hello {name}, please upload your IR8A, payroll summary, CPF records, and employee details for {period}: {portalLink}'),
+    builtInTemplate('SG', 'missing_document', 'Missing document follow-up', 'Utility', 'Hello {name}, we are still waiting for your {doc} for {period}. Please upload it securely here: {portalLink}'),
+    builtInTemplate('SG', 'fee_reminder', 'Professional fee reminder', 'Payment', 'Hello {name}, this is a reminder for the professional fee invoice for {period}. Please complete payment at your convenience.'),
+  ],
+  GB: [
+    builtInTemplate('GB', 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, please review your tax documents and upload pending files securely here: {portalLink}'),
+    builtInTemplate('GB', 'self_assessment', 'Self Assessment documents', 'Income tax', 'Hello {name}, please upload your P60/P45, P11D, bank interest, dividend, and investment records for {period}: {portalLink}'),
+    builtInTemplate('GB', 'vat_return', 'VAT return documents', 'VAT', 'Hello {name}, please upload your sales invoices, purchase invoices, VAT reports, and MTD records for {period}: {portalLink}'),
+    builtInTemplate('GB', 'mtd', 'Making Tax Digital records', 'Compliance', 'Hello {name}, please upload your digital bookkeeping reports and supporting records for {period}: {portalLink}'),
+    builtInTemplate('GB', 'missing_document', 'Missing document follow-up', 'Utility', 'Hello {name}, we are still waiting for your {doc} for {period}. Please upload it securely here: {portalLink}'),
+    builtInTemplate('GB', 'fee_reminder', 'Professional fee reminder', 'Payment', 'Hello {name}, this is a reminder for the professional fee invoice for {period}. Please complete payment at your convenience.'),
+  ],
+};
+
 function needsTelegramMigrationHelp(messages: string[]) {
   return messages.some((message) => /database table .* missing|database setup.*incomplete|migrations? are missing|required telegram database object/i.test(message));
 }
@@ -66,14 +133,7 @@ function scheduledTimeLabel(schedule: TelegramMessageSchedule) {
   }).format(new Date(value));
 }
 
-const DEFAULT_CLIENT_TEMPLATES: MessageTemplate[] = [
-  { id: 'default-website-link', template_key: 'website_link', name: 'Website link', cat: 'Links', body: 'Hello {name}, you can visit our client portal and website at: {portalLink}', protected: true },
-  { id: 'default-portal-link', template_key: 'portal_link', name: 'Client portal website link', cat: 'Client portal', body: 'Hello {name}, you can sign in to your TaxFlow client portal and upload your requested documents here: {portalLink}', protected: true },
-  { id: 'default-docs', template_key: 'docs', name: 'GST documents request', cat: 'Utility', body: 'Hello {name}, please upload your {period} sales & purchase invoices through your secure client portal: {portalLink}. Deadline: {due}.', protected: true },
-  { id: 'default-pending', template_key: 'pending', name: 'Missing document', cat: 'Utility', body: 'Hi {name}, we have not received the {doc} for {period} yet. Please upload it through your secure client portal: {portalLink}.', protected: true },
-  { id: 'default-itr', template_key: 'itr', name: 'ITR documents', cat: 'Utility', body: 'Hi {name}, to file your ITR please upload Form 16 / 26AS, bank interest certificates, and investment proofs through your secure client portal: {portalLink}.', protected: true },
-  { id: 'default-portal-invite', template_key: 'portal_invite', name: 'Secure portal invitation', cat: 'Client portal', body: 'Hi {name}, open this private link from your CA to access your documents and upload files using our secure file-transfer service: {portalLink}\n\nUse the same email address your CA has on file. Please do not send tax, financial, identity, or other sensitive documents in Telegram.', protected: true },
-];
+
 
 function getTemplateIcon(template: MessageTemplate) {
   if (template.template_key === 'website_link' || template.template_key === 'portal_link') return 'globe';
@@ -81,6 +141,14 @@ function getTemplateIcon(template: MessageTemplate) {
   if (template.template_key === 'docs') return 'scan';
   if (template.template_key === 'pending') return 'info';
   if (template.template_key === 'itr') return 'table';
+  if (template.template_key === 'payment_reminder') return 'rupee';
+  if (template.template_key === 'status_update') return 'check';
+  if (template.template_key === 'onboarding') return 'users';
+  if (template.cat === 'Payment') return 'rupee';
+  if (template.cat === 'Client portal') return 'globe';
+  if (template.cat === 'Links') return 'link';
+  if (template.cat === 'Filing') return 'scan';
+  if (template.cat === 'Reminder') return 'bell';
   return 'file';
 }
 
@@ -98,11 +166,21 @@ function fillTpl(body: string, name: string, portalLink?: string) {
 }
 
 async function fillPortalTemplate(template: MessageTemplate, client: { id: string; contact: string }) {
-  if (template.template_key !== 'portal_invite' || !template.body.includes('{portalLink}')) {
-    return fillTpl(template.body, client.contact.split(' ')[0]);
+  const clientName = client.contact ? client.contact.split(' ')[0] : 'Client';
+  let portalLink = 'https://taxflowaiwebsite.vercel.app/portal';
+
+  if (template.template_key === 'portal_invite' || template.body.includes('{portalLink}')) {
+    try {
+      const invitation = await inviteClientToPortal(client.id);
+      if (invitation?.link) {
+        portalLink = invitation.link;
+      }
+    } catch (err) {
+      // Gracefully fall back to standard portal website link so the CA is NEVER blocked by an invitation creation error
+      console.warn('[Portal Template] Invite link generation skipped or failed, using standard portal URL:', err);
+    }
   }
-  const invitation = await inviteClientToPortal(client.id);
-  return fillTpl(template.body, client.contact.split(' ')[0], invitation.link);
+  return fillTpl(template.body, clientName, portalLink);
 }
 
 function TemplateCardSkeleton() {
@@ -121,6 +199,30 @@ function TemplateCardSkeleton() {
       <div className="wa-template-skeleton-footer">
         <div className="wa-skeleton-shimmer wa-template-skeleton-btn" style={{ width: 64 }} />
         <div className="wa-skeleton-shimmer wa-template-skeleton-btn" style={{ width: 92 }} />
+      </div>
+    </article>
+  );
+}
+
+function ScheduleCardSkeleton() {
+  return (
+    <article className="card wa-reminder-card wa-sched-skeleton" aria-hidden="true">
+      <div className="wa-reminder-time">
+        <div className="wa-skeleton-shimmer" style={{ height: 18, width: 46, borderRadius: 6, marginBottom: 5 }} />
+        <div className="wa-skeleton-shimmer" style={{ height: 10, width: 62, borderRadius: 4 }} />
+      </div>
+      <div className="wa-reminder-content" style={{ flex: 1 }}>
+        <div className="wa-reminder-client">
+          <div className="wa-skeleton-shimmer" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+          <div className="wa-skeleton-shimmer" style={{ height: 13, width: 110, borderRadius: 5 }} />
+          <div className="wa-skeleton-shimmer" style={{ height: 18, width: 44, borderRadius: 99 }} />
+        </div>
+        <div className="wa-skeleton-shimmer" style={{ height: 10, width: '80%', borderRadius: 4, marginTop: 7 }} />
+        <div className="wa-skeleton-shimmer" style={{ height: 10, width: '60%', borderRadius: 4, marginTop: 5 }} />
+      </div>
+      <div className="wa-reminder-actions">
+        <div className="wa-skeleton-shimmer" style={{ height: 20, width: 52, borderRadius: 99 }} />
+        <div className="wa-skeleton-shimmer" style={{ height: 28, width: 60, borderRadius: 7 }} />
       </div>
     </article>
   );
@@ -216,6 +318,7 @@ export function WhatsAppPage() {
   const [templateForm, setTemplateForm] = useState({ name: '', cat: 'Utility', body: '' });
   const [templateSaving, setTemplateSaving] = useState(false);
   const [templateSearch, setTemplateSearch] = useState('');
+  const [templateCountry, setTemplateCountry] = useState<TemplateCountryCode>('IN');
   const [countryTimezones, setCountryTimezones] = useState<SupportedCountryTimezone[]>([]);
   const [countryTimezonesError, setCountryTimezonesError] = useState('');
   const [telegramSchedules, setTelegramSchedules] = useState<TelegramMessageSchedule[]>([]);
@@ -251,8 +354,11 @@ export function WhatsAppPage() {
   const telegramMessageInputRef = useRef<HTMLTextAreaElement>(null);
   const whatsAppMessageInputRef = useRef<HTMLTextAreaElement>(null);
   const telegramTemplateMenuRef = useRef<HTMLDivElement>(null);
+  const templateBodyRef = useRef<HTMLTextAreaElement>(null);
   const shouldFollowThreadRef = useRef(true);
   const c = s.clients.find((x) => x.id === s.ui.wa.client) || s.clients[0];
+  const builtInTemplates = BUILT_IN_TEMPLATES[templateCountry];
+  const visibleTemplates = [...builtInTemplates, ...templates];
   const pendingTelegramClient = s.clients.find((client) => client.id === pendingTelegramClientId);
   const pendingTelegramForCurrentClient = !!pendingTelegramMsg && pendingTelegramClientId === c?.id;
   const pendingTelegramForOtherClient = !!pendingTelegramMsg && !!pendingTelegramClientId && pendingTelegramClientId !== c?.id;
@@ -509,7 +615,7 @@ export function WhatsAppPage() {
     return () => { active = false; };
   }, []);
 
-  // Load message templates from backend
+  // Load only account-owned templates from the backend. Built-in templates are local and country-aware.
   useEffect(() => {
     let active = true;
     async function loadTemplates() {
@@ -517,10 +623,13 @@ export function WhatsAppPage() {
       setTemplateError('');
       try {
         const data = await fetchTemplates();
-        if (active) setTemplates(data.length ? data : DEFAULT_CLIENT_TEMPLATES);
+        if (active) setTemplates(data || []);
       } catch (error) {
         if (active) {
-          setTemplates(DEFAULT_CLIENT_TEMPLATES);
+          setTemplates([]);
+          setTemplateError(error instanceof Error
+            ? `Private templates could not be loaded. Built-in templates remain available. (${error.message})`
+            : 'Private templates could not be loaded. Built-in templates remain available.');
         }
       } finally {
         if (active) setTemplatesLoading(false);
@@ -536,6 +645,24 @@ export function WhatsAppPage() {
       ? { name: template.name, cat: template.cat, body: template.body }
       : { name: '', cat: 'Utility', body: '' });
     setTemplateError('');
+  }
+
+  function insertToken(token: string) {
+    const el = templateBodyRef.current;
+    if (!el) {
+      setTemplateForm((c) => ({ ...c, body: c.body + token }));
+      return;
+    }
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const text = el.value;
+    const newText = text.substring(0, start) + token + text.substring(end);
+    setTemplateForm((c) => ({ ...c, body: newText }));
+    requestAnimationFrame(() => {
+      el.focus();
+      const newPos = start + token.length;
+      el.setSelectionRange(newPos, newPos);
+    });
   }
 
   async function applyTemplate(template: MessageTemplate, openChats = false) {
@@ -561,7 +688,7 @@ export function WhatsAppPage() {
     } catch (error) {
       const message = error instanceof Error
         ? error.message
-        : 'Could not create a secure portal invitation. Please try again.';
+        : 'Could not apply template to message composer. Please try again.';
       setTemplateError(message);
       setTemplateApplyError(message);
     } finally {
@@ -835,11 +962,17 @@ export function WhatsAppPage() {
     setSendingReminderId(reminder.id);
     setReminderSendErrors((errors) => ({ ...errors, [reminder.id]: '' }));
     try {
-      const reminderTemplate = templates.find((template) => template.id === reminder.tpl);
+      const reminderTemplate = visibleTemplates.find((template) => template.id === reminder.tpl);
       let message = reminder.text;
       if (reminderTemplate?.template_key === 'portal_invite' && reminderTemplate.body.includes('{portalLink}')) {
-        const invitation = await inviteClientToPortal(reminderClient.id);
-        message = message.replace(/https:\/\/taxflowaiwebsite\.vercel\.app\/portal/g, invitation.link);
+        try {
+          const invitation = await inviteClientToPortal(reminderClient.id);
+          if (invitation?.link) {
+            message = message.replace(/https:\/\/taxflowaiwebsite\.vercel\.app\/portal/g, invitation.link);
+          }
+        } catch (inviteErr) {
+          console.warn('[Reminder Send] Could not generate invite token, using default portal link:', inviteErr);
+        }
       }
       await sendWhatsAppManualMessage(reminderClient.id, reminderClient.phone, message);
       dispatch({ type: 'REM_SEND_NOW', id: reminder.id });
@@ -908,70 +1041,126 @@ export function WhatsAppPage() {
     }
   }
 
-  const renderTemplateDropdown = () => (
-    <div className="telegram-template-menu" id="message-template-menu" role="menu" aria-label="Message templates">
-      <div className="telegram-template-menu-heading">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-          <b>Message templates</b>
-          <span className="chip sm blue">{templates.length}</span>
+  const renderTemplateDropdown = () => {
+    const query = templateSearch.trim().toLowerCase();
+    const filteredTemplates = visibleTemplates.filter((template) =>
+      `${template.name} ${template.cat} ${template.body}`.toLowerCase().includes(query)
+    );
+    const defaultTemplates = filteredTemplates.filter((t) => t.source === 'default');
+    const privateTemplates = filteredTemplates.filter((t) => t.source !== 'default');
+    const clientFirstName = c?.contact ? c.contact.split(' ')[0] : 'Client';
+
+    return (
+      <div className="telegram-template-menu" id="message-template-menu" role="menu" aria-label="Message templates">
+        <div className="telegram-template-menu-heading">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <b>Message templates</b>
+            <span className="chip sm blue">{visibleTemplates.length} total</span>
+          </div>
+          <small>Click any template to insert it into your chat composer</small>
         </div>
-        <small>Click any template to type it into the chat message</small>
-      </div>
-      <input
-        className="telegram-template-search"
-        type="search"
-        value={templateSearch}
-        onChange={(event) => setTemplateSearch(event.target.value)}
-        placeholder="Search templates (e.g. website link, GST)..."
-        aria-label="Search message templates"
-        autoFocus
-      />
-      {templatesLoading && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '4px 0' }} role="status" aria-label="Loading templates">
-          <TemplateDropdownSkeleton />
-          <TemplateDropdownSkeleton />
-          <TemplateDropdownSkeleton />
-          <TemplateDropdownSkeleton />
+        <input
+          className="telegram-template-search"
+          type="search"
+          value={templateSearch}
+          onChange={(event) => setTemplateSearch(event.target.value)}
+          placeholder="Search templates (e.g. website link, GST, fee)..."
+          aria-label="Search message templates"
+          autoFocus
+        />
+        {templatesLoading && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '4px 0' }} role="status" aria-label="Loading templates">
+            <TemplateDropdownSkeleton />
+            <TemplateDropdownSkeleton />
+            <TemplateDropdownSkeleton />
+            <TemplateDropdownSkeleton />
+          </div>
+        )}
+        {templateError && <div className="telegram-template-empty error" role="alert">{templateError}</div>}
+        {!templatesLoading && (
+          <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+            {/* Default Templates Section */}
+            {defaultTemplates.length > 0 && (
+              <div style={{ marginBottom: 6 }}>
+                <div style={{ padding: '6px 10px 4px', fontSize: '11px', fontWeight: 600, color: 'var(--c-text-mut, #888)', display: 'flex', alignItems: 'center', gap: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <Icon name="globe" size={11} />
+                  <span>Built-in Templates (Country)</span>
+                  <span className="chip sm green" style={{ marginLeft: 'auto', fontSize: '10px' }}>{defaultTemplates.length}</span>
+                </div>
+                {defaultTemplates.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    role="menuitem"
+                    className="telegram-template-option"
+                    onClick={() => {
+                      void applyTemplate(template);
+                      setTelegramTemplatesOpen(false);
+                    }}
+                    disabled={!!applyingTemplateId}
+                  >
+                    <span className="telegram-template-option-icon"><Icon name={getTemplateIcon(template)} size={14} /></span>
+                    <span>
+                      <b>{applyingTemplateId === template.id ? 'Preparing…' : template.name}</b>
+                      <small>{fillTpl(template.body, clientFirstName)}</small>
+                    </span>
+                    <span className="chip sm green">Default Template</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Private Templates Section */}
+            {privateTemplates.length > 0 && (
+              <div style={{ marginBottom: 6 }}>
+                <div style={{ padding: '8px 10px 4px', fontSize: '11px', fontWeight: 600, color: 'var(--c-text-mut, #888)', display: 'flex', alignItems: 'center', gap: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <Icon name="lock" size={11} />
+                  <span>Your Private Templates</span>
+                  <span className="chip sm violet" style={{ marginLeft: 'auto', fontSize: '10px' }}>{privateTemplates.length}</span>
+                </div>
+                {privateTemplates.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    role="menuitem"
+                    className="telegram-template-option"
+                    onClick={() => {
+                      void applyTemplate(template);
+                      setTelegramTemplatesOpen(false);
+                    }}
+                    disabled={!!applyingTemplateId}
+                  >
+                    <span className="telegram-template-option-icon"><Icon name={getTemplateIcon(template)} size={14} /></span>
+                    <span>
+                      <b>{applyingTemplateId === template.id ? 'Preparing…' : template.name}</b>
+                      <small>{fillTpl(template.body, clientFirstName)}</small>
+                    </span>
+                    <span className="chip sm violet">Your Private Template</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {filteredTemplates.length === 0 && (
+              <div className="telegram-template-empty">No matching templates found.</div>
+            )}
+          </div>
+        )}
+        <div className="telegram-template-menu-footer">
+          <button
+            type="button"
+            className="btn sm gh"
+            onClick={() => {
+              setTelegramTemplatesOpen(false);
+              dispatch({ type: 'WA_TAB', tab: 'templates' });
+            }}
+          >
+            Manage all templates in Templates tab →
+          </button>
         </div>
-      )}
-      {templateError && <div className="telegram-template-empty error" role="alert">{templateError}</div>}
-      {!templatesLoading && !templateError && templates.filter((template) => `${template.name} ${template.cat}`.toLowerCase().includes(templateSearch.trim().toLowerCase())).map((template) => (
-        <button
-          key={template.id}
-          type="button"
-          role="menuitem"
-          className="telegram-template-option"
-          onClick={() => {
-            void applyTemplate(template);
-            setTelegramTemplatesOpen(false);
-          }}
-          disabled={!!applyingTemplateId}
-        >
-          <span className="telegram-template-option-icon"><Icon name={getTemplateIcon(template)} size={14} /></span>
-          <span>
-            <b>{applyingTemplateId === template.id ? 'Preparing…' : template.name}</b>
-            <small>{fillTpl(template.body, c.contact.split(' ')[0])}</small>
-          </span>
-          <span className={`chip sm ${template.user_id ? 'violet' : 'blue'}`}>{template.user_id ? 'My template' : 'Shared'}</span>
-        </button>
-      ))}
-      {!templatesLoading && !templateError && !templates.some((template) => `${template.name} ${template.cat}`.toLowerCase().includes(templateSearch.trim().toLowerCase())) && (
-        <div className="telegram-template-empty">No matching templates found.</div>
-      )}
-      <div className="telegram-template-menu-footer">
-        <button
-          type="button"
-          className="btn sm gh"
-          onClick={() => {
-            setTelegramTemplatesOpen(false);
-            dispatch({ type: 'WA_TAB', tab: 'templates' });
-          }}
-        >
-          Manage all templates in Templates tab →
-        </button>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="inbox-page">
@@ -1564,126 +1753,451 @@ export function WhatsAppPage() {
 
       {s.ui.wa.tab === 'reminders' && (
         <div className="wa-reminders" id="inbox-panel-reminders" role="tabpanel" aria-labelledby="inbox-tab-reminders">
-          <div className="wa-reminder-notice"><Icon name="clock" size={14} />Scheduled reminders are delivered automatically through the client’s linked Telegram chat, using the client-country time zone.</div>
-          {scheduleNotice && <div className="portal-success-message" role="status">{scheduleNotice}</div>}
-          {scheduleError && <div className="ob-error" role="alert">{scheduleError}</div>}
-          {countryTimezonesError && <div className="ob-error" role="alert">{countryTimezonesError}</div>}
-          <div className="row" style={{ justifyContent: 'flex-end' }}>
-            <button className="btn sm" onClick={() => void loadTelegramSchedules()} disabled={schedulesLoading}><Icon name="refresh" size={13} />Refresh</button>
-            <button className="btn sm pri" onClick={() => { setScheduleError(''); setScheduleNotice(''); setShowSchedule(true); }}><Icon name="plus" size={13} />Schedule Telegram reminder</button>
+
+          {/* Header row */}
+          <div className="wa-reminders-header">
+            <div className="wa-reminder-notice wa-reminders-banner">
+              <Icon name="clock" size={14} />
+              <span>Scheduled reminders are delivered automatically through the client's linked Telegram chat, using the client-country time zone.</span>
+            </div>
+            <div className="wa-reminders-actions-row">
+              <button
+                className="btn sm"
+                onClick={() => void loadTelegramSchedules()}
+                disabled={schedulesLoading}
+                title="Refresh schedules"
+              >
+                {schedulesLoading ? <span className="spin" /> : <Icon name="refresh" size={13} />}
+                {schedulesLoading ? 'Refreshing…' : 'Refresh'}
+              </button>
+              <button
+                className="btn sm pri"
+                onClick={() => { setScheduleError(''); setScheduleNotice(''); setShowSchedule(true); }}
+              >
+                <Icon name="plus" size={13} />Schedule Telegram reminder
+              </button>
+            </div>
           </div>
-          {schedulesLoading && !telegramSchedules.length && <div className="wa-reminder-notice"><span className="spin" />Loading saved schedules…</div>}
-          {!schedulesLoading && !telegramSchedules.length ? (
+
+          {/* Success notice */}
+          {scheduleNotice && (
+            <div className="wa-reminders-notice-card wa-reminders-notice-success" role="status">
+              <Icon name="check" size={14} />{scheduleNotice}
+              <button className="btn sm gh wa-reminders-notice-dismiss" onClick={() => setScheduleNotice('')}>✕</button>
+            </div>
+          )}
+
+          {/* Error notice — suppress raw 404 strings */}
+          {scheduleError && (
+            <div className="wa-reminders-notice-card wa-reminders-notice-error" role="alert">
+              <Icon name="info" size={14} />
+              <span>{scheduleError}</span>
+              <button className="btn sm gh wa-reminders-notice-dismiss" onClick={() => setScheduleError('')}>✕</button>
+            </div>
+          )}
+
+          {/* Skeleton loading */}
+          {schedulesLoading && !telegramSchedules.length && (
+            <div className="wa-reminder-list" role="status" aria-label="Loading schedules">
+              <ScheduleCardSkeleton />
+              <ScheduleCardSkeleton />
+              <ScheduleCardSkeleton />
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!schedulesLoading && !telegramSchedules.length && (
             <div className="card wa-tab-empty">
-              <Icon name="clock" size={22} />
+              <span className="wa-tab-empty-icon"><Icon name="clock" size={28} /></span>
               <b>No saved Telegram reminders</b>
               <span>Choose a client, message and client-local send time to schedule a one-time or daily reminder.</span>
+              <button
+                className="btn pri"
+                style={{ marginTop: 10 }}
+                onClick={() => { setScheduleError(''); setScheduleNotice(''); setShowSchedule(true); }}
+              >
+                <Icon name="plus" size={13} />Create your first reminder
+              </button>
             </div>
-          ) : <div className="wa-reminder-list">
-            {telegramSchedules.map((schedule) => (
-              <article className="card wa-reminder-card" key={schedule.id}>
-                <div className="wa-reminder-time">
-                  <b>{schedule.repeat_mode === 'daily' ? schedule.local_time?.slice(0, 5) : scheduledTimeLabel(schedule)}</b>
-                  <small>{schedule.repeat_mode === 'daily' ? 'Every day' : schedule.status === 'active' ? 'One-time send' : schedule.status}</small>
-                </div>
-                <div className="wa-reminder-content">
-                  <div className="wa-reminder-client">
-                    <span className="av"><Icon name="users" size={13} /></span>
-                    <b>{schedule.client?.name || 'Client'}</b>
-                    <span className="chip blue">{schedule.repeat_mode === 'daily' ? 'Daily' : 'One time'}</span>
-                    <span className="chip">{schedule.timezone_name}</span>
+          )}
+
+          {/* Schedules list */}
+          {!schedulesLoading && telegramSchedules.length > 0 && (
+            <div className="wa-reminder-list">
+              {telegramSchedules.map((schedule) => (
+                <article className="card wa-reminder-card" key={schedule.id}>
+                  <div className="wa-reminder-time">
+                    <b>{schedule.repeat_mode === 'daily' ? schedule.local_time?.slice(0, 5) : scheduledTimeLabel(schedule)}</b>
+                    <small>{schedule.repeat_mode === 'daily' ? 'Every day' : schedule.status === 'active' ? 'One-time send' : schedule.status}</small>
                   </div>
-                  <small className="mut">Next send: {scheduledTimeLabel(schedule)} · {schedule.occurrence_count} sent</small>
-                  <p>{schedule.message_body}</p>
-                  {schedule.last_error && <small className="wa-reminder-error">{schedule.last_error}</small>}
-                </div>
-                <div className="wa-reminder-actions">
-                  <span className={`chip ${schedule.status === 'active' ? 'green' : schedule.status === 'failed' ? 'red' : 'blue'}`}>{schedule.status}</span>
-                  {schedule.status === 'active' && <button className="btn sm gh" onClick={() => void cancelTelegramReminder(schedule)} disabled={scheduleActionId === schedule.id}>Cancel</button>}
-                  {schedule.status === 'failed' && <button className="btn sm" onClick={() => void retryTelegramReminder(schedule)} disabled={scheduleActionId === schedule.id}>{scheduleActionId === schedule.id ? 'Retrying…' : 'Retry'}</button>}
-                </div>
-              </article>
-            ))}
-          </div>}
+                  <div className="wa-reminder-content">
+                    <div className="wa-reminder-client">
+                      <span className="av"><Icon name="users" size={13} /></span>
+                      <b>{schedule.client?.name || 'Client'}</b>
+                      <span className="chip blue">{schedule.repeat_mode === 'daily' ? 'Daily' : 'One time'}</span>
+                      <span className="chip">{schedule.timezone_name}</span>
+                    </div>
+                    <small className="mut">Next send: {scheduledTimeLabel(schedule)} · {schedule.occurrence_count} sent</small>
+                    <p>{schedule.message_body}</p>
+                    {schedule.last_error && <small className="wa-reminder-error">{schedule.last_error}</small>}
+                  </div>
+                  <div className="wa-reminder-actions">
+                    <span className={`chip ${schedule.status === 'active' ? 'green' : schedule.status === 'failed' ? 'red' : 'blue'}`}>{schedule.status}</span>
+                    {schedule.status === 'active' && (
+                      <button className="btn sm gh" onClick={() => void cancelTelegramReminder(schedule)} disabled={scheduleActionId === schedule.id}>
+                        Cancel
+                      </button>
+                    )}
+                    {schedule.status === 'failed' && (
+                      <button className="btn sm" onClick={() => void retryTelegramReminder(schedule)} disabled={scheduleActionId === schedule.id}>
+                        {scheduleActionId === schedule.id ? 'Retrying…' : 'Retry'}
+                      </button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {s.ui.wa.tab === 'templates' && (
         <div id="inbox-panel-templates" role="tabpanel" aria-labelledby="inbox-tab-templates">
-          <div className="row" style={{ marginBottom: 14 }}>
-            <div>
-              <h2 style={{ margin: 0 }}>Message templates</h2>
-              <small>Use the protected invitation template to create a private client-specific link. Keep sensitive files out of Telegram.</small>
+
+          {/* Tab header */}
+          <div className="wa-tpl-header">
+            <div className="wa-tpl-header-left">
+              <span className="wa-tpl-header-icon"><Icon name="file" size={18} /></span>
+              <div>
+                <h2 className="wa-tpl-title">Message Templates</h2>
+                <p className="wa-tpl-subtitle">Built-in templates are available by country. Private templates are loaded only for your account.</p>
+              </div>
             </div>
-            <span className="sp" />
-            {!templateEditorOpen && <button className="btn pri" onClick={() => startTemplateEdit()}><Icon name="plus" size={14} />New template</button>}
+            {!templateEditorOpen && (
+              <button className="btn pri" onClick={() => startTemplateEdit()}>
+                <Icon name="plus" size={14} />New template
+              </button>
+            )}
           </div>
-          {templateError && <div className="empty error" role="alert">{templateError}</div>}
-          {templateEditorOpen ? (
-            <section className="card" style={{ marginBottom: 16, padding: 16 }}>
-              <h3>{editingTemplate ? `Edit ${editingTemplate.name}` : 'Create template'}</h3>
-              <div className="mgrid">
-                <div className="mrow">
-                  <label className="f" htmlFor="template-name">Name</label>
-                  <input id="template-name" className="inp" maxLength={200} value={templateForm.name} onChange={(event) => setTemplateForm((current) => ({ ...current, name: event.target.value }))} />
-                </div>
-                <div className="mrow">
-                  <label className="f" htmlFor="template-category">Category</label>
-                  <input id="template-category" className="inp" maxLength={50} value={templateForm.cat} onChange={(event) => setTemplateForm((current) => ({ ...current, cat: event.target.value }))} />
-                </div>
-              </div>
-              <div className="mrow">
-                <label className="f" htmlFor="template-body">Message</label>
-                <textarea id="template-body" className="inp" rows={5} maxLength={5000} value={templateForm.body} onChange={(event) => setTemplateForm((current) => ({ ...current, body: event.target.value }))} />
-                <small>Use {'{name}'} for the client name. Portal links are added automatically; the protected invitation template creates a private one-time link for the selected client.</small>
-              </div>
-              <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
-                <button className="btn gh" onClick={() => { setTemplateEditorOpen(false); setEditingTemplate(null); setTemplateError(''); }}>Cancel</button>
-                <button className="btn pri" onClick={() => void saveTemplate()} disabled={templateSaving || !templateForm.name.trim() || !templateForm.body.trim()}>
-                  {templateSaving ? 'Saving…' : 'Save template'}
-                </button>
-              </div>
-            </section>
-          ) : null}
-          {templatesLoading && (
-            <div className="wa-template-grid" role="status" aria-label="Loading templates">
-              {[...Array(6)].map((_, i) => (
-                <TemplateCardSkeleton key={i} />
-              ))}
+
+          {/* Error banner */}
+          {templateError && (
+            <div className="wa-reminders-notice-card wa-reminders-notice-error" role="alert">
+              <Icon name="info" size={14} />
+              <span>{templateError}</span>
+              <button className="btn sm gh wa-reminders-notice-dismiss" onClick={() => setTemplateError('')}>✕</button>
             </div>
           )}
-          {!templatesLoading && !templates.length && !templateError && <div className="empty">No templates are available yet.</div>}
-          {!templatesLoading && templates.length > 0 && (
-            <div className="wa-template-grid">
-          {templates.map((template) => (
-            <article className="card tpl wa-template-card" key={template.id}>
-              <div className="row" style={{ alignItems: 'center', gap: 8 }}>
-                <span className="telegram-template-option-icon" style={{ width: 28, height: 28, flex: 'none' }}>
-                  <Icon name={getTemplateIcon(template)} size={14} />
-                </span>
-                <b style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{template.name}</b>
-                <span className="chip blue sm">{template.cat}</span>
-                {template.user_id ? <span className="chip violet sm">Private to you</span> : <span className="chip green sm">Shared default</span>}
-              </div>
-              <p style={{ marginTop: 10, fontSize: 11.5, color: 'var(--tx2)', lineHeight: 1.5 }}>
-                {fillTpl(template.body, c.contact.split(' ')[0])}
-              </p>
-              <div className="wa-template-footer" style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                {template.user_id && <button className="btn sm" onClick={() => startTemplateEdit(template)}><Icon name="pencil" size={12} />Edit</button>}
-                {template.user_id && <button className="btn sm gh" onClick={() => void removeTemplate(template)} disabled={template.protected} title={template.protected ? 'Protected templates cannot be deleted' : 'Delete template'}><Icon name="trash" size={12} />Delete</button>}
-                <span className="sp" />
-                <button
-                  className="btn sm pri"
-                  onClick={() => void applyTemplate(template, true)}
-                  disabled={!!applyingTemplateId}
-                >
-                  <Icon name="send" size={12} />
-                  {applyingTemplateId === template.id ? 'Preparing invite…' : 'Use in Chat'}
-                </button>
-              </div>
-            </article>
-          ))}
+
+          {/* Template editor modal (mid-size floating card with close button) */}
+          {templateEditorOpen && (
+            <div
+              className="modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="template-modal-title"
+              onClick={(e) => {
+                if (e.target === e.currentTarget && !templateSaving) {
+                  setTemplateEditorOpen(false);
+                  setEditingTemplate(null);
+                  setTemplateError('');
+                }
+              }}
+            >
+              <section className="mbox wa-tpl-editor-modal-card" style={{ width: 'min(760px, 94vw)', maxHeight: '90vh', overflowY: 'auto' }} role="form" aria-label="Template Editor">
+                <div className="wa-tpl-editor-heading" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+                  <div className="wa-tpl-editor-heading-left">
+                    <span className="wa-tpl-editor-icon">
+                      <Icon name={editingTemplate ? 'pencil' : 'spark'} size={18} />
+                    </span>
+                    <div>
+                      <h3 className="wa-tpl-editor-title" id="template-modal-title">
+                        {editingTemplate ? `Editing: ${editingTemplate.name}` : 'Create New Template'}
+                        <span className="chip violet sm"><Icon name="lock" size={10} /> Your Private Template</span>
+                      </h3>
+                      <p className="wa-tpl-editor-sub">
+                        Saved privately to your account · Loaded and visible only for you
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, fontSize: 14 }}
+                    onClick={() => {
+                      setTemplateEditorOpen(false);
+                      setEditingTemplate(null);
+                      setTemplateError('');
+                    }}
+                    disabled={templateSaving}
+                    aria-label="Close template editor"
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Form Grid: Name & Category */}
+                <div className="wa-tpl-form-grid">
+                  <div className="wa-tpl-input-wrap">
+                    <label htmlFor="template-name">
+                      <Icon name="file" size={13} /> Template Name
+                    </label>
+                    <input
+                      id="template-name"
+                      className="inp"
+                      maxLength={200}
+                      placeholder="e.g. Monthly GST Filing Reminder"
+                      value={templateForm.name}
+                      onChange={(e) => setTemplateForm((c) => ({ ...c, name: e.target.value }))}
+                    />
+                  </div>
+                  <div className="wa-tpl-input-wrap">
+                    <label htmlFor="template-category">
+                      <Icon name="sliders" size={13} /> Category Section
+                    </label>
+                    <select
+                      id="template-category"
+                      className="sel"
+                      value={templateForm.cat}
+                      onChange={(e) => setTemplateForm((c) => ({ ...c, cat: e.target.value }))}
+                    >
+                      {['Client portal', 'Utility', 'Links', 'Filing', 'Payment', 'Reminder', 'General'].map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Dynamic Variables Instruction Banner (Big, Clear, Prominent) */}
+                <div className="wa-tpl-instruction-banner">
+                  <div className="wa-tpl-instruction-header">
+                    <span className="wa-tpl-instruction-badge">
+                      <Icon name="spark" size={11} /> Auto-Personalization
+                    </span>
+                    <span className="wa-tpl-instruction-title">Dynamic Client Message Placeholders</span>
+                  </div>
+                  <p className="wa-tpl-instruction-text">
+                    When sending messages or reminders, TaxFlow automatically replaces these <strong>&#123;tags&#125;</strong> with the selected client's actual data. <strong>Click any placeholder below to insert it at your cursor:</strong>
+                  </p>
+                  <div className="wa-tpl-tokens-grid">
+                    {([
+                      ['{name}', 'Client Name', 'Replaced with client first name (e.g. Rajesh)'],
+                      ['{portalLink}', 'Portal / Website Link', 'Client portal website or private link'],
+                      ['{period}', 'Filing Period', 'Filing period (e.g. August 2026)'],
+                      ['{due}', 'Due Date', 'Upcoming deadline date (e.g. 20 Sep 2026)'],
+                      ['{doc}', 'Document Name', 'Requested document (e.g. bank statement)'],
+                      ['{filing}', 'Filing Type', 'Form or filing type (e.g. GSTR-3B, ITR-1)'],
+                    ] as const).map(([token, label, desc]) => (
+                      <button
+                        key={token}
+                        type="button"
+                        className="wa-tpl-token-card"
+                        title={`Click to insert ${token} at cursor position`}
+                        onClick={() => insertToken(token)}
+                      >
+                        <div className="wa-tpl-token-card-top">
+                          <code className="wa-tpl-token-code">{token}</code>
+                          <span className="wa-tpl-token-name">{label}</span>
+                        </div>
+                        <span className="wa-tpl-token-desc">{desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="wa-tpl-instruction-footer">
+                    <Icon name="info" size={12} />
+                    <span>Use <code>{'{portalLink}'}</code> to automatically attach the client portal link in your message.</span>
+                  </div>
+                </div>
+
+                {/* Split Editor: Message Body Textarea & Live Preview */}
+                <div className="wa-tpl-body-preview-grid">
+                  <div className="wa-tpl-input-wrap">
+                    <label htmlFor="template-body">
+                      <Icon name="chat" size={13} /> Message Body Text
+                      <span className="wa-tpl-char-count">{templateForm.body.length} / 5000 characters</span>
+                    </label>
+                    <textarea
+                      ref={templateBodyRef}
+                      id="template-body"
+                      className="inp"
+                      rows={7}
+                      maxLength={5000}
+                      placeholder="Type your message text here. Click the placeholders above to insert {name}, {portalLink}, etc."
+                      value={templateForm.body}
+                      onChange={(e) => setTemplateForm((c) => ({ ...c, body: e.target.value }))}
+                    />
+                  </div>
+                  <div className="wa-tpl-live-preview">
+                    <div className="wa-tpl-preview-header">
+                      <Icon name="globe" size={13} />
+                      <span>Live Client Message Preview</span>
+                    </div>
+                    <div className="wa-tpl-preview-bubble">
+                      {templateForm.body.trim()
+                        ? fillTpl(templateForm.body, c?.contact?.split(' ')[0] || 'Rajesh')
+                        : <span className="wa-tpl-preview-empty">Your personalized message preview will appear here in real-time as you type...</span>}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="wa-tpl-editor-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+                  <button
+                    type="button"
+                    className="btn gh"
+                    onClick={() => { setTemplateEditorOpen(false); setEditingTemplate(null); setTemplateError(''); }}
+                    disabled={templateSaving}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn pri"
+                    onClick={() => void saveTemplate()}
+                    disabled={templateSaving || !templateForm.name.trim() || !templateForm.body.trim()}
+                  >
+                    {templateSaving
+                      ? <><span className="spin spin-light" />Saving…</>
+                      : <><Icon name="check" size={13} />{editingTemplate ? 'Update template' : 'Save Private Template'}</>}
+                  </button>
+                </div>
+              </section>
             </div>
+          )}
+
+          {/* Skeleton loading */}
+          {templatesLoading && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div className="wa-tpl-section-label" style={{ opacity: 0.7 }}>
+                <div className="wa-skeleton-shimmer" style={{ width: 140, height: 26, borderRadius: 20 }} />
+                <div className="wa-skeleton-shimmer" style={{ width: 180, height: 14, borderRadius: 4 }} />
+              </div>
+              <div className="wa-template-grid" role="status" aria-label="Loading templates">
+                {[...Array(6)].map((_, i) => <TemplateCardSkeleton key={i} />)}
+              </div>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {/* Shared defaults section */}
+          {!templatesLoading && builtInTemplates.length > 0 && (
+            <>
+              <div className="wa-tpl-section-label">
+                <span className="wa-tpl-section-badge green">
+                  <Icon name="globe" size={12} /> Default Templates
+                </span>
+                <span className="wa-tpl-section-desc">Built into TaxFlow · Select a country to change the message set</span>
+              </div>
+              <div className="wa-tpl-country-control" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, maxWidth: 340 }}>
+                <label className="f" htmlFor="template-country">Template country</label>
+                <select id="template-country" className="sel" value={templateCountry} onChange={(event) => setTemplateCountry(event.target.value as TemplateCountryCode)}>
+                  {TEMPLATE_COUNTRIES.map((country) => <option key={country.code} value={country.code}>{country.name}</option>)}
+                </select>
+              </div>
+              <div className="wa-template-grid">
+                {builtInTemplates.map((template) => (
+                  <article className="card tpl wa-template-card wa-template-card--shared" key={template.id}>
+                    <div className="wa-template-card-header">
+                      <span className="wa-tpl-card-icon">
+                        <Icon name={getTemplateIcon(template)} size={16} />
+                      </span>
+                      <div className="wa-tpl-card-meta">
+                        <b className="wa-tpl-card-name">{template.name}</b>
+                        <div className="wa-tpl-card-chips">
+                          <span className="chip blue sm">{template.cat}</span>
+                          <span className="chip green sm"><Icon name="globe" size={10} /> Default Template · {TEMPLATE_COUNTRIES.find((country) => country.code === templateCountry)?.name}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="wa-tpl-card-preview">
+                      {fillTpl(template.body, c?.contact?.split(' ')[0] || 'Client')}
+                    </p>
+                    <div className="wa-template-footer">
+                      <span className="sp" />
+                      <button
+                        className="btn sm pri"
+                        onClick={() => void applyTemplate(template, true)}
+                        disabled={!!applyingTemplateId}
+                      >
+                        {applyingTemplateId === template.id
+                          ? <><span className="spin spin-light" />Preparing…</>
+                          : <><Icon name="send" size={12} />Use in Chat</>}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Private templates section */}
+          {!templatesLoading && (
+            <>
+              <div className="wa-tpl-section-label">
+                <span className="wa-tpl-section-badge violet">
+                  <Icon name="lock" size={12} /> Your Private Templates
+                </span>
+                <span className="wa-tpl-section-desc">Only visible and loaded for your account</span>
+              </div>
+              {templates.length === 0 ? (
+                <div className="wa-private-tpl-empty">
+                  <div className="wa-private-tpl-empty-icon"><Icon name="lock" size={22} /></div>
+                  <div className="wa-private-tpl-empty-text">
+                    <b>No private templates created yet</b>
+                    <p>Templates you create with "+ New template" are saved privately to your account and loaded exclusively for you.</p>
+                  </div>
+                  <button className="btn sm pri" onClick={() => startTemplateEdit()}>
+                    <Icon name="plus" size={13} />Create Private Template
+                  </button>
+                </div>
+              ) : (
+                <div className="wa-template-grid">
+                  {templates.map((template) => (
+                    <article className="card tpl wa-template-card wa-template-card--private" key={template.id}>
+                      <div className="wa-template-card-header">
+                        <span className="wa-tpl-card-icon">
+                          <Icon name={getTemplateIcon(template)} size={16} />
+                        </span>
+                        <div className="wa-tpl-card-meta">
+                          <b className="wa-tpl-card-name">{template.name}</b>
+                          <div className="wa-tpl-card-chips">
+                            <span className="chip blue sm">{template.cat}</span>
+                            <span className="chip violet sm"><Icon name="lock" size={10} /> Your Private Template</span>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="wa-tpl-card-preview">
+                        {fillTpl(template.body, c?.contact?.split(' ')[0] || 'Client')}
+                      </p>
+                      <div className="wa-template-footer">
+                        <button className="btn sm" onClick={() => startTemplateEdit(template)}>
+                          <Icon name="pencil" size={12} />Edit
+                        </button>
+                        <button
+                          className="btn sm gh"
+                          onClick={() => void removeTemplate(template)}
+                          disabled={template.protected}
+                          title={template.protected ? 'Protected templates cannot be deleted' : 'Delete template'}
+                        >
+                          <Icon name="trash" size={12} />Delete
+                        </button>
+                        <span className="sp" />
+                        <button
+                          className="btn sm pri"
+                          onClick={() => void applyTemplate(template, true)}
+                          disabled={!!applyingTemplateId}
+                        >
+                          {applyingTemplateId === template.id
+                            ? <><span className="spin spin-light" />Preparing…</>
+                            : <><Icon name="send" size={12} />Use in Chat</>}
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -1693,7 +2207,7 @@ export function WhatsAppPage() {
           onClose={() => setShowSchedule(false)}
           defaultClient={c.id}
           clients={s.clients}
-          templates={templates}
+          templates={visibleTemplates}
           timezones={countryTimezones}
           error={scheduleError}
           saving={scheduleSaving}
@@ -1790,9 +2304,38 @@ function ScheduleModal({
           </div>
           <div className="mrow">
             <label className="f" htmlFor="schedule-template">Message template</label>
-            <select id="schedule-template" className="sel" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
-              <option value="">Write a custom reminder</option>
-              {templates.map((template) => <option key={template.id} value={template.id}>{template.name}{template.user_id ? ' · Private' : ' · Shared'}</option>)}
+            <select
+              id="schedule-template"
+              className="sel"
+              value={templateId}
+              onChange={(event) => {
+                const nextId = event.target.value;
+                setTemplateId(nextId);
+                const nextTpl = templates.find((t) => t.id === nextId);
+                if (nextTpl) {
+                  setMessageBody(nextTpl.body);
+                }
+              }}
+            >
+              <option value="">✍️ Custom reminder text</option>
+              {templates.filter((t) => !t.user_id).length > 0 && (
+                <optgroup label="🌐 Built-in Templates (Country)">
+                  {templates.filter((t) => !t.user_id).map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name} ({template.cat})
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {templates.filter((t) => !!t.user_id).length > 0 && (
+                <optgroup label="🔒 Your Private Templates">
+                  {templates.filter((t) => !!t.user_id).map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name} ({template.cat})
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
         </div>
@@ -1833,9 +2376,25 @@ function ScheduleModal({
           </div>
         </details>
         <div className="mrow">
-          <label className="f" htmlFor="schedule-message-body">Message</label>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <label className="f" htmlFor="schedule-message-body" style={{ margin: 0 }}>Message text</label>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {(['{name}', '{portalLink}', '{period}', '{due}'] as const).map((token) => (
+                <button
+                  key={token}
+                  type="button"
+                  className="btn xs gh"
+                  style={{ padding: '2px 6px', fontSize: '11px', fontFamily: 'monospace' }}
+                  title={`Insert ${token}`}
+                  onClick={() => setMessageBody((prev) => prev ? `${prev} ${token}` : token)}
+                >
+                  +{token}
+                </button>
+              ))}
+            </div>
+          </div>
           <textarea id="schedule-message-body" className="inp" rows={4} maxLength={4096} value={messageBody} onChange={(event) => setMessageBody(event.target.value)} />
-          <small>Use {'{name}'} for the client name. At send time, the server adds the portal sign-in link for enrolled clients or creates a private enrollment invitation for clients who have not enrolled yet.</small>
+          <small>Use {'{name}'} for the client name and {'{portalLink}'} for the secure client portal. At send time, TaxFlow automatically resolves the client’s real data and portal link.</small>
         </div>
         {error && <div className="ob-error" role="alert">{error}</div>}
         <div className="row wa-schedule-actions">

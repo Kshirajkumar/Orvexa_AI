@@ -4,6 +4,8 @@ const { supabase, isConnected } = require('../db/supabase');
 const { assertOwnedClient } = require('../lib/ownership');
 const { nextDailyRun, scheduledLocalTimeToUtc } = require('../lib/scheduleTime');
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const DEMO_TIMEZONES = [
   { country_id: '10000000-0000-4000-8000-000000000001', country_code: 'IN', country_name: 'India', timezone_name: 'Asia/Kolkata', is_default: true },
   { country_id: '10000000-0000-4000-8000-000000000002', country_code: 'US', country_name: 'United States', timezone_name: 'America/New_York', is_default: true },
@@ -52,7 +54,7 @@ router.get('/timezones', async (_req, res) => {
   }
 });
 
-router.get('/', async (req, res) => {
+async function handleListSchedules(req, res) {
   try {
     if (!isConnected) return res.json({ success: true, source: 'demo', data: [] });
     const { data: schedules, error } = await supabase.from('telegram_message_schedules')
@@ -82,13 +84,13 @@ router.get('/', async (req, res) => {
     console.error('[Schedules] Could not load Telegram schedules:', error.message);
     return res.status(503).json({ success: false, message: 'Scheduled reminders could not be loaded. Check the inbox automation database migration and try again.' });
   }
-});
+}
 
-router.post('/', async (req, res) => {
+router.get('/', handleListSchedules);
+router.get('', handleListSchedules);
+
+async function handleCreateSchedule(req, res) {
   try {
-    if (!isConnected) {
-      return res.status(503).json({ success: false, message: 'Server-side scheduling requires the connected Supabase database. Configure the backend database before creating a reminder.' });
-    }
     const {
       clientId,
       templateId,
@@ -98,6 +100,29 @@ router.post('/', async (req, res) => {
       scheduledLocal,
       localTime,
     } = req.body || {};
+
+    if (!isConnected) {
+      const demoSchedule = {
+        id: 'demo_' + Date.now(),
+        client_id: clientId,
+        template_id: templateId || null,
+        message_body: (messageBody || '').trim(),
+        repeat_mode: repeatMode || 'once',
+        timezone_name: timezoneName || 'UTC',
+        scheduled_at: scheduledLocal ? new Date(scheduledLocal).toISOString() : null,
+        local_time: repeatMode === 'daily' ? localTime : null,
+        next_run_at: new Date(Date.now() + 60_000).toISOString(),
+        status: 'active',
+        attempt_count: 0,
+        occurrence_count: 0,
+        last_sent_at: null,
+        last_error: null,
+        created_at: new Date().toISOString(),
+        client: { id: clientId, name: 'Client' },
+      };
+      return res.status(201).json({ success: true, source: 'demo', data: demoSchedule });
+    }
+
     if (typeof clientId !== 'string' || !(await assertOwnedClient(req.user.id, clientId))) {
       return res.status(404).json({ success: false, message: 'Client not found.' });
     }
@@ -119,30 +144,46 @@ router.post('/', async (req, res) => {
     if (clientError) throw clientError;
     if (!client) return res.status(404).json({ success: false, message: 'Client not found.' });
     if (client.status !== 'Active' || !client.telegram_chat_id) {
-      return res.status(422).json({ success: false, message: 'Connect this active client to Telegram before scheduling a message.' });
+      return res.status(422).json({ success: false, message: 'The client must be active and linked to Telegram before scheduling a reminder.' });
     }
-    if (!client.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(client.email).trim())) {
-      return res.status(422).json({ success: false, message: 'Add a valid email address to this client before scheduling portal reminders.' });
-    }
-    const { data: timezone, error: timezoneError } = await supabase.from('supported_country_timezones')
-      .select('timezone_name')
-      .eq('country_id', client.country_id)
+
+    const { data: timezoneRow, error: timezoneError } = await supabase.from('supported_country_timezones')
+      .select('country_id')
       .eq('timezone_name', timezoneName)
       .maybeSingle();
     if (timezoneError) throw timezoneError;
-    if (!timezone) return res.status(400).json({ success: false, message: 'Choose a time zone that belongs to the client’s selected country.' });
+
+    // Auto-resolve country_id once, then enforce every schedule against that country.
+    let resolvedCountryId = client.country_id;
+    if (!resolvedCountryId) {
+      if (timezoneRow?.country_id) {
+        resolvedCountryId = timezoneRow.country_id;
+        try {
+          await supabase.from('clients').update({ country_id: resolvedCountryId })
+            .eq('id', client.id)
+            .eq('user_id', req.user.id);
+        } catch (updateErr) {
+          console.warn('[Schedules] Could not auto-assign country_id to client:', updateErr.message);
+        }
+      }
+    }
+    if (!timezoneRow?.country_id || (resolvedCountryId && timezoneRow.country_id !== resolvedCountryId)) {
+      return res.status(400).json({ success: false, message: 'Choose a time zone supported by the client’s country.' });
+    }
 
     let template = null;
-    if (templateId) {
-      const { data, error } = await supabase.from('message_templates')
-        .select('id,user_id')
-        .eq('id', templateId)
-        .maybeSingle();
-      if (error) throw error;
-      if (!data || (data.user_id && data.user_id !== req.user.id)) {
-        return res.status(404).json({ success: false, message: 'Message template not found.' });
+    if (templateId && UUID_PATTERN.test(String(templateId))) {
+      try {
+        const { data } = await supabase.from('message_templates')
+          .select('id,user_id')
+          .eq('id', templateId)
+          .maybeSingle();
+        if (data && (!data.user_id || data.user_id === req.user.id)) {
+          template = data;
+        }
+      } catch (tplErr) {
+        console.warn('[Schedules] Template lookup skipped:', tplErr.message);
       }
-      template = data;
     }
 
     const scheduledAt = repeatMode === 'once'
@@ -165,15 +206,18 @@ router.post('/', async (req, res) => {
       .select('id,client_id,template_id,message_body,repeat_mode,timezone_name,scheduled_at,local_time,next_run_at,status,attempt_count,occurrence_count,last_sent_at,last_error,created_at')
       .single();
     if (error) throw error;
-    return res.status(201).json({ success: true, source: 'supabase', data: { ...data, client: { id: client.id, name: client.name, country_id: client.country_id } } });
+    return res.status(201).json({ success: true, source: 'supabase', data: { ...data, client: { id: client.id, name: client.name, country_id: resolvedCountryId } } });
   } catch (error) {
     if (/Choose a valid|Choose a send time|That local time/i.test(String(error.message || ''))) {
       return res.status(400).json({ success: false, message: error.message });
     }
     console.error('[Schedules] Could not create Telegram schedule:', error.message);
-    return res.status(503).json({ success: false, message: 'The reminder could not be saved. Confirm the inbox automation SQL migration is applied and try again.' });
+    return res.status(503).json({ success: false, message: error.message || 'The reminder could not be saved. Confirm the inbox automation SQL migration is applied and try again.' });
   }
-});
+}
+
+router.post('/', handleCreateSchedule);
+router.post('', handleCreateSchedule);
 
 router.delete('/:id', async (req, res) => {
   try {

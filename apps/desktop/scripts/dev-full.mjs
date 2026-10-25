@@ -7,7 +7,7 @@ const backendDir = path.resolve(desktopDir, '..', '..', 'services', 'backend');
 const viteEntry = path.join(desktopDir, 'node_modules', 'vite', 'bin', 'vite.js');
 const node = process.execPath;
 
-const backend = spawn(node, ['index.js'], {
+const backend = spawn(node, ['--watch', 'index.js'], {
   cwd: backendDir,
   stdio: 'inherit',
   env: process.env,
