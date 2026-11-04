@@ -60,6 +60,7 @@ function builtInTemplate(countryCode: TemplateCountryCode, key: string, name: st
 
 const BUILT_IN_TEMPLATES: Record<TemplateCountryCode, MessageTemplate[]> = {
   IN: [
+    builtInTemplate('IN', 'website_link', 'Website link', 'Links', 'Hello {name}, you can visit our client portal and website at: {portalLink}'),
     builtInTemplate('IN', 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, please review your tax documents and upload pending files securely here: {portalLink}'),
     builtInTemplate('IN', 'itr_return', 'ITR filing documents', 'Income tax', 'Hello {name}, please upload Form 16, 26AS/AIS, bank interest certificates, and investment proofs for your ITR: {portalLink}'),
     builtInTemplate('IN', 'gst_return', 'GST return documents', 'GST', 'Hello {name}, please upload your sales and purchase invoices, GSTR-2B, and expense records for {period}: {portalLink}'),
@@ -68,6 +69,7 @@ const BUILT_IN_TEMPLATES: Record<TemplateCountryCode, MessageTemplate[]> = {
     builtInTemplate('IN', 'fee_reminder', 'Professional fee reminder', 'Payment', 'Hello {name}, this is a reminder for the professional fee invoice for {period}. Please complete payment at your convenience.'),
   ],
   US: [
+    builtInTemplate('US', 'website_link', 'Website link', 'Links', 'Hello {name}, you can visit our client portal and website at: {portalLink}'),
     builtInTemplate('US', 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, please review your tax documents and upload pending files securely here: {portalLink}'),
     builtInTemplate('US', 'individual_return', 'Individual tax return documents', 'Income tax', 'Hello {name}, please upload your W-2, 1099s, mortgage interest, deductions, and investment statements for {period}: {portalLink}'),
     builtInTemplate('US', 'business_return', 'Business tax return documents', 'Business tax', 'Hello {name}, please upload your income statement, balance sheet, bank statements, and 1099 records for {period}: {portalLink}'),
@@ -76,6 +78,7 @@ const BUILT_IN_TEMPLATES: Record<TemplateCountryCode, MessageTemplate[]> = {
     builtInTemplate('US', 'fee_reminder', 'Professional fee reminder', 'Payment', 'Hello {name}, this is a reminder for the professional fee invoice for {period}. Please complete payment at your convenience.'),
   ],
   AE: [
+    builtInTemplate('AE', 'website_link', 'Website link', 'Links', 'Hello {name}, you can visit our client portal and website at: {portalLink}'),
     builtInTemplate('AE', 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, please review your tax documents and upload pending files securely here: {portalLink}'),
     builtInTemplate('AE', 'vat_return', 'VAT return documents', 'VAT', 'Hello {name}, please upload your sales invoices, purchase invoices, VAT summary, and supporting records for {period}: {portalLink}'),
     builtInTemplate('AE', 'corporate_tax', 'Corporate tax documents', 'Corporate tax', 'Hello {name}, please upload your financial statements, trial balance, and corporate tax records for {period}: {portalLink}'),
@@ -84,6 +87,7 @@ const BUILT_IN_TEMPLATES: Record<TemplateCountryCode, MessageTemplate[]> = {
     builtInTemplate('AE', 'fee_reminder', 'Professional fee reminder', 'Payment', 'Hello {name}, this is a reminder for the professional fee invoice for {period}. Please complete payment at your convenience.'),
   ],
   SG: [
+    builtInTemplate('SG', 'website_link', 'Website link', 'Links', 'Hello {name}, you can visit our client portal and website at: {portalLink}'),
     builtInTemplate('SG', 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, please review your tax documents and upload pending files securely here: {portalLink}'),
     builtInTemplate('SG', 'gst_return', 'GST return documents', 'GST', 'Hello {name}, please upload your sales records, purchase invoices, GST reconciliation, and supporting records for {period}: {portalLink}'),
     builtInTemplate('SG', 'corporate_tax', 'Corporate income tax documents', 'Income tax', 'Hello {name}, please upload your financial statements, tax computation, and supporting records for {period}: {portalLink}'),
@@ -92,6 +96,7 @@ const BUILT_IN_TEMPLATES: Record<TemplateCountryCode, MessageTemplate[]> = {
     builtInTemplate('SG', 'fee_reminder', 'Professional fee reminder', 'Payment', 'Hello {name}, this is a reminder for the professional fee invoice for {period}. Please complete payment at your convenience.'),
   ],
   GB: [
+    builtInTemplate('GB', 'website_link', 'Website link', 'Links', 'Hello {name}, you can visit our client portal and website at: {portalLink}'),
     builtInTemplate('GB', 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, please review your tax documents and upload pending files securely here: {portalLink}'),
     builtInTemplate('GB', 'self_assessment', 'Self Assessment documents', 'Income tax', 'Hello {name}, please upload your P60/P45, P11D, bank interest, dividend, and investment records for {period}: {portalLink}'),
     builtInTemplate('GB', 'vat_return', 'VAT return documents', 'VAT', 'Hello {name}, please upload your sales invoices, purchase invoices, VAT reports, and MTD records for {period}: {portalLink}'),
@@ -167,18 +172,24 @@ function fillTpl(body: string, name: string, portalLink?: string) {
 
 async function fillPortalTemplate(template: MessageTemplate, client: { id: string; contact: string }) {
   const clientName = client.contact ? client.contact.split(' ')[0] : 'Client';
-  let portalLink = 'https://taxflowaiwebsite.vercel.app/portal';
+  const defaultPortalUrl = 'https://taxflowaiwebsite.vercel.app/portal';
+  let portalLink = defaultPortalUrl;
 
-  if (template.template_key === 'portal_invite' || template.body.includes('{portalLink}')) {
+  // Only the specific 1-on-1 "portal_invite" needs an invitation token generated:
+  if (template.template_key === 'portal_invite') {
     try {
       const invitation = await inviteClientToPortal(client.id);
       if (invitation?.link) {
         portalLink = invitation.link;
       }
     } catch (err) {
-      // Gracefully fall back to standard portal website link so the CA is NEVER blocked by an invitation creation error
-      console.warn('[Portal Template] Invite link generation skipped or failed, using standard portal URL:', err);
+      // Gracefully fall back to standard portal link so the CA is NEVER blocked by an invitation creation error
+      console.warn('[Portal Template] Invite link creation unavailable or failed, using standard portal URL:', err);
+      portalLink = defaultPortalUrl;
     }
+  } else {
+    // For "website_link" and all other templates, directly use the public portal website link:
+    portalLink = defaultPortalUrl;
   }
   return fillTpl(template.body, clientName, portalLink);
 }
@@ -358,7 +369,13 @@ export function WhatsAppPage() {
   const shouldFollowThreadRef = useRef(true);
   const c = s.clients.find((x) => x.id === s.ui.wa.client) || s.clients[0];
   const builtInTemplates = BUILT_IN_TEMPLATES[templateCountry];
-  const visibleTemplates = [...builtInTemplates, ...templates];
+  // Separate templates fetched from the database:
+  // 1. dbDefaultTemplates: rows with user_id IS NULL (shared defaults from DB)
+  // 2. privateTemplates: rows with user_id IS NOT NULL (created by this specific CA)
+  const dbDefaultTemplates = templates.filter((t) => !t.user_id);
+  const privateTemplates = templates.filter((t) => Boolean(t.user_id));
+  const defaultTemplatesList = dbDefaultTemplates.length > 0 ? dbDefaultTemplates : builtInTemplates;
+  const visibleTemplates = [...defaultTemplatesList, ...privateTemplates];
   const pendingTelegramClient = s.clients.find((client) => client.id === pendingTelegramClientId);
   const pendingTelegramForCurrentClient = !!pendingTelegramMsg && pendingTelegramClientId === c?.id;
   const pendingTelegramForOtherClient = !!pendingTelegramMsg && !!pendingTelegramClientId && pendingTelegramClientId !== c?.id;
@@ -1046,8 +1063,8 @@ export function WhatsAppPage() {
     const filteredTemplates = visibleTemplates.filter((template) =>
       `${template.name} ${template.cat} ${template.body}`.toLowerCase().includes(query)
     );
-    const defaultTemplates = filteredTemplates.filter((t) => t.source === 'default');
-    const privateTemplates = filteredTemplates.filter((t) => t.source !== 'default');
+    const defaultTemplates = filteredTemplates.filter((t) => !t.user_id || t.source === 'default');
+    const privateTemplatesList = filteredTemplates.filter((t) => Boolean(t.user_id) && t.source !== 'default');
     const clientFirstName = c?.contact ? c.contact.split(' ')[0] : 'Client';
 
     return (
@@ -1111,14 +1128,14 @@ export function WhatsAppPage() {
             )}
 
             {/* Private Templates Section */}
-            {privateTemplates.length > 0 && (
+            {privateTemplatesList.length > 0 && (
               <div style={{ marginBottom: 6 }}>
                 <div style={{ padding: '8px 10px 4px', fontSize: '11px', fontWeight: 600, color: 'var(--c-text-mut, #888)', display: 'flex', alignItems: 'center', gap: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <Icon name="lock" size={11} />
                   <span>Your Private Templates</span>
                   <span className="chip sm violet" style={{ marginLeft: 'auto', fontSize: '10px' }}>{privateTemplates.length}</span>
                 </div>
-                {privateTemplates.map((template) => (
+                {privateTemplatesList.map((template) => (
                   <button
                     key={template.id}
                     type="button"
@@ -2081,22 +2098,28 @@ export function WhatsAppPage() {
 
           {/* Empty state */}
           {/* Shared defaults section */}
-          {!templatesLoading && builtInTemplates.length > 0 && (
+          {!templatesLoading && defaultTemplatesList.length > 0 && (
             <>
               <div className="wa-tpl-section-label">
                 <span className="wa-tpl-section-badge green">
-                  <Icon name="globe" size={12} /> Default Templates
+                  <Icon name="globe" size={12} /> Shared Default Templates
                 </span>
-                <span className="wa-tpl-section-desc">Built into TaxFlow · Select a country to change the message set</span>
+                <span className="wa-tpl-section-desc">
+                  {dbDefaultTemplates.length > 0
+                    ? 'Loaded from database · Shared with all users in your practice'
+                    : 'Built into TaxFlow · Select a country to change the message set'}
+                </span>
               </div>
-              <div className="wa-tpl-country-control" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, maxWidth: 340 }}>
-                <label className="f" htmlFor="template-country">Template country</label>
-                <select id="template-country" className="sel" value={templateCountry} onChange={(event) => setTemplateCountry(event.target.value as TemplateCountryCode)}>
-                  {TEMPLATE_COUNTRIES.map((country) => <option key={country.code} value={country.code}>{country.name}</option>)}
-                </select>
-              </div>
+              {dbDefaultTemplates.length === 0 && (
+                <div className="wa-tpl-country-control" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, maxWidth: 340 }}>
+                  <label className="f" htmlFor="template-country">Template country</label>
+                  <select id="template-country" className="sel" value={templateCountry} onChange={(event) => setTemplateCountry(event.target.value as TemplateCountryCode)}>
+                    {TEMPLATE_COUNTRIES.map((country) => <option key={country.code} value={country.code}>{country.name}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="wa-template-grid">
-                {builtInTemplates.map((template) => (
+                {defaultTemplatesList.map((template) => (
                   <article className="card tpl wa-template-card wa-template-card--shared" key={template.id}>
                     <div className="wa-template-card-header">
                       <span className="wa-tpl-card-icon">
@@ -2106,7 +2129,7 @@ export function WhatsAppPage() {
                         <b className="wa-tpl-card-name">{template.name}</b>
                         <div className="wa-tpl-card-chips">
                           <span className="chip blue sm">{template.cat}</span>
-                          <span className="chip green sm"><Icon name="globe" size={10} /> Default Template · {TEMPLATE_COUNTRIES.find((country) => country.code === templateCountry)?.name}</span>
+                          <span className="chip green sm"><Icon name="globe" size={10} /> Shared Default</span>
                         </div>
                       </div>
                     </div>
@@ -2140,7 +2163,7 @@ export function WhatsAppPage() {
                 </span>
                 <span className="wa-tpl-section-desc">Only visible and loaded for your account</span>
               </div>
-              {templates.length === 0 ? (
+              {privateTemplates.length === 0 ? (
                 <div className="wa-private-tpl-empty">
                   <div className="wa-private-tpl-empty-icon"><Icon name="lock" size={22} /></div>
                   <div className="wa-private-tpl-empty-text">
@@ -2153,7 +2176,7 @@ export function WhatsAppPage() {
                 </div>
               ) : (
                 <div className="wa-template-grid">
-                  {templates.map((template) => (
+                  {privateTemplates.map((template) => (
                     <article className="card tpl wa-template-card wa-template-card--private" key={template.id}>
                       <div className="wa-template-card-header">
                         <span className="wa-tpl-card-icon">

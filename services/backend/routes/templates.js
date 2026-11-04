@@ -3,6 +3,18 @@ const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
 const { requireAuth } = require('../middleware/requireAuth');
 
+const DEFAULT_TEMPLATES = [
+  { template_key: 'website_link', name: 'Website link', cat: 'Links', body: 'Hello {name}, you can visit our client portal and website at: {portalLink}', protected: true },
+  { template_key: 'portal_link', name: 'Client portal website link', cat: 'Client portal', body: 'Hello {name}, you can sign in to your TaxFlow client portal and upload your requested documents here: {portalLink}', protected: true },
+  { template_key: 'portal_invite', name: 'Secure portal invitation', cat: 'Client portal', body: 'Hello {name}, here is the link to your secure client portal where you can review your tax files and safely upload requested documents: {portalLink}\n\nUse the same email address your CA has on file. Please do not send tax, financial, identity, or other sensitive documents in Telegram.', protected: true },
+  { template_key: 'docs', name: 'GST documents request', cat: 'Utility', body: 'Hello {name}, please upload your {period} sales & purchase invoices through your secure client portal: {portalLink}. Deadline: {due}.', protected: true },
+  { template_key: 'pending', name: 'Missing document follow-up', cat: 'Utility', body: 'Hi {name}, we have not received the {doc} for {period} yet. Please upload it through your secure client portal: {portalLink}.', protected: true },
+  { template_key: 'itr', name: 'ITR filing documents', cat: 'Utility', body: 'Hi {name}, to file your ITR please upload Form 16 / 26AS, bank interest certificates, and investment proofs through your secure client portal: {portalLink}.', protected: true },
+  { template_key: 'payment_reminder', name: 'Fee & invoice reminder', cat: 'Payment', body: 'Hi {name}, this is a gentle reminder regarding the professional fee invoice for {period}. Please review and complete payment at your convenience.', protected: true },
+  { template_key: 'status_update', name: 'Tax filing status update', cat: 'General', body: 'Hello {name}, your {filing} for {period} has been prepared and filed. You can check the acknowledgement on your client portal: {portalLink}.', protected: true },
+  { template_key: 'onboarding', name: 'New client welcome', cat: 'Client portal', body: 'Hello {name}, welcome to our tax and compliance practice! Please access your client portal here to complete your onboarding and review required documents: {portalLink}', protected: true },
+];
+
 function normalizedBody(body) {
   return typeof body === 'string' ? body.trim() : '';
 }
@@ -20,7 +32,9 @@ function validateTemplateFields({ name, cat, body }, { partial = false } = {}) {
   return '';
 }
 
-// GET /api/v1/templates — List all message templates from database only
+// GET /api/v1/templates — List all message templates:
+// 1. Shared default templates (user_id IS NULL) -> visible to all users
+// 2. Private templates (user_id === req.user.id) -> visible only to the owner
 router.get('/', requireAuth, async (req, res) => {
   try {
     if (isConnected) {
@@ -32,18 +46,19 @@ router.get('/', requireAuth, async (req, res) => {
         .select('*')
         .order('created_at', { ascending: true });
       if (error) throw error;
-      const cleanData = (data || []).filter((tpl) => tpl.user_id === ownerId);
+      // Filter: default templates (user_id IS NULL) + private templates belonging to this user
+      const cleanData = (data || []).filter((tpl) => !tpl.user_id || tpl.user_id === ownerId);
 
       return res.json({ success: true, source: 'supabase', data: cleanData });
     }
     return res.json({
       success: true,
       source: 'demo',
-      data: [],
+      data: DEFAULT_TEMPLATES.map((template) => ({ ...template, id: `demo-${template.template_key}`, user_id: null })),
     });
   } catch (err) {
     console.error('[Templates] Could not list templates:', err.message);
-    res.status(500).json({ success: false, message: 'Private templates could not be loaded.' });
+    res.status(500).json({ success: false, message: 'Templates could not be loaded.' });
   }
 });
 

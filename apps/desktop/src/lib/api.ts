@@ -1149,12 +1149,20 @@ export async function createTelegramSchedule(data: {
   scheduledLocal?: string;
   localTime?: string;
 }): Promise<TelegramMessageSchedule> {
+  // Built-in templates use stable symbolic keys (for example, "itr"); only
+  // persisted private templates have UUIDs accepted by the schedules table.
+  const payload = {
+    ...data,
+    ...(data.templateId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(data.templateId)
+      ? { templateId: data.templateId }
+      : { templateId: undefined }),
+  };
   let response = await authRequest<{ success: boolean; message?: string; data?: TelegramMessageSchedule }>(
     `${API_BASE_URL}/schedules`,
     {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     },
   );
   if (!response.success || !response.data) throw new Error(response.message || 'Could not create scheduled reminder.');

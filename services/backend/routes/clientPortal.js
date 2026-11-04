@@ -427,10 +427,10 @@ router.post('/clients/:clientId/invite', requireAuth, async (req, res) => {
     if (!client) return;
     const email = String(client.email || '').trim().toLowerCase();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return res.status(422).json({ success: false, message: 'Add a valid email address to this client before creating a portal invitation.' });
+      return res.status(422).json({ success: false, message: `This client (${client.name}) does not have a valid email address on file. Add an email to their profile (Clients tab) before sending a portal invitation.` });
     }
     if (client.status !== 'Active') {
-      return res.status(422).json({ success: false, message: 'Only active clients can be invited to the portal.' });
+      return res.status(422).json({ success: false, message: `Only active clients can receive portal invitations. ${client.name} is currently marked as "${client.status}". Update their status to Active first.` });
     }
     const invitation = await createClientPortalInvite({
       clientId: client.id,
@@ -447,7 +447,8 @@ router.post('/clients/:clientId/invite', requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('[Client Portal] Portal invitation creation failed:', error.message);
-    return res.status(500).json({ success: false, message: 'Could not create the portal invitation. Please try again.' });
+    const friendlyMsg = error.message && error.message.length < 200 ? error.message : 'Could not create the portal invitation. Check the client profile (email, Active status) and try again.';
+    return res.status(500).json({ success: false, message: friendlyMsg });
   }
 });
 
