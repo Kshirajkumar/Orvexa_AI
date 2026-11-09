@@ -292,6 +292,7 @@ function OpenRouterSettings() {
   const [keySaved, setKeySaved] = React.useState(false);
   const [useLocalKey, setUseLocalKey] = React.useState(false);
   const [apiKey, setApiKey] = React.useState('');
+  const [editingKey, setEditingKey] = React.useState(false);
   const [models, setModels] = React.useState<OpenRouterModel[]>([]);
   const [selectedModel, setSelectedModel] = React.useState('');
   const [loadingModels, setLoadingModels] = React.useState(true);
@@ -372,6 +373,7 @@ function OpenRouterSettings() {
       await saveOpenRouterApiKey(trimmedKey);
       setApiKey('');
       setKeySaved(true);
+      setEditingKey(false);
       setNotice('OpenRouter key saved in Windows Credential Manager. OpenRouter will validate it when you make your first AI request.');
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Could not save the OpenRouter key securely.');
@@ -389,6 +391,8 @@ function OpenRouterSettings() {
       setUseLocalKey(false);
       await deleteOpenRouterApiKey();
       setKeySaved(false);
+      setApiKey('');
+      setEditingKey(false);
       setNotice('OpenRouter key removed from Windows Credential Manager.');
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'Could not remove the OpenRouter key.');
@@ -461,9 +465,18 @@ function OpenRouterSettings() {
               id="openrouter-api-key"
               className="inp"
               type="password"
-              value={apiKey}
+              value={keySaved && !editingKey && !apiKey ? '••••••••••••••••' : apiKey}
+              onFocus={() => {
+                if (keySaved && !editingKey) {
+                  setEditingKey(true);
+                  setApiKey('');
+                }
+              }}
               onChange={event => setApiKey(event.target.value)}
-              placeholder={keySaved ? 'A key is saved securely' : 'sk-or-v1-…'}
+              onBlur={() => {
+                if (editingKey && !apiKey) setEditingKey(false);
+              }}
+              placeholder={keySaved ? 'Enter a new key to replace the saved key' : 'Enter your OpenRouter API key for AI usage'}
               autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}
@@ -471,7 +484,7 @@ function OpenRouterSettings() {
               aria-describedby="openrouter-key-help openrouter-settings-error"
             />
             <small id="openrouter-key-help">
-              {keySaved ? 'Saved on this Windows device. The key is never sent to or stored by the TaxFlow backend.' : 'The key is saved only in Windows Credential Manager.'}
+              {keySaved ? 'A key is saved on this Windows device. Click the field to enter a replacement; the saved key is never displayed or sent to the TaxFlow backend.' : 'Enter your own OpenRouter API key. It is saved only in Windows Credential Manager.'}
             </small>
           </div>
           <div className="ai-key-actions">
