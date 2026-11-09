@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const { nextDailyRun, scheduledLocalTimeToUtc } = require('../lib/scheduleTime');
 
 test('one-time local reminders convert from client country time to UTC', () => {
-  const utc = scheduledLocalTimeToUtc('2026-11-01T20:00', 'Asia/Kolkata');
-  assert.equal(utc.toISOString(), '2026-11-01T14:30:00.000Z');
+  const utc = scheduledLocalTimeToUtc('2027-11-01T20:00', 'Asia/Kolkata');
+  assert.equal(utc.toISOString(), '2027-11-01T14:30:00.000Z');
 });
 
 test('daily schedules choose the next future wall-clock time in the client zone', () => {

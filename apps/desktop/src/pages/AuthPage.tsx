@@ -121,6 +121,7 @@ export function AuthPage() {
   const [signupPassword, setSignupPassword] = useState('');
   const [signupConfirm, setSignupConfirm] = useState('');
   const [signupAgree, setSignupAgree] = useState(true);
+  const [signupConfirmedEmail, setSignupConfirmedEmail] = useState<string | null>(null);
   const [showSignupPass, setShowSignupPass] = useState(false);
 
   // Form states - Login
@@ -307,10 +308,8 @@ export function AuthPage() {
 
       if (res.success) {
         if (res.needsEmailConfirmation) {
-          // Email confirmation required — show confirmation screen
-          setSuccessMessage(
-            '✅ Account created! A confirmation email has been sent to ' + signupEmail.trim() + '. Please check your inbox and click the link to activate your account, then come back to log in.'
-          );
+          // Email confirmation required — replace signup form with confirmation screen
+          setSignupConfirmedEmail(signupEmail.trim());
         } else if (res.user && res.token) {
           // Auto-confirmed — go straight in
           setSuccessMessage('Practice account created! Launching your workspace...');
@@ -593,7 +592,7 @@ export function AuthPage() {
                 <span>{errorMessage}</span>
               </div>
             )}
-            {successMessage && (
+            {successMessage && !signupConfirmedEmail && (
               <div className="auth-alert auth-alert-success">
                 <Icon name="check" size={16} />
                 <span>{successMessage}</span>
@@ -616,16 +615,67 @@ export function AuthPage() {
               >
                 {/* ────────── CARD 1: SIGN UP (Default) ────────── */}
                 <div className="auth-form-card signup-card">
-                  <div className="card-kicker-row">
-                    <div>
-                      <h1 className="card-title">Setup Practice Workspace</h1>
-                      <p className="card-desc">
-                        Create your personal CA workspace to activate AI document extraction and WhatsApp client sync.
-                      </p>
-                    </div>
-                  </div>
+                  {signupConfirmedEmail ? (
+                    <div className="auth-confirmed-center">
+                      <div className="confirmed-icon-aura">
+                        <div className="confirmed-icon-ring" />
+                        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#34D399" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                          <polyline points="22 4 12 14.01 9 11.01" />
+                        </svg>
+                      </div>
 
-                  <form onSubmit={handleSignupSubmit} className="auth-fields-form">
+                      <h2 className="confirmed-title">Check Your Inbox</h2>
+                      <p className="confirmed-subtitle">A verification email has been sent to:</p>
+
+                      <div className="confirmed-email-pill">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                          <polyline points="22,6 12,13 2,6" />
+                        </svg>
+                        <span>{signupConfirmedEmail}</span>
+                      </div>
+
+                      <p className="confirmed-instructions">
+                        Please check your inbox and click the activation link to verify your email. Once confirmed, you can sign in to your workspace.
+                      </p>
+
+                      <div className="confirmed-tip">
+                        <Icon name="info" size={14} />
+                        <span>Can&apos;t find the email? Check your <b>Spam</b> or <b>Promotions</b> folder.</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="auth-primary-btn confirmed-action-btn"
+                        onClick={() => {
+                          setAuthMode('login');
+                          setLoginEmail(signupConfirmedEmail);
+                        }}
+                      >
+                        <span>Proceed to Sign In →</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="confirmed-back-btn"
+                        onClick={() => setSignupConfirmedEmail(null)}
+                      >
+                        ← Register with a different email
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="card-kicker-row">
+                        <div>
+                          <h1 className="card-title">Setup Practice Workspace</h1>
+                          <p className="card-desc">
+                            Create your personal CA workspace to activate AI document extraction and WhatsApp client sync.
+                          </p>
+                        </div>
+                      </div>
+
+                      <form onSubmit={handleSignupSubmit} className="auth-fields-form">
                     <div className="fields-grid-2">
                       <div className="field-group">
                         <label>Managing Partner Name *</label>
@@ -746,11 +796,17 @@ export function AuthPage() {
 
                     <button
                       type="submit"
-                      className="auth-primary-btn"
+                      className={`auth-primary-btn${isLoading ? ' is-loading' : ''}`}
                       disabled={isLoading}
                     >
                       {isLoading ? (
-                        <span className="btn-spinner">Provisioning Practice Workspace...</span>
+                        <span className="btn-spinner">
+                          <span className="btn-spinner-icon" />
+                          <span>Creating Practice Workspace</span>
+                          <span className="btn-spinner-dots">
+                            <span>.</span><span>.</span><span>.</span>
+                          </span>
+                        </span>
                       ) : (
                         <span>Create Account &amp; Launch Practice →</span>
                       )}
@@ -767,6 +823,8 @@ export function AuthPage() {
                       Sign In to Workspace →
                     </button>
                   </div>
+                    </>
+                  )}
                 </div>
 
                 {/* ────────── CARD 2: LOGIN ────────── */}

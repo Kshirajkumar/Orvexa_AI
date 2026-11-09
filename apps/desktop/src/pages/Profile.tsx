@@ -180,7 +180,7 @@ export function ProfilePage() {
               {deleteAccountStep === 'password' ? (
                 <form onSubmit={event => void verifyDeleteAccountPassword(event)}>
                   <p>First, verify your identity with your current account password. Your password is sent only to the TaxFlow backend for Supabase reauthentication.</p>
-                  <label className="f">Current password<input className="modal-input" type="password" autoComplete="current-password" value={deleteAccountPassword} onChange={event => setDeleteAccountPassword(event.target.value)} autoFocus disabled={deleteAccountBusy} /></label>
+                  <label className="f">Current password<input className="modal-input" type="password" autoComplete="current-password" value={deleteAccountPassword} onChange={event => { setDeleteAccountPassword(event.target.value); if (deleteAccountError) setDeleteAccountError(""); }} autoFocus disabled={deleteAccountBusy} /></label>
                   {deleteAccountError && <div className="ob-error account-delete-error" role="alert"><Icon name="x" size={14} />{deleteAccountError}</div>}
                   <div className="account-delete-actions"><button type="button" className="btn gh" onClick={closeDeleteAccount} disabled={deleteAccountBusy}>Cancel</button><button type="submit" className="btn danger" disabled={deleteAccountBusy || !deleteAccountPassword}>{deleteAccountBusy ? <><i className="spin" />Verifying…</> : 'Verify password'}</button></div>
                 </form>
@@ -191,7 +191,7 @@ export function ProfilePage() {
                     <ul><li>Your TaxFlow account and profile</li><li>Your owned clients, documents, messages, tasks, notifications, and integration records</li><li>Private cloud files associated with your account</li></ul>
                     <b>Your local vault on this device will be kept.</b>
                   </div>
-                  <label className="f">Type <code>DELETE MY ACCOUNT</code> to confirm<input className="modal-input account-delete-phrase" value={deleteAccountPhrase} onChange={event => setDeleteAccountPhrase(event.target.value)} autoComplete="off" autoFocus disabled={deleteAccountBusy} /></label>
+                  <label className="f">Type <code>DELETE MY ACCOUNT</code> to confirm<input className="modal-input account-delete-phrase" value={deleteAccountPhrase} onChange={event => { setDeleteAccountPhrase(event.target.value); if (deleteAccountError) setDeleteAccountError(""); }} autoComplete="off" autoFocus disabled={deleteAccountBusy} /></label>
                   {deleteAccountError && <div className="ob-error account-delete-error" role="alert"><Icon name="x" size={14} />{deleteAccountError}{/expired|verify your password/i.test(deleteAccountError) && <button type="button" className="btn gh sm" onClick={() => { setDeleteAccountStep('password'); setDeleteAccountChallenge(''); setDeleteAccountPhrase(''); setDeleteAccountError(''); }}>Verify again</button>}</div>}
                   <div className="account-delete-actions"><button type="button" className="btn gh" onClick={closeDeleteAccount} disabled={deleteAccountBusy}>Cancel</button><button type="submit" className="btn danger" disabled={deleteAccountBusy || deleteAccountPhrase !== 'DELETE MY ACCOUNT'}>{deleteAccountBusy ? <><i className="spin" />Deleting data…</> : 'Permanently delete account'}</button></div>
                 </form>

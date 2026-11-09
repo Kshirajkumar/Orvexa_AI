@@ -399,23 +399,32 @@ export function Titlebar() {
                 notifications.map((notification) => {
                   const isTelegram = notification.event_type === 'telegram.message_received';
                   const isDeleted = notification.event_type === 'client.deleted';
+                  const isDocument = notification.event_type === 'document.received';
+                  const isDeadline = notification.event_type?.startsWith('deadline');
+                  const isClickable = isTelegram || isDocument || isDeadline;
                   return (
                     <div
-                      className={`notification-item${notification.read_at ? '' : ' unread'}${isTelegram ? ' is-clickable' : ''}`}
+                      className={`notification-item${notification.read_at ? '' : ' unread'}${isClickable ? ' is-clickable' : ''}`}
                       key={notification.id}
                       onClick={() => {
                         if (isTelegram && notification.entity_id) {
                           dispatch({ type: 'WA_CLIENT', id: notification.entity_id });
                           dispatch({ type: 'GO', page: 'whatsapp' });
                           setNotificationsOpen(false);
+                        } else if (isDocument) {
+                          dispatch({ type: 'GO', page: 'files' });
+                          setNotificationsOpen(false);
+                        } else if (isDeadline) {
+                          dispatch({ type: 'GO', page: 'deadlines' });
+                          setNotificationsOpen(false);
                         }
                       }}
-                      role={isTelegram ? 'button' : undefined}
-                      tabIndex={isTelegram ? 0 : undefined}
-                      title={isTelegram ? 'Click to open conversation' : undefined}
+                      role={isClickable ? 'button' : undefined}
+                      tabIndex={isClickable ? 0 : undefined}
+                      title={isClickable ? 'Click to navigate' : undefined}
                     >
-                      <span className={`notification-item-icon ${isDeleted ? 'deleted' : isTelegram ? 'telegram' : 'created'}`}>
-                        <Icon name={isDeleted ? 'x' : isTelegram ? 'chat' : 'users'} size={13} />
+                      <span className={`notification-item-icon ${isDeleted ? 'deleted' : isTelegram ? 'telegram' : isDocument ? 'document' : isDeadline ? 'deadline' : 'created'}`}>
+                        <Icon name={isDeleted ? 'x' : isTelegram ? 'chat' : isDocument ? 'file' : isDeadline ? 'cal' : 'users'} size={13} />
                       </span>
                       <span className="notification-item-copy">
                         <b>{notification.title}</b>

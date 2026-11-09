@@ -33,7 +33,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS message_templates_shared_template_key_idx
   ON public.message_templates(template_key)
   WHERE user_id IS NULL AND template_key IS NOT NULL;
 
--- 2. Clean up any accidental orphaned/duplicate templates
+ALTER TABLE public.message_templates
+  DROP CONSTRAINT IF EXISTS message_templates_no_protected_private_defaults;
+ALTER TABLE public.message_templates
+  ADD CONSTRAINT message_templates_no_protected_private_defaults
+  CHECK (NOT (
+    user_id IS NOT NULL
+    AND protected = TRUE
+    AND template_key IN ('website_link', 'portal_link', 'portal_invite', 'docs', 'pending', 'itr', 'payment_reminder', 'status_update', 'onboarding')
+  ));
+
+-- 2. Clean up any accidental orphaned/duplicate shared templates
 DELETE FROM public.message_templates
 WHERE protected = TRUE 
   AND user_id IS NOT NULL 
@@ -70,7 +80,7 @@ VALUES (
 ON CONFLICT (template_key) WHERE user_id IS NULL AND template_key IS NOT NULL
 DO UPDATE SET name = EXCLUDED.name, cat = EXCLUDED.cat, body = EXCLUDED.body, protected = TRUE, updated_at = NOW();
 
--- 3. Secure portal invitation / access
+-- 3. Secure portal invitation / access (Professional short message with website link)
 INSERT INTO public.message_templates (user_id, template_key, name, cat, body, protected)
 VALUES (
   NULL, 
@@ -165,6 +175,13 @@ DO UPDATE SET name = EXCLUDED.name, cat = EXCLUDED.cat, body = EXCLUDED.body, pr
 
 -- 4. Enable Row Level Security (RLS) & Policies
 ALTER TABLE public.message_templates ENABLE ROW LEVEL SECURITY;
+
+-- ⚠️  IMPORTANT: Do NOT use FORCE ROW LEVEL SECURITY on this table.
+-- The backend uses the service_role key and manually scopes queries
+-- with .or('user_id.is.null,user_id.eq.<userId>'). FORCE RLS would block
+-- service_role from reading private user templates because auth.uid() is
+-- NULL in service_role context.
+-- (If FORCE RLS was previously set, remove it:)
 ALTER TABLE public.message_templates NO FORCE ROW LEVEL SECURITY;
 
 -- DROP all existing policies and recreate cleanly
@@ -174,22 +191,20 @@ DROP POLICY IF EXISTS message_templates_update_policy ON public.message_template
 DROP POLICY IF EXISTS message_templates_delete_policy ON public.message_templates;
 DROP POLICY IF EXISTS message_templates_service_role_policy ON public.message_templates;
 
--- Service role policy: full access for trusted backend server
+-- Service role policy: full access (backend trusted server, manually filters by user_id)
 CREATE POLICY message_templates_service_role_policy ON public.message_templates
   FOR ALL
   TO service_role
   USING (TRUE)
   WITH CHECK (TRUE);
 
--- SELECT policy: Authenticated users can see:
--- 1. Shared default templates (user_id IS NULL)
--- 2. Their own private templates (user_id = auth.uid())
+-- SELECT policy: Authenticated users see shared defaults (user_id IS NULL) + own private templates
 CREATE POLICY message_templates_select_policy ON public.message_templates
   FOR SELECT
   TO authenticated
-  USING (user_id IS NULL OR user_id = auth.uid());
+  USING (user_id = auth.uid());
 
--- INSERT policy: Authenticated users can only insert private templates for themselves
+-- INSERT policy: Authenticated users can only insert their own private templates
 CREATE POLICY message_templates_insert_policy ON public.message_templates
   FOR INSERT
   TO authenticated
@@ -208,7 +223,10 @@ CREATE POLICY message_templates_delete_policy ON public.message_templates
   TO authenticated
   USING (user_id = auth.uid() AND protected = FALSE);
 
--- Output confirmation
+-- Built-in defaults are maintained in the desktop app by country. Remove any legacy shared seeds.
+DELETE FROM public.message_templates WHERE user_id IS NULL;
+
+-- Output confirmation: private templates only
 SELECT id, template_key, name, cat, user_id, protected, created_at 
 FROM public.message_templates
 ORDER BY user_id NULLS FIRST, created_at ASC;

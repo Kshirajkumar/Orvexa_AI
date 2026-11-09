@@ -367,20 +367,41 @@ export async function apiLogin(email: string, password: string): Promise<AuthRes
   });
 }
 
-export async function apiVerifyAccountDeletionPassword(password: string): Promise<{ success: boolean; message?: string; challenge?: string; expiresIn?: number }> {
-  return authRequest(`${API_BASE_URL}/auth/delete-account/verify`, {
+export async function apiVerifyAccountDeletionPassword(password: string): Promise<{ success: boolean; message?: string; challenge?: string; expiresIn?: number; token?: string; refreshToken?: string }> {
+  const result = await authRequest<{ success: boolean; message?: string; challenge?: string; expiresIn?: number; token?: string; refreshToken?: string }>(`${API_BASE_URL}/auth/delete-account/verify`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({ password })
   }, true);
+  if (result?.success && result.token) {
+    saveSessionTokens({ success: true, token: result.token, refreshToken: result.refreshToken });
+  }
+  return result;
 }
 
 export async function apiConfirmAccountDeletion(challenge: string, confirmation: string): Promise<{ success: boolean; message?: string }> {
-  return authRequest(`${API_BASE_URL}/auth/delete-account/confirm`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ challenge, confirmation })
-  }, true);
+  // Deletion challenge already proves authentication — do NOT retry on 401
+  // so we never fire taxflow:session-expired during the deletion flow.
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}/auth/delete-account/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challenge, confirmation })
+    });
+  } catch {
+    throw new Error('The TaxFlow.AI backend could not be reached. Check your connection and try again.');
+  }
+  let data: { success: boolean; message?: string };
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(`The backend returned an invalid response (HTTP ${res.status}).`);
+  }
+  if (!res.ok && !data.message) {
+    throw new Error(`Account deletion request failed (HTTP ${res.status}).`);
+  }
+  return data;
 }
 
 export async function apiForgotPassword(email: string): Promise<{ success: boolean; message: string }> {

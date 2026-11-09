@@ -23,7 +23,10 @@ async function collectStorageFiles(storage, bucket, folder, files, visited) {
       limit: STORAGE_PAGE_SIZE,
       offset
     });
-    if (error) throw new Error(`Could not enumerate private storage for account deletion: ${error.message}`);
+    if (error) {
+      if (/not found/i.test(error.message)) return;
+      throw new Error(`Could not enumerate private storage for account deletion: ${error.message}`);
+    }
     const entries = data || [];
     for (const entry of entries) {
       if (!entry?.name || entry.name === '.' || entry.name === '..' || entry.name.includes('/')) continue;
@@ -90,7 +93,7 @@ async function deleteAccountStorage(supabase, userId, configuredBucket) {
     const paths = Array.from(objectPaths);
     for (let offset = 0; offset < paths.length; offset += STORAGE_REMOVE_BATCH_SIZE) {
       const { error } = await supabase.storage.from(bucket).remove(paths.slice(offset, offset + STORAGE_REMOVE_BATCH_SIZE));
-      if (error) throw new Error(`Could not remove private account files from bucket "${bucket}": ${error.message}`);
+      if (error && !/not found/i.test(error.message)) throw new Error(`Could not remove private account files from bucket "${bucket}": ${error.message}`);
       deletedObjectCount += Math.min(STORAGE_REMOVE_BATCH_SIZE, paths.length - offset);
     }
   }
