@@ -4,7 +4,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { BrandLogo } from './BrandLogo';
 import { useAppState, useDispatch } from '../state/store';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { fetchNotifications, markNotificationsRead, searchTelegramMessages, searchVaultFiles, type NotificationItem, type TelegramSearchResult, type VaultFileSearchResult } from '../lib/api';
+import { fetchNotifications, markNotificationsRead, searchTelegramMessages, searchCloudDocuments, type NotificationItem, type TelegramSearchResult, type CloudDocumentSearchResult } from '../lib/api';
 import type { Page } from '../types';
 
 interface WorkspaceSearchResult {
@@ -14,7 +14,7 @@ interface WorkspaceSearchResult {
   subtitle: string;
   clientId?: string;
   documentId?: string;
-  file?: VaultFileSearchResult;
+  file?: CloudDocumentSearchResult;
   page?: Page;
 }
 
@@ -40,7 +40,7 @@ export function Titlebar() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [vaultResults, setVaultResults] = useState<VaultFileSearchResult[]>([]);
+  const [cloudDocumentResults, setCloudDocumentResults] = useState<CloudDocumentSearchResult[]>([]);
   const [telegramSearchResults, setTelegramSearchResults] = useState<TelegramSearchResult[]>([]);
   const [vaultSearchLoading, setVaultSearchLoading] = useState(false);
   const [vaultSearchError, setVaultSearchError] = useState('');
@@ -65,7 +65,7 @@ export function Titlebar() {
   useEffect(() => {
     const query = q.trim();
     if (!focused || query.length < 2) {
-      setVaultResults([]);
+      setCloudDocumentResults([]);
       setTelegramSearchResults([]);
       setVaultSearchLoading(false);
       setVaultSearchError('');
@@ -77,16 +77,16 @@ export function Titlebar() {
       setVaultSearchLoading(true);
       setVaultSearchError('');
       void Promise.allSettled([
-        searchVaultFiles(query, controller.signal),
+        searchCloudDocuments(query, controller.signal),
         searchTelegramMessages(query, controller.signal),
       ])
         .then(([files, messages]) => {
           if (controller.signal.aborted) return;
           const errors: string[] = [];
-          if (files.status === 'fulfilled') setVaultResults(files.value);
+          if (files.status === 'fulfilled') setCloudDocumentResults(files.value);
           else {
-            setVaultResults([]);
-            errors.push(files.reason instanceof Error ? files.reason.message : 'Vault files could not be searched.');
+            setCloudDocumentResults([]);
+            errors.push(files.reason instanceof Error ? files.reason.message : 'Cloud documents could not be searched.');
           }
           if (messages.status === 'fulfilled') setTelegramSearchResults(messages.value);
           else {
@@ -169,18 +169,6 @@ export function Titlebar() {
           clientId: client.id,
         }))
     : [];
-  const localFileResults: WorkspaceSearchResult[] = query
-    ? s.files
-        .filter((file) => file.name.toLocaleLowerCase().includes(query))
-        .slice(0, 3)
-        .map((file) => ({
-          id: `local-file:${file.id}`,
-          kind: 'file',
-          title: file.name,
-          subtitle: `Client vault · ${s.clients.find((client) => client.id === file.client)?.name || 'Client folder'}`,
-          clientId: file.client,
-        }))
-    : [];
   const documentResults: WorkspaceSearchResult[] = query
     ? s.docs
         .filter((document) => [document.party, document.gstin, document.no, document.kind].some((value) => value.toLocaleLowerCase().includes(query)))
@@ -236,12 +224,13 @@ export function Titlebar() {
           page: item.page,
         }))
     : [];
-  const remoteFileResults: WorkspaceSearchResult[] = vaultResults.map((file) => ({
-    id: `vault:${file.clientId}:${file.relativePath}`,
+  const remoteFileResults: WorkspaceSearchResult[] = cloudDocumentResults.map((file) => ({
+    id: `document-file:${file.documentId}`,
     kind: 'file',
     title: file.fileName,
-    subtitle: `Vault file · ${file.clientName} · ${file.relativePath}`,
+    subtitle: `Cloud document · ${file.clientName}`,
     clientId: file.clientId,
+    documentId: file.documentId,
     file,
   }));
   const remoteConversationResults: WorkspaceSearchResult[] = telegramSearchResults.map((message) => ({
@@ -251,7 +240,7 @@ export function Titlebar() {
     subtitle: `Telegram · ${message.body.slice(0, 90)}`,
     clientId: message.clientId,
   }));
-  const results = [...clientResults, ...remoteFileResults, ...localFileResults, ...documentResults, ...conversationResults, ...remoteConversationResults, ...deadlineResults, ...pageResults].slice(0, 10);
+  const results = [...clientResults, ...remoteFileResults, ...documentResults, ...conversationResults, ...remoteConversationResults, ...deadlineResults, ...pageResults].slice(0, 10);
   const sessionExpired = s.sessionStatus === 'expired';
 
   function openSearchResult(result: WorkspaceSearchResult) {
@@ -261,11 +250,11 @@ export function Titlebar() {
     } else if (result.kind === 'file') {
       if (result.clientId) {
         dispatch({ type: 'GO', page: 'files' });
-        window.setTimeout(() => window.dispatchEvent(new CustomEvent('taxflow:open-vault-file', {
+        window.setTimeout(() => window.dispatchEvent(new CustomEvent('taxflow:open-document', {
           detail: {
             clientId: result.clientId,
             fileName: result.file?.fileName || result.title,
-            relativePath: result.file?.relativePath,
+            documentId: result.documentId,
           },
         })), 0);
       }
@@ -341,7 +330,7 @@ export function Titlebar() {
                 </span>
               </button>
             ))}
-            {vaultSearchLoading && <div className="gres-status"><span className="spin" />Searching client vaults…</div>}
+            {vaultSearchLoading && <div className="gres-status"><span className="spin" />Searching client documents…</div>}
             {!vaultSearchLoading && !results.length && !vaultSearchError && <div className="gres-status">No matching workspace items.</div>}
             {vaultSearchError && <div className="gres-status error">{vaultSearchError}</div>}
           </div>

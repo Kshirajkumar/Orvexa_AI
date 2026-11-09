@@ -1,6 +1,8 @@
 -- TaxFlow.AI: document metadata table
 -- Run this once in Supabase SQL Editor after the clients table exists.
--- Physical PDFs/images remain in the Local Vault; this table stores metadata only.
+-- Legacy bootstrap script. New document workflows use private Supabase Storage.
+-- Apply migrate_cloud_document_storage.sql to add cloud metadata and retain
+-- vault_path only for one-time migration of existing local files.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 

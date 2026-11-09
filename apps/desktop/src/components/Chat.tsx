@@ -1,7 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { Icon } from './Icon';
-import { useDispatch } from '../state/store';
+import { useAppState, useDispatch } from '../state/store';
 import { sendChatMessage } from '../lib/api';
+import type { OpenRouterFallbackProgress } from '../lib/openRouter';
+import { isPageNavigationCommand, resolvePageNavigation } from '../lib/pageNavigation';
 
 interface Msg { id: number; who: 'me' | 'ai'; html: string; ts: Date; retryQuestion?: string }
 let MID = 1;
@@ -19,15 +21,17 @@ const SUGG = [
 ];
 
 export function Chat() {
+  const state = useAppState();
   const dispatch = useDispatch();
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [fallbackProgress, setFallbackProgress] = useState<OpenRouterFallbackProgress | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     boxRef.current?.scrollTo({ top: boxRef.current.scrollHeight, behavior: 'smooth' });
-  }, [msgs.length, isTyping]);
+  }, [msgs.length, isTyping, fallbackProgress]);
 
   async function ask(question: string) {
     const q = question.trim();
@@ -36,18 +40,51 @@ export function Chat() {
     setMsgs(current => [...current, userMsg]);
     setInput('');
     setIsTyping(true);
+    setFallbackProgress(null);
     try {
+      const navigation = resolvePageNavigation(q);
+      if (navigation) {
+        const page = navigation.page === 'extraction-review' ? 'extract' : navigation.page;
+        const alreadyOnPage = state.page === page;
+        if (!alreadyOnPage) dispatch({ type: 'GO', page });
+        const status = navigation.page === 'extraction-review'
+          ? `Data Extraction Review needs a document selection, so I've ${alreadyOnPage ? 'kept you on' : 'opened'} Invoice Extraction to start that flow.`
+          : alreadyOnPage
+            ? `You're already on ${navigation.label}.`
+            : `I've opened ${navigation.label}.`;
+        const next = navigation.page === 'extraction-review'
+          ? 'Choose a client and document to review its extracted fields.'
+          : navigation.next;
+        setMsgs(current => [...current, {
+          id: MID++,
+          who: 'ai',
+          html: `${escapeHtml(status)} ${escapeHtml(next)}`,
+          ts: new Date(),
+        }]);
+        return;
+      }
+      if (isPageNavigationCommand(q)) {
+        setMsgs(current => [...current, {
+          id: MID++,
+          who: 'ai',
+          html: `I couldn't find that page. Available pages are Dashboard, Invoice Extraction, Data Extraction Review, Client Inbox, Client Folders, Deadlines, File Generator, Clients, Subscriptions, Profile, and Settings.`,
+          ts: new Date(),
+        }]);
+        return;
+      }
+
       const history = [...msgs, userMsg]
         .filter(message => !message.retryQuestion)
         .slice(-20)
         .map(message => ({ role: message.who === 'me' ? 'user' as const : 'assistant' as const, content: message.html.replace(/<[^>]*>/g, ' ') }));
-      const response = await sendChatMessage(history);
+      const response = await sendChatMessage(history, setFallbackProgress);
       setMsgs(current => [...current, { id: MID++, who: 'ai', html: escapeHtml(response.text).replace(/\n/g, '<br />'), ts: new Date() }]);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'The AI request failed. Please try again.';
       setMsgs(current => [...current, { id: MID++, who: 'ai', html: `<b>AI unavailable</b><br /><span class="chat-error-copy">${escapeHtml(message)}</span>`, retryQuestion: q, ts: new Date() }]);
     } finally {
       setIsTyping(false);
+      setFallbackProgress(null);
     }
   }
 
@@ -61,7 +98,7 @@ export function Chat() {
         <button className="ch-close-btn" onClick={() => dispatch({ type: 'TOGGLE_CHAT' })} title="Close assistant" aria-label="Close assistant">×</button>
       </div>
 
-      <div className="ch-msgs" ref={boxRef} id="ai-msgs">
+      <div className="ch-msgs" ref={boxRef} id="ai-msgs" role="log" aria-live="polite" aria-relevant="additions">
         {msgs.length === 0 && !isTyping && (
           <div className="chat-empty-state">
             <div className="chat-empty-icon"><Icon name="spark" size={18} /></div>
@@ -80,7 +117,7 @@ export function Chat() {
             </div>
           </div>
         ))}
-        {isTyping && <div className="cm-wrap ai"><div className="cm-avatar"><Icon name="spark" size={12} /></div><div className="cm-bubble-group"><div className="cm ai typing-indicator"><span /><span /><span /></div></div></div>}
+        {isTyping && <div className="cm-wrap ai"><div className="cm-avatar"><Icon name="spark" size={12} /></div><div className="cm-bubble-group"><div className="cm ai typing-indicator"><span /><span /><span /></div>{fallbackProgress && <small className="ai-fallback-status" role="status" aria-live="polite">Auto-trying {fallbackProgress.nextModel} ({fallbackProgress.attempt} of {fallbackProgress.maxAttempts}) after {fallbackProgress.failedModel} failed. {fallbackProgress.waitMs > 0 ? `Waiting ${Math.ceil(fallbackProgress.waitMs / 1000)}s. ` : ''}{fallbackProgress.reason}</small>}</div></div>}
       </div>
 
       <div className="sugg"><div className="sugg-label">Quick actions</div><div className="sugg-list">

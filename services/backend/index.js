@@ -4,45 +4,17 @@
  *
  * ARCHITECTURE SUMMARY:
  *
- *  ┌────────────────────────────────────────────────────────────┐
- *  │  React Desktop App  (apps/desktop/src)                     │
- *  │  All pages talk to this server via HTTP REST API           │
- *  └──────────────────────────┬─────────────────────────────────┘
- *                             │ HTTP Requests (port 5000)
- *                             ▼
- *  ┌────────────────────────────────────────────────────────────┐
- *  │  Express API Server  (this file)                           │
- *  │  Routes:                                                   │
- *  │   /api/v1/clients        → Client Master Registry          │
- *  │   /api/v1/documents      → File metadata + vault upload    │
- *  │   /api/v1/extraction     → Gemini AI OCR processing        │
- *  │   /api/v1/whatsapp       → WhatsApp webhook & messages     │
- *  │   /api/v1/deadlines      → Compliance tasks & deadlines    │
- *  │   /api/v1/generate       → AI Notice/Report generator      │
- *  └──────┬────────────────────────────────┬───────────────────┘
- *         │                                │
- *         ▼                                ▼
- *  ┌──────────────────┐        ┌───────────────────────────┐
- *  │ SUPABASE CLOUD   │        │ LOCAL VAULT STORAGE       │
- *  │ (Metadata only)  │        │ (Physical files only)     │
- *  │                  │        │                           │
- *  │ • clients        │        │ vault/                    │
- *  │ • documents_meta │        │ └── clients/              │
- *  │ • ai_usage_log   │        │     └── {client_id}/      │
- *  │ • whatsapp_msgs  │        │         ├── GST/2026-27/  │
- *  │ • compliance_tasks│       │         ├── Form16/       │
- *  │ • extracted_fields│       │         ├── Notice/       │
- *  └──────────────────┘        │         └── Generated/    │
- *                              └───────────────────────────┘
+ * React Desktop App ? Express API ? Supabase Database and private Supabase Storage
+ *
+ * Supabase Database stores client records, document metadata, extracted fields,
+ * audit logs, messages, and compliance tasks. The private Storage bucket stores
+ * uploaded originals and generated documents; the backend service-role key is
+ * used only on the server.
  */
 
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 require('dotenv').config();
-
-// Import vault manager (must init before routes)
-const { initVault } = require('./vault/vaultManager');
 
 // Import all route modules
 const authRouter = require('./routes/auth');
@@ -65,10 +37,6 @@ const { supabase, isConnected } = require('./db/supabase');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-if (process.env.NODE_ENV === 'production' && !process.env.VAULT_PATH) {
-  console.warn('[Vault] VAULT_PATH is not configured. Files will be stored on this server and may be lost if its filesystem is ephemeral.');
-}
-
 // ─── Middleware ────────────────────────────────────────────────
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization', 'X-File-Name', 'X-File-Mime-Type'] }));
 app.use(express.json({ limit: '100mb' }));
@@ -79,9 +47,6 @@ app.use((req, _res, next) => {
   console.log(`[API] ${new Date().toISOString().substring(11, 19)} ${req.method} ${req.path}`);
   next();
 });
-
-// ─── Initialize Local Vault Storage ───────────────────────────
-initVault();
 
 // ─── Mount Routes ─────────────────────────────────────────────
 app.use('/api/v1/auth', authRouter);
@@ -103,10 +68,6 @@ app.use('/api/v1/chat', requireAuth, chatRouter);
 
 // ─── Health & System Status ────────────────────────────────────
 app.get('/api/v1/health', async (req, res) => {
-  const { getVaultBaseDir, getVaultUsage } = require('./vault/vaultManager');
-  const fs = require('fs');
-  const vaultDir = getVaultBaseDir();
-
   let dbStatus = 'demo_mode';
   let totalClients = 0;
 
@@ -129,10 +90,10 @@ app.get('/api/v1/health', async (req, res) => {
       status: dbStatus,
       totalClients
     },
-    vault: {
-      status: fs.existsSync(vaultDir) ? 'active' : 'not_configured',
-      path: vaultDir,
-      usage: getVaultUsage()
+    documentStorage: {
+      provider: 'Supabase Storage',
+      status: isConnected && process.env.SUPABASE_STORAGE_BUCKET ? 'configured' : 'not_configured',
+      bucket: process.env.SUPABASE_STORAGE_BUCKET || null
     },
     ai: {
       provider: 'Google Gemini',
@@ -147,10 +108,9 @@ app.get('/api/v1/health', async (req, res) => {
       'POST /api/v1/clients',
       'GET  /api/v1/clients/:id',
       'DELETE /api/v1/clients/:id',
-      'GET  /api/v1/clients/:id/vault-summary',
       'GET  /api/v1/documents',
-      'POST /api/v1/documents/upload-vault',
-      'GET  /api/v1/documents/:id/serve',
+      'POST /api/v1/documents',
+      'GET  /api/v1/documents/:id/file',
       'POST /api/v1/documents/:id/verify',
       'POST /api/v1/extraction/process',
       'GET  /api/v1/extraction/pending',

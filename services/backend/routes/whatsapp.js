@@ -2,11 +2,11 @@
  * TaxFlow.AI — WhatsApp Automation Routes
  *
  * Flow:
- *  1. Client sends invoice/photo/text on WhatsApp
+ *  1. Client sends text or media metadata on WhatsApp
  *  2. WhatsApp Cloud API fires a webhook POST to this server
  *  3. Server matches sender phone to a client record in Supabase
- *  4. If media: downloads it, saves to Local Vault Storage, queues for AI extraction
- *  5. Auto-replies to the client with a confirmation message
+ *  4. Media is not downloaded or stored; the client is directed to the secure upload portal
+ *  5. Auto-replies to the client with a privacy notice
  *  6. Message log is saved to Supabase whatsapp_messages table
  *  7. CA sees the new message and document in the React Desktop App
  */
@@ -29,7 +29,7 @@ let fallbackMessages = [
     sender_phone: '+919820011223', sender_name: 'Reliable Motors Accounts',
     direction: 'inbound', message_type: 'document',
     body: 'Hi CA Sir, please find September GST invoice attached.',
-    status: 'processed', vault_file_ref: 'doc-101',
+    status: 'processed',
     created_at: '2026-10-08T10:29:45Z'
   },
   {
@@ -37,7 +37,7 @@ let fallbackMessages = [
     client_id: '11111111-1111-1111-1111-111111111111',
     sender_phone: 'TaxFlow Bot', sender_name: 'TaxFlow AI Assistant',
     direction: 'outbound', message_type: 'text',
-    body: '✅ Received your document! It has been added to your file vault and sent for AI extraction. Your CA will verify it shortly.',
+    body: 'Please upload sensitive documents through your secure client portal.',
     status: 'sent', created_at: '2026-10-08T10:29:52Z'
   },
   {

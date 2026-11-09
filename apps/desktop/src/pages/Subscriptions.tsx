@@ -7,7 +7,7 @@ const PLANS = [
     price: '249',
     description: 'For freelancers and very small firms',
     limits: ['1 user', 'Up to 30 clients', '600 documents / month', '600 utility messages included'],
-    features: ['WhatsApp collection and reminders', 'Deadline tracking and client vault', 'Excel and CSV exports'],
+    features: ['WhatsApp reminders and client portal uploads', 'Deadline tracking and private document storage', 'Excel and CSV exports'],
   },
   {
     name: 'Growth',

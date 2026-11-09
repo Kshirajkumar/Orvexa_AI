@@ -5,9 +5,8 @@
  * https://supabase.com -> Your Project -> SQL Editor -> New Query
  *
  * IMPORTANT:
- *  - This schema stores ONLY metadata — no binary files or documents
- *  - The vault_path column stores the LOCAL disk path pointer to the physical file
- *  - Physical files are stored in Local Vault Storage (configured in .env VAULT_PATH)
+ *  - This schema stores structured metadata; physical documents live in private Supabase Storage
+ *  - vault_path is a nullable legacy pointer used only by the one-time local-to-cloud migration
  */
 
 -- Supabase Auth profile row. The trigger below runs after a real Auth user is
@@ -69,7 +68,7 @@ CREATE TABLE IF NOT EXISTS clients (
   assigned_ca     VARCHAR(255),
   filing_status   VARCHAR(100),
   filing_types    JSONB NOT NULL DEFAULT '[]'::jsonb,
-  vault_folder    TEXT,            -- Local disk path to this client's vault folder
+  vault_folder    TEXT,            -- Legacy path metadata; not used by current document storage
   total_docs      INT DEFAULT 0,   -- Counter: how many docs uploaded for this client
   total_ai_calls  INT DEFAULT 0,   -- Counter: total AI extraction calls made for this client
   created_at      TIMESTAMPTZ DEFAULT NOW(),
@@ -86,7 +85,7 @@ CREATE POLICY "Users can manage their own clients" ON clients
 CREATE INDEX IF NOT EXISTS idx_clients_user_id ON clients(user_id);
 
 -- ═══════════════════════════════════════════════════════════════════════
--- TABLE 2: documents_metadata — Pointer Table for Local Vault Documents
+-- TABLE 2: documents_metadata — Structured metadata for private cloud documents
 -- ═══════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS documents_metadata (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -95,10 +94,14 @@ CREATE TABLE IF NOT EXISTS documents_metadata (
   file_name           VARCHAR(255) NOT NULL,
   file_type           VARCHAR(30) NOT NULL CHECK (file_type IN ('PDF', 'PNG', 'JPG', 'JPEG', 'WEBP', 'XLS', 'XLSX', 'CSV', 'DOC', 'DOCX', 'OTHER')),
   file_size_kb        NUMERIC(10,2),
-  category            VARCHAR(50) NOT NULL CHECK (category IN ('GST', 'IncomeTax', 'Form16', 'BankStatement', 'Notice', 'TDS', 'Audit', 'General', 'Extracted')),
+  category            VARCHAR(50) NOT NULL CHECK (category IN ('GST', 'IncomeTax', 'Form16', 'BankStatement', 'Notice', 'TDS', 'Audit', 'General', 'Extracted', 'Generated')),
   source              VARCHAR(20) DEFAULT 'Manual' CHECK (source IN ('WhatsApp', 'Telegram', 'Manual', 'Portal', 'Upload')),
   status              VARCHAR(30) DEFAULT 'Pending' CHECK (status IN ('Pending', 'Processing', 'Extracted', 'Verified', 'Rejected')),
-  vault_path          TEXT NOT NULL,   -- LOCAL disk path only (e.g. C:\TaxFlowVault\clients\cli_1\GST\2026\invoice.pdf)
+  vault_path          TEXT,            -- Legacy local path retained only during cloud migration
+  storage_bucket      TEXT,
+  storage_object_path TEXT,
+  file_sha256         TEXT,
+  mime_type           TEXT,
   assessment_year     VARCHAR(10) DEFAULT '2026-27',
   confidence_score    NUMERIC(5,2),
   extracted_data      JSONB,           -- Structured AI-extracted fields (no raw bytes)
@@ -166,7 +169,7 @@ CREATE TABLE IF NOT EXISTS whatsapp_messages (
   message_type        VARCHAR(20) DEFAULT 'text' CHECK (message_type IN ('text', 'image', 'document', 'audio', 'template')),
   body                TEXT,
   media_mime_type     VARCHAR(100),
-  vault_file_ref      UUID REFERENCES documents_metadata(id) ON DELETE SET NULL,  -- Links to Local Vault doc if media
+  vault_file_ref      UUID REFERENCES documents_metadata(id) ON DELETE SET NULL,  -- Legacy document reference for historical messages
   wa_message_id       VARCHAR(255),    -- WhatsApp's own message ID
   status              VARCHAR(30) DEFAULT 'received' CHECK (status IN ('received', 'sent', 'delivered', 'read', 'failed', 'processed')),
   created_at          TIMESTAMPTZ DEFAULT NOW()

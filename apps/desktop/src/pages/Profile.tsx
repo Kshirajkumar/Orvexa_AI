@@ -126,7 +126,7 @@ export function ProfilePage() {
       <section className="card profile-hero" data-tour="profile-details">
         <div className="profile-hero-glow" />
         <div className="profile-avatar-xl">{initials}<span /></div>
-        <div className="profile-hero-copy"><span className="eyebrow">PERSONAL PROFILE</span><h2>{user.name || 'Your profile'}</h2><p>{accountLabel} · Member since your TaxFlow account was created</p><div className="profile-hero-tags"><span><Icon name="check" size={12} />Verified workspace</span><span><Icon name="folder" size={12} />Local Vault enabled</span></div></div>
+        <div className="profile-hero-copy"><span className="eyebrow">PERSONAL PROFILE</span><h2>{user.name || 'Your profile'}</h2><p>{accountLabel} · Member since your TaxFlow account was created</p><div className="profile-hero-tags"><span><Icon name="check" size={12} />Verified workspace</span><span><Icon name="folder" size={12} />Private cloud documents</span></div></div>
         <div className="profile-hero-mark"><Icon name="users" size={20} /><span>TaxFlow<br />workspace</span></div>
       </section>
 
@@ -147,18 +147,18 @@ export function ProfilePage() {
         </section>
 
         <aside className="profile-side-column">
-          <section className="card profile-status-card"><div className="card-h"><h2>Account status</h2><span className="profile-status-dot" /></div><div className="card-b"><div className="profile-status-row"><span>Workspace</span><b>Ready</b></div><div className="profile-status-row"><span>Onboarding</span><b>{user.onboardingComplete ? 'Complete' : 'In progress'}</b></div><div className="profile-status-row"><span>Local Vault</span><b>{user.vaultConfigured ? 'Connected' : 'Not configured'}</b></div></div></section>
+          <section className="card profile-status-card"><div className="card-h"><h2>Account status</h2><span className="profile-status-dot" /></div><div className="card-b"><div className="profile-status-row"><span>Workspace</span><b>Ready</b></div><div className="profile-status-row"><span>Onboarding</span><b>{user.onboardingComplete ? 'Complete' : 'In progress'}</b></div><div className="profile-status-row"><span>Document storage</span><b>Private cloud</b></div></div></section>
           <section className="card profile-about-card"><div className="card-h"><h2>About TaxFlow</h2><Icon name="spark" size={15} /></div><div className="card-b"><p>TaxFlow keeps client records, documents, extraction review, deadlines, and practice workflows connected in one focused workspace.</p><div className="profile-about-line"><Icon name="check" size={14} /><span>Your profile belongs only to your signed-in account.</span></div></div></section>
         </aside>
       </div>
 
-      <section className="profile-detail-strip"><div><span className="profile-detail-icon"><Icon name="users" size={16} /></span><div><b>Your account identity</b><small>This is the person responsible for the TaxFlow workspace.</small></div></div><div><span className="profile-detail-icon"><Icon name="folder" size={16} /></span><div><b>Your private workspace</b><small>Client files and local vault settings remain separate from your profile.</small></div></div><div><span className="profile-detail-icon"><Icon name="check" size={16} /></span><div><b>Safe profile updates</b><small>Only supported account details can be changed here.</small></div></div></section>
+      <section className="profile-detail-strip"><div><span className="profile-detail-icon"><Icon name="users" size={16} /></span><div><b>Your account identity</b><small>This is the person responsible for the TaxFlow workspace.</small></div></div><div><span className="profile-detail-icon"><Icon name="folder" size={16} /></span><div><b>Your private workspace</b><small>Client documents are stored in private cloud storage.</small></div></div><div><span className="profile-detail-icon"><Icon name="check" size={16} /></span><div><b>Safe profile updates</b><small>Only supported account details can be changed here.</small></div></div></section>
 
       <section className="card account-danger-zone">
         <div className="card-h"><div><span className="eyebrow">PERMANENT ACTION</span><h2>Delete account</h2></div><span className="account-danger-icon"><Icon name="trash" size={16} /></span></div>
         <div className="card-b">
           <p>Permanently remove your TaxFlow sign-in, profile, owned database records, and private cloud files. This cannot be undone.</p>
-          <div className="account-danger-retention"><Icon name="info" size={14} /><span>Your local vault files on this device are kept. Copies on other devices and external services are not deleted.</span></div>
+          <div className="account-danger-retention"><Icon name="info" size={14} /><span>Your private cloud documents are permanently deleted with your account. Download any files you need before confirming.</span></div>
           <button className="btn danger" onClick={() => { setDeleteAccountOpen(true); setDeleteAccountError(''); }}>
             <Icon name="trash" size={14} />Delete account
           </button>
@@ -189,7 +189,7 @@ export function ProfilePage() {
                   <div className="account-delete-warning">
                     <b>This permanently deletes:</b>
                     <ul><li>Your TaxFlow account and profile</li><li>Your owned clients, documents, messages, tasks, notifications, and integration records</li><li>Private cloud files associated with your account</li></ul>
-                    <b>Your local vault on this device will be kept.</b>
+                    <b>Your cloud documents will be permanently deleted.</b>
                   </div>
                   <label className="f">Type <code>DELETE MY ACCOUNT</code> to confirm<input className="modal-input account-delete-phrase" value={deleteAccountPhrase} onChange={event => { setDeleteAccountPhrase(event.target.value); if (deleteAccountError) setDeleteAccountError(""); }} autoComplete="off" autoFocus disabled={deleteAccountBusy} /></label>
                   {deleteAccountError && <div className="ob-error account-delete-error" role="alert"><Icon name="x" size={14} />{deleteAccountError}{/expired|verify your password/i.test(deleteAccountError) && <button type="button" className="btn gh sm" onClick={() => { setDeleteAccountStep('password'); setDeleteAccountChallenge(''); setDeleteAccountPhrase(''); setDeleteAccountError(''); }}>Verify again</button>}</div>}

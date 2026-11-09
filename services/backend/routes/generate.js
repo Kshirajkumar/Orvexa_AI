@@ -7,15 +7,16 @@
  *  3. Client Summary Reports
  *
  * All generated text is:
- *  - Saved as a .txt file in the client's Local Vault (Generated/ folder)
+ *  - Saved as a private cloud document for the client
  *  - AI usage logged to Supabase ai_usage_log
  */
 
 const express = require('express');
 const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
-const { saveTextFileToVault } = require('../vault/vaultManager');
+const { saveGeneratedDocument } = require('../lib/documentStorage');
 const { getGeminiConfig } = require('../lib/aiProvider');
+const { TAXFLOW_SYSTEM_PROMPT } = require('../lib/systemPrompt');
 const { assertOwnedClient } = require('../lib/ownership');
 
 /**
@@ -30,18 +31,23 @@ router.post('/notice-response', async (req, res) => {
   if (!clientId || !noticeText) {
     return res.status(400).json({ success: false, message: 'clientId and noticeText are required' });
   }
+  if (typeof noticeText !== 'string' || noticeText.trim().length > 100_000) {
+    return res.status(400).json({ success: false, message: 'Notice text must be 100,000 characters or fewer.' });
+  }
 
   try {
-    if (isConnected && !(await assertOwnedClient(req.user.id, clientId))) {
+    if (!isConnected || !supabase) {
+      return res.status(503).json({ success: false, message: 'Cloud document storage is unavailable. Reconnect to Supabase and try again.' });
+    }
+    if (!(await assertOwnedClient(req.user.id, clientId))) {
       return res.status(404).json({ success: false, message: 'Client not found.' });
     }
 
     // Fetch client profile from Supabase
     let client = { name: 'Valued Client', pan: 'N/A', id: clientId };
-    if (isConnected) {
-      const { data } = await supabase.from('clients').select('*').eq('id', clientId).single();
-      if (data) client = data;
-    }
+    const { data: clientRecord, error: clientError } = await supabase.from('clients').select('*').eq('id', clientId).eq('user_id', req.user.id).single();
+    if (clientError) throw clientError;
+    if (clientRecord) client = clientRecord;
 
     let draftText = '';
     let inputTokens = 0, outputTokens = 0;
@@ -54,8 +60,7 @@ router.post('/notice-response', async (req, res) => {
 
     if (geminiConfig) {
       // Call Gemini AI
-      const prompt = `You are an expert Indian tax lawyer and Chartered Accountant. 
-Draft a professional, formal response letter to the following Income Tax / GST Notice on behalf of the client.
+      const prompt = `Draft a professional, formal response letter for review in response to the following Income Tax / GST Notice.
 The response should be legally sound, polite, and include placeholders for specific financial figures.
 
 CLIENT DETAILS:
@@ -82,6 +87,7 @@ Draft the response letter in formal English, including:
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiConfig.apiKey },
           body: JSON.stringify({
+            systemInstruction: { parts: [{ text: TAXFLOW_SYSTEM_PROMPT }] },
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: { temperature: 0.4, maxOutputTokens: 3000 }
           })
@@ -97,17 +103,26 @@ Draft the response letter in formal English, including:
 
     const duration = Date.now() - startTime;
 
-    // Save generated draft to Local Vault Storage
-    const saved = saveTextFileToVault(client.name, `notice_response_${section || '143_1'}`, draftText, 'Generated');
+    const savedDocument = await saveGeneratedDocument({
+      userId: req.user.id,
+      clientId,
+      clientName: client.name,
+      fileName: `notice_response_${section || '143_1'}.txt`,
+      category: 'Generated',
+      content: Buffer.from(draftText, 'utf8'),
+      mimeType: 'text/plain',
+      assessmentYear: assessmentYear || '2025-26'
+    });
 
     // Log AI usage to Supabase
-    if (isConnected) {
-      await supabase.from('ai_usage_log').insert([{
+    {
+      const { error: usageError } = await supabase.from('ai_usage_log').insert([{
         client_id: clientId, operation: 'notice_generation', model_used: geminiConfig?.model || 'database-configured',
         input_tokens: inputTokens, output_tokens: outputTokens,
         cost_usd: ((inputTokens * 0.000075 + outputTokens * 0.0003) / 1000),
         duration_ms: duration, success: true
       }]);
+      if (usageError) console.warn('[Generator] Could not log AI usage:', usageError.message);
       try {
         await supabase.rpc('increment_client_ai_calls', { cid: clientId });
       } catch (rpcError) {
@@ -121,7 +136,7 @@ Draft the response letter in formal English, including:
         clientId, clientName: client.name, section,
         assessmentYear: assessmentYear || '2025-26',
         draftText,
-        savedVaultPath: saved.vaultPath,
+        documentId: savedDocument.id,
         generatedAt: new Date().toISOString(),
         duration_ms: duration
       }
@@ -142,36 +157,51 @@ router.post('/computation-sheet', async (req, res) => {
   if (!clientId) return res.status(400).json({ success: false, message: 'clientId is required' });
 
   try {
-    if (isConnected && !(await assertOwnedClient(req.user.id, clientId))) {
+    if (!isConnected || !supabase) {
+      return res.status(503).json({ success: false, message: 'Cloud document storage is unavailable. Reconnect to Supabase and try again.' });
+    }
+    if (!(await assertOwnedClient(req.user.id, clientId))) {
       return res.status(404).json({ success: false, message: 'Client not found.' });
     }
 
     let clientData = { name: 'Client', pan: 'N/A' };
     let extractedDocs = [];
 
-    if (isConnected) {
-      const { data: client } = await supabase.from('clients').select('*').eq('id', clientId).single();
+    {
+      const { data: client, error: clientError } = await supabase.from('clients').select('*').eq('id', clientId).eq('user_id', req.user.id).single();
+      if (clientError) throw clientError;
       if (client) clientData = client;
 
-      const { data: docs } = await supabase
+      const { data: docs, error: docsError } = await supabase
         .from('documents_metadata')
         .select('file_name, category, extracted_data, confidence_score')
         .eq('client_id', clientId)
         .eq('status', 'Verified');
+      if (docsError) throw docsError;
       if (docs) extractedDocs = docs;
     }
 
     const sheet = generateComputationSheet(clientData, extractedDocs, assessmentYear || '2026-27');
-    const saved = saveTextFileToVault(clientData.name, `computation_sheet_${assessmentYear || '2026-27'}`, sheet, 'Generated');
+    const savedDocument = await saveGeneratedDocument({
+      userId: req.user.id,
+      clientId,
+      clientName: clientData.name,
+      fileName: `computation_sheet_${assessmentYear || '2026-27'}.txt`,
+      category: 'Generated',
+      content: Buffer.from(sheet, 'utf8'),
+      mimeType: 'text/plain',
+      assessmentYear: assessmentYear || '2026-27'
+    });
 
-    if (isConnected) {
-      await supabase.from('ai_usage_log').insert([{
+    {
+      const { error: usageError } = await supabase.from('ai_usage_log').insert([{
         client_id: clientId, operation: 'summary', model_used: 'template',
         success: true, duration_ms: 50
       }]);
+      if (usageError) console.warn('[Generator] Could not log computation-sheet usage:', usageError.message);
     }
 
-    res.json({ success: true, data: { clientId, clientName: clientData.name, sheet, savedVaultPath: saved.vaultPath } });
+    res.json({ success: true, data: { clientId, clientName: clientData.name, sheet, documentId: savedDocument.id } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

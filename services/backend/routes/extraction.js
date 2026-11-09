@@ -2,61 +2,28 @@
  * TaxFlow.AI — AI Extraction Routes
  *
  * This module handles:
- *  1. Sending a document from Local Vault to Gemini AI for OCR + data extraction
+ *  1. Sending a document from private Supabase Storage to Gemini AI for OCR + data extraction
  *  2. Saving extracted structured fields to Supabase
  *  3. Logging every AI API call to the ai_usage_log table (for analytics & billing)
  *
  * Gemini Integration:
  *  - Model: gemini-1.5-flash (fastest, cost-effective for OCR tasks)
- *  - The physical file is read from Local Vault Storage and sent as base64 to Gemini
- *  - Gemini returns structured JSON fields which are saved ONLY to Supabase (no binary to cloud)
+ *  - The physical file is read from private Supabase Storage and sent as base64 to Gemini
+ *  - Gemini returns structured JSON fields which are saved to Supabase metadata
  */
 
 const express = require('express');
 const router = express.Router();
-const fs = require('fs');
-const path = require('path');
 const { supabase, isConnected } = require('../db/supabase');
-const { vaultFileExists, saveTextFileToVault } = require('../vault/vaultManager');
 const { getGeminiConfig } = require('../lib/aiProvider');
+const { getExtractionPrompt, validateExtractionData } = require('../lib/extractionSchema');
+const { TAXFLOW_SYSTEM_PROMPT } = require('../lib/systemPrompt');
 const { getOwnedClientIds } = require('../lib/ownership');
-const { downloadDocument, isExpectedPortalObject } = require('../lib/documentStorage');
-
-// Prompt templates for different document types
-const EXTRACTION_PROMPTS = {
-  GST: `You are a GST Invoice data extraction AI. Extract the following fields from this invoice image/PDF and return ONLY valid JSON:
-    { "invoice_number": "", "invoice_date": "", "vendor_name": "", "vendor_gstin": "", "buyer_gstin": "",
-      "taxable_value": 0, "cgst_rate": 0, "cgst_amount": 0, "sgst_rate": 0, "sgst_amount": 0,
-      "igst_rate": 0, "igst_amount": 0, "total_gst": 0, "grand_total": 0,
-      "place_of_supply": "", "hsn_codes": [], "line_items": [] }`,
-
-  IncomeTax: `Extract all income tax related fields from this document and return ONLY valid JSON:
-    { "document_type": "", "assessment_year": "", "pan": "", "taxpayer_name": "",
-      "gross_total_income": 0, "deductions_80c": 0, "deductions_80d": 0, "other_deductions": 0,
-      "taxable_income": 0, "tax_payable": 0, "tds_deducted": 0, "advance_tax": 0, "refund_due": 0 }`,
-
-  Form16: `Extract Form 16 / salary details and return ONLY valid JSON:
-    { "employer_name": "", "employer_tan": "", "employee_name": "", "employee_pan": "",
-      "assessment_year": "", "gross_salary": 0, "hra_exemption": 0, "lta_exemption": 0,
-      "standard_deduction": 50000, "professional_tax": 0, "section_80c": 0, "section_80d": 0,
-      "net_taxable_income": 0, "tax_deducted": 0, "surcharge": 0, "cess": 0, "total_tds": 0 }`,
-
-  BankStatement: `Extract bank statement summary and return ONLY valid JSON:
-    { "bank_name": "", "account_holder": "", "account_number": "", "ifsc": "",
-      "period_from": "", "period_to": "", "opening_balance": 0, "closing_balance": 0,
-      "total_credits": 0, "total_debits": 0, "transaction_count": 0 }`,
-
-  Notice: `Extract key details from this Income Tax / GST Notice and return ONLY valid JSON:
-    { "notice_type": "", "section": "", "notice_date": "", "due_date": "", "authority": "",
-      "taxpayer_name": "", "pan": "", "assessment_year": "", "demand_amount": 0,
-      "reason": "", "action_required": "" }`,
-
-  General: `Extract any financial/tax relevant information from this document and return valid JSON with the most relevant fields you can identify.`
-};
+const { downloadDocument, isExpectedDocumentObject } = require('../lib/documentStorage');
 
 /**
  * POST /api/v1/extraction/process
- * Read file from Local Vault → Send to Gemini AI → Save result to Supabase
+ * Read file from private Supabase Storage → Send to Gemini AI → Save result to Supabase
  * Body: { documentId, category? }
  */
 router.post('/process', async (req, res) => {
@@ -77,16 +44,9 @@ router.post('/process', async (req, res) => {
       if (error) throw new Error(`Document not found in database: ${error.message}`);
       doc = data;
     } else {
-      // Demo mode — simulate extraction without actual AI call
-      const duration = Date.now() - startTime;
-      return res.json({
-        success: true, source: 'demo',
-        message: 'AI extraction simulated (Gemini API key not configured)',
-        data: {
-          documentId, status: 'Extracted', confidence_score: 95,
-          extracted_data: getDemoExtraction(category || 'GST'),
-          duration_ms: duration
-        }
+      return res.status(503).json({
+        success: false,
+        message: 'AI extraction is not configured in this environment. Enable a local OpenRouter key or configure the backend AI provider.',
       });
     }
 
@@ -94,90 +54,101 @@ router.post('/process', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Telegram files are not available for extraction. Use the secure client portal for document uploads.' });
     }
 
-    // Step 2: Read from private object storage or the legacy local vault.
-    const vaultPath = doc.vault_path;
-    let fileBuffer = null;
-    if (doc.storage_bucket && doc.storage_object_path) {
-      if (doc.source !== 'Portal' || !isExpectedPortalObject({
+    // Step 2: Read only from the expected private Storage object.
+    if (!doc.storage_bucket || !doc.storage_object_path || !isExpectedDocumentObject({
         bucket: doc.storage_bucket,
         objectKey: doc.storage_object_path,
         userId: req.user.id,
         clientId: doc.client_id,
         documentId: doc.id,
         createdAt: doc.created_at,
-        fileName: doc.file_name
+        fileName: doc.file_name,
+        category: doc.category
       })) {
-        console.error(`[Extraction] Refusing unexpected cloud storage reference for document ${doc.id}.`);
-        return res.status(404).json({ success: false, message: 'The cloud document reference is invalid.' });
-      }
-      fileBuffer = await downloadDocument(doc.storage_bucket, doc.storage_object_path);
-    } else if (vaultFileExists(vaultPath)) {
-      fileBuffer = fs.readFileSync(vaultPath);
-    } else {
-      return res.status(404).json({
-        success: false,
-        message: `Physical file not found in Local Vault at: ${vaultPath}`
-      });
+      console.error(`[Extraction] Refusing unexpected cloud storage reference for document ${doc.id}.`);
+      return res.status(409).json({ success: false, message: 'This document has not been migrated to private cloud storage.' });
     }
+    const fileBuffer = await downloadDocument(doc.storage_bucket, doc.storage_object_path);
 
     // Step 3: Call Gemini AI if API key is available
     let extractedData = null;
     let inputTokens = 0, outputTokens = 0;
     let aiSuccess = false;
-    let geminiConfig = null;
+    const geminiConfig = await getGeminiConfig(req.user.id);
+    const docCategory = doc.category || category || 'GST';
+    const base64Content = fileBuffer.toString('base64');
+    const mimeType = doc.mime_type || getMimeType(doc.file_type || 'PDF');
+    if (!['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(mimeType)) {
+      return res.status(415).json({ success: false, message: 'AI extraction currently supports PDF, PNG, JPEG, and WEBP documents.' });
+    }
+    const geminiPayload = {
+      systemInstruction: { parts: [{ text: TAXFLOW_SYSTEM_PROMPT }] },
+      contents: [{
+        parts: [
+          { text: getExtractionPrompt(docCategory) },
+          { inline_data: { mime_type: mimeType, data: base64Content } }
+        ]
+      }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
+    };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let geminiRes;
     try {
-      geminiConfig = await getGeminiConfig(req.user.id);
-    } catch (configError) {
-      console.warn('[Extraction] Gemini integration unavailable:', configError.message);
-    }
-
-    if (geminiConfig) {
-      try {
-        const docCategory = doc.category || category || 'GST';
-        const prompt = EXTRACTION_PROMPTS[docCategory] || EXTRACTION_PROMPTS.General;
-        const base64Content = fileBuffer.toString('base64');
-        const mimeType = getMimeType(doc.file_type || 'PDF');
-
-        const geminiPayload = {
-          contents: [{
-            parts: [
-              { text: prompt },
-              { inline_data: { mime_type: mimeType, data: base64Content } }
-            ]
-          }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
-        };
-
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiConfig.model)}:generateContent`,
-          { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiConfig.apiKey }, body: JSON.stringify(geminiPayload) }
-        );
-
-        const geminiJson = await geminiRes.json();
-
-        if (geminiJson.candidates?.[0]?.content?.parts?.[0]?.text) {
-          const rawText = geminiJson.candidates[0].content.parts[0].text;
-          const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            extractedData = JSON.parse(jsonMatch[0]);
-            aiSuccess = true;
-          }
+      geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiConfig.model)}:generateContent`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiConfig.apiKey },
+          body: JSON.stringify(geminiPayload),
+          signal: controller.signal,
         }
-
-        inputTokens = geminiJson.usageMetadata?.promptTokenCount || 0;
-        outputTokens = geminiJson.usageMetadata?.candidatesTokenCount || 0;
-      } catch (aiErr) {
-        console.error('[Extraction] Gemini AI call failed:', aiErr.message);
-        extractedData = getDemoExtraction(doc.category || 'GST');
-      }
-    } else {
-      // No API key — use simulated extraction
-      extractedData = getDemoExtraction(doc.category || 'GST');
-      aiSuccess = true;
+      );
+    } catch (error) {
+      const providerError = new Error(error.name === 'AbortError'
+        ? 'The AI extraction provider took too long to respond. Please try again.'
+        : 'The AI extraction provider could not be reached. Please try again.');
+      providerError.status = error.name === 'AbortError' ? 504 : 502;
+      throw providerError;
+    } finally {
+      clearTimeout(timeout);
+    }
+    let geminiJson;
+    try {
+      geminiJson = await geminiRes.json();
+    } catch {
+      const invalidResponseError = new Error('The AI extraction provider returned an invalid response.');
+      invalidResponseError.status = 502;
+      throw invalidResponseError;
+    }
+    if (!geminiRes.ok) {
+      const error = new Error(geminiRes.status === 429
+        ? 'The AI extraction provider is rate limited. Please wait and try again.'
+        : 'The AI extraction provider could not process this document.');
+      error.status = geminiRes.status === 429 ? 429 : 502;
+      throw error;
     }
 
+    const rawText = geminiJson.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('').trim();
+    if (!rawText) {
+      const emptyResponseError = new Error('The AI extraction provider returned no usable text.');
+      emptyResponseError.status = 502;
+      throw emptyResponseError;
+    }
+    const jsonText = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    try {
+      extractedData = validateExtractionData(JSON.parse(jsonText), docCategory);
+    } catch {
+      const invalidOutputError = new Error('The AI extraction provider returned data that did not match the required format. Please retry.');
+      invalidOutputError.status = 502;
+      throw invalidOutputError;
+    }
+    aiSuccess = true;
+    inputTokens = geminiJson.usageMetadata?.promptTokenCount || 0;
+    outputTokens = geminiJson.usageMetadata?.candidatesTokenCount || 0;
     const duration = Date.now() - startTime;
-    const confidenceScore = aiSuccess ? Math.floor(Math.random() * 5 + 93) : 85;
+    const confidenceScore = null;
 
     // Step 4: Save extracted data + update status in Supabase
     const { data: updatedDoc, error: updateErr } = await supabase
@@ -185,21 +156,6 @@ router.post('/process', async (req, res) => {
       .update({ status: 'Extracted', extracted_data: extractedData, confidence_score: confidenceScore })
       .eq('id', documentId).select().single();
     if (updateErr) throw updateErr;
-
-    let extractedVaultPath = null;
-    try {
-      const sourceName = doc.file_name || documentId;
-      const baseName = path.basename(sourceName, path.extname(sourceName));
-      const savedExtraction = saveTextFileToVault(
-        doc.client_name || doc.client_id,
-        `${baseName}_extracted`,
-        JSON.stringify({ documentId, confidenceScore, extractedData }, null, 2),
-        'Extracted'
-      );
-      extractedVaultPath = savedExtraction.vaultPath;
-    } catch (vaultError) {
-      console.error('[Extraction] Could not save local extracted result:', vaultError.message);
-    }
 
     // Step 5: Log AI usage to Supabase ai_usage_log
     await supabase.from('ai_usage_log').insert([{
@@ -219,13 +175,13 @@ router.post('/process', async (req, res) => {
 
     res.json({
       success: true, source: 'supabase',
-      message: `Document extracted with ${confidenceScore}% confidence`,
-      data: { ...updatedDoc, extracted_vault_path: extractedVaultPath }
+      message: 'Document extracted. Review all values before use.',
+      data: updatedDoc
     });
 
   } catch (err) {
     console.error('[Extraction] Error:', err.message);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(Number.isInteger(err.status) ? err.status : 500).json({ success: false, message: err.message });
   }
 });
 
@@ -235,11 +191,17 @@ router.post('/process', async (req, res) => {
  */
 router.post('/save', async (req, res) => {
   const { documentId, extractedData } = req.body || {};
+  const category = typeof req.body.category === 'string' ? req.body.category : 'General';
   if (typeof documentId !== 'string' || !documentId.trim()) {
     return res.status(400).json({ success: false, message: 'A document ID is required.' });
   }
   if (!extractedData || typeof extractedData !== 'object' || Array.isArray(extractedData)) {
     return res.status(400).json({ success: false, message: 'Extraction results must be a JSON object.' });
+  }
+  try {
+    validateExtractionData(extractedData, category);
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
   }
 
   let serializedData;
@@ -253,12 +215,7 @@ router.post('/save', async (req, res) => {
   }
 
   if (!isConnected || !supabase) {
-    return res.json({
-      success: true,
-      source: 'demo',
-      message: 'Extraction completed. Results are available for this session; the database is not connected.',
-      data: { id: documentId, status: 'Extracted', extracted_data: extractedData },
-    });
+    return res.status(503).json({ success: false, message: 'Cloud extraction storage is unavailable. Reconnect to Supabase and try again.' });
   }
 
   try {
@@ -269,7 +226,7 @@ router.post('/save', async (req, res) => {
 
     const { data: document, error: documentError } = await supabase
       .from('documents_metadata')
-      .select('id, client_id, client_name, file_name, source')
+      .select('id, client_id, client_name, file_name, source, created_at')
       .eq('id', documentId.trim())
       .in('client_id', ownedClientIds)
       .maybeSingle();
@@ -315,25 +272,11 @@ router.post('/save', async (req, res) => {
       console.warn('[Extraction] Could not increment client AI call count:', rpcError.message);
     }
 
-    let extractedVaultPath = null;
-    try {
-      const sourceName = document.file_name || document.id;
-      const baseName = path.basename(sourceName, path.extname(sourceName));
-      extractedVaultPath = saveTextFileToVault(
-        document.client_name || document.client_id,
-        `${baseName}_extracted`,
-        JSON.stringify({ documentId: document.id, extractedData }, null, 2),
-        'Extracted',
-      ).vaultPath;
-    } catch (vaultError) {
-      console.error('[Extraction] Could not save local-key extraction output:', vaultError.message);
-    }
-
     return res.json({
       success: true,
       source: 'supabase',
       message: 'Document extracted with your local OpenRouter key.',
-      data: { ...updatedDocument, extracted_vault_path: extractedVaultPath },
+      data: updatedDocument,
     });
   } catch (error) {
     console.error('[Extraction] Could not save local-key results:', error.message);
@@ -397,33 +340,8 @@ router.get('/ai-usage', async (req, res) => {
 // --- Helpers ---
 
 function getMimeType(fileType) {
-  const map = { 'PDF': 'application/pdf', 'PNG': 'image/png', 'JPG': 'image/jpeg', 'JPEG': 'image/jpeg' };
+  const map = { 'PDF': 'application/pdf', 'PNG': 'image/png', 'JPG': 'image/jpeg', 'JPEG': 'image/jpeg', 'WEBP': 'image/webp' };
   return map[fileType?.toUpperCase()] || 'application/pdf';
-}
-
-function getDemoExtraction(category) {
-  const demos = {
-    GST: {
-      invoice_number: 'INV-2026-889', invoice_date: '2026-09-28',
-      vendor_name: 'Mahindra Auto Parts', vendor_gstin: '27AAACM1122K1Z9',
-      taxable_value: 450000, cgst_amount: 40500, sgst_amount: 40500, total_gst: 81000, grand_total: 531000
-    },
-    Form16: {
-      employer_name: 'Apollo Hospitals Ltd', employee_pan: 'APCPR5678K',
-      gross_salary: 2850000, standard_deduction: 50000, section_80c: 150000, total_tds: 420000
-    },
-    BankStatement: {
-      bank_name: 'HDFC Bank', account_holder: 'Reliable Motors Pvt Ltd',
-      period_from: '2026-04-01', period_to: '2026-09-30',
-      opening_balance: 540000, closing_balance: 1230000, total_credits: 4800000, total_debits: 4110000
-    },
-    Notice: {
-      notice_type: 'Scrutiny Notice', section: '143(2)', notice_date: '2026-09-15',
-      due_date: '2026-10-30', demand_amount: 125000, assessment_year: '2024-25',
-      reason: 'High value cash deposits in FY 2024-25 not matching ITR'
-    }
-  };
-  return demos[category] || { summary: 'Extracted successfully by Gemini AI Engine', category };
 }
 
 module.exports = router;

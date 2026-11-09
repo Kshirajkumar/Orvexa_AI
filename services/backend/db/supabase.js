@@ -1,19 +1,15 @@
 /**
  * TaxFlow.AI — Supabase Cloud Database Client
  *
- * PURPOSE: Supabase stores ONLY structured metadata:
+ * PURPOSE: Supabase stores structured metadata and private document objects:
  *   - Client records (name, PAN, GSTIN, phone, entity type)
- *   - Document metadata (file name, vault path pointer, extraction status)
+ *   - Document metadata and private Storage objects
  *   - AI usage counters (queries per client, per month)
  *   - WhatsApp message logs
  *   - Compliance tasks & deadlines
  *   - Extraction results (structured JSON fields)
  *
- * NEVER stored in Supabase:
- *   - Raw PDF binary data
- *   - Image files
- *   - Any physical document content
- *   → Those are stored ONLY in the Local Vault Storage System on disk
+ * Document binaries are stored in the configured private Storage bucket.
  */
 
 const { createClient } = require('@supabase/supabase-js');

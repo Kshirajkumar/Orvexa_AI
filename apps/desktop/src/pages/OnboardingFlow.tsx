@@ -1,43 +1,17 @@
 /**
  * TaxFlow.AI — Onboarding Flow
  *
- * A premium, animated 2-step onboarding shown to every new user
+ * A premium onboarding shown to every new user
  * after their first login, until onboardingComplete = true.
  *
- * Step 1 — Personal Profile Setup (name, practice type, clients to work on)
- * Step 2 — Local Vault Setup (select folder via Tauri dialog or manual input)
- * The app tour starts from the dashboard after vault setup.
+ * Personal profile and optional initial client setup.
  */
 
 import { useState } from 'react';
 import { useAppState, useDispatch } from '../state/store';
-import { apiUpdateProfile, apiSetupVault, createClient } from '../lib/api';
+import { apiCompleteOnboarding, apiUpdateProfile, createClient } from '../lib/api';
 import { ClientFormCard, type ClientFormValues } from '../components/ClientFormCard';
 import { BrandLogo } from '../components/BrandLogo';
-import { open } from '@tauri-apps/plugin-dialog';
-import { configureLocalVault, isDesktopApp } from '../lib/localVault';
-
-// Try to open native folder picker via Tauri; falls back gracefully in browser/web
-async function pickFolder(): Promise<string | null> {
-  try {
-    const selected = await open({ directory: true, multiple: false, title: 'Select Your TaxFlow Vault Folder' });
-    return typeof selected === 'string' ? selected : null;
-  } catch (e) {
-    console.warn('Tauri dialog not available, falling back to manual input:', e);
-    return null;
-  }
-}
-
-// ─── Onboarding Step Indicator ─────────────────────────────────
-function StepDots({ step, total }: { step: number; total: number }) {
-  return (
-    <div className="ob-dots">
-      {Array.from({ length: total }).map((_, i) => (
-        <span key={i} className={`ob-dot ${i < step ? 'done' : ''} ${i === step - 1 ? 'active' : ''}`} />
-      ))}
-    </div>
-  );
-}
 
 // ─── Client Row for adding clients inline ──────────────────────
 interface ClientDraft extends ClientFormValues {
@@ -50,23 +24,12 @@ export function OnboardingFlow() {
   const dispatch = useDispatch();
   const user = state.currentUser!;
 
-  const [step, setStep] = useState(1);
-  const [animating, setAnimating] = useState(false);
-
-  // Step 1 state
   const [name, setName] = useState(user.name || '');
   const [practiceType, setPracticeType] = useState(user.practiceType || 'Chartered Accountant (CA)');
   const [membershipNo, setMembershipNo] = useState(user.membershipNo || '');
   const [clients, setClients] = useState<ClientDraft[]>([]);
   const [step1Loading, setStep1Loading] = useState(false);
   const [step1Error, setStep1Error] = useState('');
-
-  // Step 2 state
-  const [vaultPath, setVaultPath] = useState('');
-  const [vaultPickLoading, setVaultPickLoading] = useState(false);
-  const [vaultSaveLoading, setVaultSaveLoading] = useState(false);
-  const [vaultError, setVaultError] = useState('');
-  const [vaultSuccess, setVaultSuccess] = useState(false);
 
   function addClient() {
     setClients(prev => [
@@ -83,15 +46,7 @@ export function OnboardingFlow() {
     setClients(prev => prev.filter(c => c.id !== id));
   }
 
-  function goToStep(next: number) {
-    setAnimating(true);
-    setTimeout(() => {
-      setStep(next);
-      setAnimating(false);
-    }, 350);
-  }
-
-  // ── Step 1: Save Profile + Clients ─────────────────────────
+  // Save the profile and any clients added during onboarding.
   async function handleStep1Submit() {
     if (!name.trim()) { setStep1Error('Please enter your full name.'); return; }
     setStep1Loading(true);
@@ -120,7 +75,9 @@ export function OnboardingFlow() {
         if (!created) throw new Error(`Could not save client "${c.name.trim()}". Please try again.`);
       }
 
-      goToStep(2);
+      const completion = await apiCompleteOnboarding();
+      if (!completion.success) throw new Error(completion.message || 'Could not complete onboarding.');
+      dispatch({ type: 'COMPLETE_ONBOARDING' });
     } catch (err: any) {
       setStep1Error(err.message || 'Something went wrong. Please try again.');
     } finally {
@@ -128,58 +85,18 @@ export function OnboardingFlow() {
     }
   }
 
-  // ── Step 2: Pick Vault Folder ──────────────────────────────
-  async function handlePickFolder() {
-    setVaultPickLoading(true);
-    setVaultError('');
-    const picked = await pickFolder();
-    setVaultPickLoading(false);
-    if (picked) {
-      setVaultPath(picked);
-    } else {
-      setVaultError('Could not open folder picker. Please type the path manually below.');
-    }
-  }
-
-  async function handleVaultSave() {
-    const trimmed = vaultPath.trim();
-    if (!trimmed) { setVaultError('Please select or enter a vault folder path.'); return; }
-    if (trimmed.length < 3) { setVaultError('Please enter a valid folder path.'); return; }
-    if (!isDesktopApp()) {
-      setVaultError('Local document sync requires the installed TaxFlow desktop app. Open onboarding there to configure this folder.');
-      return;
-    }
-
-    setVaultSaveLoading(true);
-    setVaultError('');
-    try {
-      await configureLocalVault(trimmed);
-      const res = await apiSetupVault(trimmed);
-      if (!res.success) throw new Error(res.message || 'Failed to save vault setup');
-      setVaultSuccess(true);
-      setTimeout(() => dispatch({ type: 'COMPLETE_ONBOARDING' }), 900);
-    } catch (err: any) {
-      setVaultError(err.message || 'Failed to save vault configuration.');
-    } finally {
-      setVaultSaveLoading(false);
-    }
-  }
-
   return (
     <div className="ob-overlay">
-      <div className={`ob-card ${animating ? 'ob-slide-out' : 'ob-slide-in'}`}>
+      <div className="ob-card ob-slide-in">
         {/* Header */}
         <div className="ob-header">
           <div className="ob-logo">
             <BrandLogo className="onboarding-brand-logo" />
           </div>
-          <StepDots step={step} total={2} />
         </div>
 
         {/* ── STEP 1: Profile & Clients ── */}
-        {step === 1 && (
           <div className="ob-body">
-            <div className="ob-step-badge">Step 1 of 2</div>
             <h1 className="ob-title">Set Up Your Practice</h1>
             <p className="ob-subtitle">Let's configure your personal CA workspace and add your first clients so TaxFlow.AI is ready to go from day one.</p>
 
@@ -218,98 +135,12 @@ export function OnboardingFlow() {
             {step1Error && <div className="ob-error">{step1Error}</div>}
 
             <div className="ob-actions">
-              <button className="ob-skip" onClick={() => goToStep(2)}>Skip for now →</button>
+              <button className="ob-skip" onClick={() => void handleStep1Submit()}>Continue</button>
               <button className="ob-btn-primary" onClick={handleStep1Submit} disabled={step1Loading}>
-                {step1Loading ? <span className="ob-spinner" /> : 'Save & Continue'}
+                {step1Loading ? <span className="ob-spinner" /> : 'Save & Finish'}
               </button>
             </div>
           </div>
-        )}
-
-        {/* ── STEP 2: Vault Setup ── */}
-        {step === 2 && (
-          <div className="ob-body">
-            <div className="ob-step-badge">Step 2 of 2</div>
-            <h1 className="ob-title">Configure Your Local Vault</h1>
-            <p className="ob-subtitle">
-              Choose a folder on <strong>this computer</strong>. Secure client-portal documents are copied into each client’s year/month/Raw folder after a verified download. A private cloud copy is retained for recovery and syncing other authorized devices.
-            </p>
-
-            <div className="ob-vault-visual">
-              <div className="ob-vault-icon">🗄️</div>
-              <div className="ob-vault-lines">
-                <div className="ob-vault-line l1" />
-                <div className="ob-vault-line l2" />
-                <div className="ob-vault-line l3" />
-              </div>
-            </div>
-
-            <div className="ob-vault-info-grid">
-              <div className="ob-vault-info-item">
-                <span className="ob-vault-info-icon">🔒</span>
-                <span>Local copy on this device</span>
-              </div>
-              <div className="ob-vault-info-item">
-                <span className="ob-vault-info-icon">⚡</span>
-                <span>Verified before saving</span>
-              </div>
-              <div className="ob-vault-info-item">
-                <span className="ob-vault-info-icon">🛡️</span>
-                <span>Private cloud recovery copy</span>
-              </div>
-              <div className="ob-vault-info-item">
-                <span className="ob-vault-info-icon">📁</span>
-                <span>You choose the folder location</span>
-              </div>
-            </div>
-
-            <div className="ob-vault-note">
-              Use a firm-approved folder on this computer. Avoid consumer cloud-sync folders such as OneDrive unless your firm's data policy permits them.
-            </div>
-
-            <div className="ob-vault-path-row">
-              <input
-                className="ob-input ob-vault-input"
-                placeholder="e.g. D:\TaxFlowVault  or  C:\Users\You\Documents\TaxFlow"
-                value={vaultPath}
-                onChange={e => setVaultPath(e.target.value)}
-                readOnly={vaultSuccess}
-              />
-              <button className="ob-btn-secondary" onClick={handlePickFolder} disabled={vaultPickLoading || vaultSuccess}>
-                {vaultPickLoading ? <span className="ob-spinner" /> : '📂 Browse'}
-              </button>
-            </div>
-
-            {!isDesktopApp() && (
-              <div className="ob-vault-note">
-                Local document sync is available in the installed TaxFlow desktop app. A browser cannot write directly to a selected folder.
-              </div>
-            )}
-
-            {vaultPath && !vaultSuccess && (
-              <div className="ob-vault-preview">
-                <span>📁</span>
-                <code>{vaultPath}</code>
-              </div>
-            )}
-
-            {vaultSuccess && (
-              <div className="ob-vault-success">
-                <span className="ob-success-check">✓</span>
-                <span>Vault configured successfully! Setting up your workspace…</span>
-              </div>
-            )}
-
-            {vaultError && <div className="ob-error">{vaultError}</div>}
-
-            <div className="ob-actions">
-              <button className="ob-skip" onClick={() => goToStep(1)}>← Back</button>
-              <button className="ob-btn-primary" onClick={handleVaultSave} disabled={vaultSaveLoading || vaultSuccess || !vaultPath.trim() || !isDesktopApp()}>
-                {vaultSaveLoading ? <span className="ob-spinner" /> : 'Configure Vault →'}
-              </button>
-            </div>
-          </div>
-        )}
 
       </div>
 

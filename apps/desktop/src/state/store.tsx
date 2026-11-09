@@ -231,7 +231,7 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, sessionStatus: 'expired' };
     case 'COMPLETE_ONBOARDING': {
       if (!state.currentUser) return state;
-      const updatedUser = { ...state.currentUser, onboardingComplete: true, vaultConfigured: true };
+      const updatedUser = { ...state.currentUser, onboardingComplete: true };
       try {
         const raw = localStorage.getItem('taxflow_session');
         const session = raw ? JSON.parse(raw) : {};

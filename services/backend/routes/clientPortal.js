@@ -557,6 +557,7 @@ router.post(
         clientId: req.portalClient.id,
         year,
         month,
+        category: 'General',
         documentId,
         fileName
       });
@@ -577,7 +578,6 @@ router.post(
         category: 'General',
         source: 'Portal',
         status: 'Pending',
-        vault_path: `supabase://${bucket}/${objectKey}`,
         storage_bucket: bucket,
         storage_object_path: objectKey,
         file_sha256: sha256(req.body),

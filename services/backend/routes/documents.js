@@ -1,41 +1,58 @@
 /**
- * TaxFlow.AI — Documents & Extraction Routes
- *
- * HYBRID STORAGE MODEL:
- *   Physical file (PDF/image) → Saved to Local Vault Storage on disk
- *   File metadata + extracted fields → Saved to Supabase cloud database
- *   AI usage count → Logged to Supabase ai_usage_log table
+ * TaxFlow.AI — Cloud document routes
  */
 
 const express = require('express');
 const router = express.Router();
-const path = require('path');
+const crypto = require('node:crypto');
 const { supabase, isConnected } = require('../db/supabase');
-const { saveFileToVault, vaultFileExists, getVaultBaseDir } = require('../vault/vaultManager');
 const { getOwnedClientIds, assertOwnedClient } = require('../lib/ownership');
 const {
+  deleteDocument,
   downloadDocument,
-  isExpectedPortalObject,
-  normalizeMimeType
+  getStorageBucket,
+  getStorageObjectKey,
+  isExpectedDocumentObject,
+  normalizeMimeType,
+  sanitizeStorageFileName,
+  sha256,
+  uploadDocument
 } = require('../lib/documentStorage');
 
 function normalizeFileType(fileType, fileName) {
   const extension = String(fileName || '').split('.').pop().toLowerCase();
-  const value = String(fileType || '').toLowerCase();
   const types = {
     pdf: 'PDF', png: 'PNG', jpg: 'JPG', jpeg: 'JPEG', webp: 'WEBP',
-    csv: 'CSV', xlsx: 'XLSX', xls: 'XLS', doc: 'DOC', docx: 'DOCX'
+    csv: 'CSV', xlsx: 'XLSX', xls: 'XLS', doc: 'DOC', docx: 'DOCX', txt: 'OTHER'
   };
-  if (types[extension]) return types[extension];
-  if (value.includes('pdf')) return 'PDF';
-  if (value.includes('png')) return 'PNG';
-  if (value.includes('jpeg') || value.includes('jpg')) return value.includes('jpeg') ? 'JPEG' : 'JPG';
-  if (value.includes('spreadsheet') || value.includes('excel')) return 'XLSX';
-  if (value.includes('word')) return 'DOCX';
-  return 'PDF';
+  const expectedType = types[extension];
+  if (!expectedType || (fileType && String(fileType).toUpperCase() !== expectedType)) return null;
+  return expectedType;
 }
-const VAULT_BASE_DIR = getVaultBaseDir();
 
+function matchesFileSignature(fileType, buffer) {
+  const startsWith = (...bytes) => bytes.every((byte, index) => buffer[index] === byte);
+  switch (fileType) {
+    case 'PDF': return buffer.subarray(0, 5).toString('ascii') === '%PDF-';
+    case 'PNG': return startsWith(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
+    case 'JPG':
+    case 'JPEG': return startsWith(0xff, 0xd8, 0xff);
+    case 'WEBP': return buffer.subarray(0, 4).toString('ascii') === 'RIFF'
+      && buffer.subarray(8, 12).toString('ascii') === 'WEBP';
+    case 'XLS':
+    case 'DOC': return startsWith(0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1);
+    case 'XLSX':
+    case 'DOCX': return startsWith(0x50, 0x4b, 0x03, 0x04);
+    case 'CSV':
+    case 'OTHER':
+      try {
+        return !buffer.includes(0) && new TextDecoder('utf-8', { fatal: true }).decode(buffer).length > 0;
+      } catch {
+        return false;
+      }
+    default: return false;
+  }
+}
 // --- In-Memory Fallback ---
 let fallbackDocuments = [
   {
@@ -45,7 +62,6 @@ let fallbackDocuments = [
     file_name: 'GST_Invoice_Sep_2026.pdf',
     file_type: 'PDF', file_size_kb: 420,
     category: 'GST', source: 'WhatsApp', status: 'Extracted',
-    vault_path: path.join(VAULT_BASE_DIR, 'clients', '11111111-1111-1111-1111-111111111111', 'GST', '2026-27', 'sample.pdf'),
     assessment_year: '2026-27', confidence_score: 96,
     extracted_data: {
       invoice_number: 'INV-2026-889', vendor_name: 'Mahindra Auto Parts',
@@ -56,10 +72,67 @@ let fallbackDocuments = [
   }
 ];
 
+function getCloudObject(document, userId) {
+  if (!document.storage_bucket || !document.storage_object_path) return null;
+  return isExpectedDocumentObject({
+    bucket: document.storage_bucket,
+    objectKey: document.storage_object_path,
+    userId,
+    clientId: document.client_id,
+    documentId: document.id,
+    createdAt: document.created_at,
+    fileName: document.file_name,
+    category: document.category
+  }) ? {
+    bucket: document.storage_bucket,
+    objectKey: document.storage_object_path,
+    mimeType: normalizeMimeType(document.mime_type)
+  } : null;
+}
+
+router.get('/search', async (req, res) => {
+  try {
+    const queryText = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    if (queryText.length < 2 || queryText.length > 100) {
+      return res.status(400).json({ success: false, message: 'Search text must be between 2 and 100 characters.' });
+    }
+    if (!isConnected || !supabase) {
+      return res.json({ success: true, source: 'demo', data: [] });
+    }
+
+    const ownedClientIds = await getOwnedClientIds(req.user.id);
+    if (!ownedClientIds.length) return res.json({ success: true, source: 'supabase', data: [] });
+    const { data, error } = await supabase.from('documents_metadata')
+      .select('id, client_id, client_name, file_name, file_size_kb, created_at')
+      .in('client_id', ownedClientIds)
+      .neq('source', 'Telegram')
+      .ilike('file_name', `%${queryText.replace(/[%_]/g, '\\$&')}%`)
+      .order('created_at', { ascending: false })
+      .limit(12);
+    if (error) throw error;
+
+    return res.json({
+      success: true,
+      source: 'supabase',
+      data: (data || []).map(document => ({
+        documentId: document.id,
+        clientId: document.client_id,
+        clientName: document.client_name || 'Client',
+        fileName: document.file_name,
+        size: Math.max(0, Math.round(Number(document.file_size_kb || 0) * 1024)),
+        modifiedAt: document.created_at
+      }))
+    });
+  } catch (error) {
+    console.error('[Documents] Cloud filename search failed:', error);
+    return res.status(500).json({ success: false, message: 'Cloud documents could not be searched.' });
+  }
+});
+
 // GET /api/v1/documents — List documents (optional ?clientId= filter)
 router.get('/', async (req, res) => {
   try {
-    if (isConnected) {
+    if (isConnected && supabase) {
       const ownedClientIds = await getOwnedClientIds(req.user.id);
       let query = supabase.from('documents_metadata').select('*')
         .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000'])
@@ -84,8 +157,10 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     if (isConnected) {
+      const ownedClientIds = await getOwnedClientIds(req.user.id);
       const { data, error } = await supabase
-        .from('documents_metadata').select('*').eq('id', req.params.id).in('client_id', (await getOwnedClientIds(req.user.id)).length ? await getOwnedClientIds(req.user.id) : ['00000000-0000-0000-0000-000000000000']).single();
+        .from('documents_metadata').select('*').eq('id', req.params.id)
+        .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000']).single();
       if (error) throw error;
       if (data.source === 'Telegram') return res.status(404).json({ success: false, message: 'Document not found' });
       return res.json({ success: true, source: 'supabase', data });
@@ -99,262 +174,206 @@ router.get('/:id', async (req, res) => {
 });
 
 /**
- * POST /api/v1/documents/upload-vault
- * Save physical file to Local Vault Storage, save metadata to Supabase
+ * POST /api/v1/documents
+ * Upload a file to private Supabase Storage and save its metadata.
  * Body: { clientId, clientName, fileName, fileType, category, fileBase64, source, assessmentYear }
  */
-router.post('/upload-vault', async (req, res) => {
+router.post('/', async (req, res) => {
+  let uploadedObject = null;
   try {
-    const { clientId, clientName, fileName, fileType, category, fileBase64, source, assessmentYear } = req.body;
-
-    if (!clientId || !fileName) {
-      return res.status(400).json({ success: false, message: 'clientId and fileName are required' });
+    if (!isConnected || !supabase) {
+      return res.status(503).json({ success: false, message: 'Cloud document storage is unavailable. Check the Supabase backend configuration and try again.' });
+    }
+    const { clientId, fileName, fileType, category, fileBase64, source, assessmentYear } = req.body || {};
+    if (typeof clientId !== 'string' || typeof fileName !== 'string' || !fileName.trim()) {
+      return res.status(400).json({ success: false, message: 'clientId and fileName are required.' });
+    }
+    if (typeof fileBase64 !== 'string' || !fileBase64.trim()) {
+      return res.status(400).json({ success: false, message: 'A file is required for cloud upload.' });
+    }
+    if (source !== 'Manual' && source !== 'Upload') {
+      return res.status(400).json({ success: false, message: 'Document source is invalid.' });
     }
 
-    if (isConnected && !(await assertOwnedClient(req.user.id, clientId))) {
+    if (!(await assertOwnedClient(req.user.id, clientId))) {
       return res.status(404).json({ success: false, message: 'Client not found.' });
     }
 
-    // Step 1: Save physical file to Local Vault Storage
-    let vaultPath = null;
-    let fileSizeKb = 0;
-    let savedFileName = fileName;
+    const { data: client, error: clientError } = await supabase.from('clients')
+      .select('id, name')
+      .eq('id', clientId)
+      .eq('user_id', req.user.id)
+      .single();
+    if (clientError) throw clientError;
 
-    if (fileBase64) {
-      const saved = saveFileToVault(clientName || clientId, fileName, fileBase64, category || 'General', assessmentYear || '2026-27');
-      vaultPath = saved.vaultPath;
-      fileSizeKb = saved.fileSizeKb;
-      savedFileName = saved.fileName;
-    } else {
-      // No file content — create metadata pointer only (e.g. WhatsApp media to be downloaded later)
-      vaultPath = `PENDING_DOWNLOAD:${fileName}`;
+    const bucket = getStorageBucket();
+    if (!bucket) {
+      return res.status(503).json({ success: false, message: 'Cloud document storage is not configured. Set SUPABASE_STORAGE_BUCKET on the backend.' });
+    }
+    const encodedContent = fileBase64.replace(/^data:[^;,]+;base64,/i, '').trim();
+    const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
+    if (encodedContent.length > Math.ceil(MAX_DOCUMENT_BYTES / 3) * 4) {
+      return res.status(413).json({ success: false, message: 'Files must be 20 MB or smaller.' });
+    }
+    if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encodedContent)) {
+      return res.status(400).json({ success: false, message: 'The uploaded file is not valid base64 data.' });
+    }
+    const buffer = Buffer.from(encodedContent, 'base64');
+    if (!buffer.length || buffer.toString('base64') !== encodedContent) {
+      return res.status(400).json({ success: false, message: 'The uploaded file is empty or invalid.' });
+    }
+    if (buffer.length > MAX_DOCUMENT_BYTES) {
+      return res.status(413).json({ success: false, message: 'Files must be 20 MB or smaller.' });
     }
 
-    // Step 2: Save metadata record to Supabase (no binary data)
-    const allowedSources = new Set(['WhatsApp', 'Manual', 'Portal', 'Upload']);
-    const normalizedSource = allowedSources.has(source) ? source : 'Manual';
+    const normalizedCategory = typeof category === 'string' ? category.trim() : '';
+    const allowedCategories = new Set(['GST', 'IncomeTax', 'Form16', 'BankStatement', 'Notice', 'TDS', 'Audit', 'General', 'Extracted']);
+    if (!allowedCategories.has(normalizedCategory)) {
+      return res.status(400).json({ success: false, message: 'Document category is invalid.' });
+    }
+    const normalizedSource = source;
+    const createdAt = new Date();
+    const documentId = crypto.randomUUID();
+    const normalizedFileName = sanitizeStorageFileName(fileName);
+    if (!normalizedFileName) return res.status(400).json({ success: false, message: 'A valid file name is required.' });
+    const fileTypeName = normalizeFileType(fileType, normalizedFileName);
+    if (!fileTypeName) return res.status(400).json({ success: false, message: 'This file type is not supported or does not match its file name.' });
+    if (!matchesFileSignature(fileTypeName, buffer)) {
+      return res.status(400).json({ success: false, message: 'The file content does not match its extension or supported format.' });
+    }
+    const mimeTypes = {
+      PDF: 'application/pdf', PNG: 'image/png', JPG: 'image/jpeg', JPEG: 'image/jpeg',
+      WEBP: 'image/webp', CSV: 'text/csv', XLSX: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      XLS: 'application/vnd.ms-excel', DOC: 'application/msword',
+      DOCX: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', OTHER: 'text/plain'
+    };
+    const mimeType = normalizeMimeType(mimeTypes[fileTypeName]);
+    const objectKey = getStorageObjectKey({
+      userId: req.user.id,
+      clientId,
+      year: String(createdAt.getUTCFullYear()),
+      month: new Intl.DateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' }).format(createdAt),
+      category: normalizedCategory,
+      documentId,
+      fileName: normalizedFileName
+    });
+    uploadedObject = await uploadDocument(objectKey, buffer, mimeType);
     const docMeta = {
+      id: documentId,
       client_id: clientId,
-      client_name: clientName || 'Unknown',
-      file_name: savedFileName,
-      file_type: normalizeFileType(fileType, fileName),
-      file_size_kb: fileSizeKb,
-      category: category || 'General',
+      client_name: client.name,
+      file_name: normalizedFileName,
+      file_type: fileTypeName,
+      file_size_kb: Number((buffer.length / 1024).toFixed(2)),
+      category: normalizedCategory,
       source: normalizedSource,
       status: 'Pending',
-      vault_path: vaultPath,
-      assessment_year: assessmentYear || '2026-27'
+      storage_bucket: uploadedObject.bucket,
+      storage_object_path: uploadedObject.objectKey,
+      file_sha256: sha256(buffer),
+      mime_type: mimeType,
+      assessment_year: typeof assessmentYear === 'string' ? assessmentYear.slice(0, 10) : '2026-27',
+      created_at: createdAt.toISOString()
     };
-
-    if (isConnected) {
-      const { data, error } = await supabase
-        .from('documents_metadata').insert([docMeta]).select().single();
-      if (error) {
-        // The binary has already been safely written to the local vault. Keep
-        // that file visible instead of reporting a misleading total failure
-        // when a database migration has not been applied yet.
-        if (isMissingDocumentsMetadataTable(error)) {
-          console.error('[Documents] Metadata table is unavailable:', error.message);
-          return res.status(201).json({
-            success: true,
-            source: 'local-vault',
-            message: 'File saved to the Local Vault, but database metadata was not saved.',
-            warning: 'Run services/backend/db/schema.sql in the Supabase SQL Editor to enable document metadata and AI extraction.',
-            metadataSaved: false,
-            data: { id: `local-${Date.now()}`, ...docMeta }
-          });
-        }
-        throw error;
-      }
-
-      // Increment client's total_docs counter in Supabase
-      try {
-        await supabase.rpc('increment_client_docs', { cid: clientId });
-      } catch (rpcError) {
-        console.warn('[Documents] Could not increment client document count:', rpcError.message);
-      }
-
-      return res.status(201).json({
-        success: true, source: 'supabase',
-        message: 'File saved to Local Vault. Metadata stored in cloud database.',
-        data
-      });
+    const { data, error } = await supabase.from('documents_metadata').insert(docMeta).select().single();
+    if (error) throw error;
+    try {
+      const { error: rpcError } = await supabase.rpc('increment_client_docs', { cid: clientId });
+      if (rpcError) throw rpcError;
+    } catch (rpcError) {
+      console.warn('[Documents] Could not increment client document count:', rpcError.message);
     }
-
-    // Fallback
-    const newDoc = { id: `doc_${Date.now()}`, ...docMeta, created_at: new Date().toISOString() };
-    fallbackDocuments.push(newDoc);
-    res.status(201).json({
-      success: true, source: 'demo',
-      message: 'File saved to Local Vault (demo mode — metadata in memory).',
-      data: newDoc
-    });
+    return res.status(201).json({ success: true, source: 'supabase', message: 'File uploaded securely to private cloud storage.', data });
   } catch (err) {
-    console.error('[Documents] Upload error:', err.message);
-    res.status(500).json({ success: false, message: err.message });
+    if (uploadedObject && supabase) {
+      const { error: cleanupError } = await supabase.storage.from(uploadedObject.bucket).remove([uploadedObject.objectKey]);
+      if (cleanupError) {
+        console.error('[Documents] Upload rollback failed; an unindexed cloud object may remain:', cleanupError.message);
+      }
+    }
+    console.error('[Documents] Cloud upload error:', err.message);
+    const status = err.status === 503 ? 503 : 500;
+    return res.status(status).json({
+      success: false,
+      message: status === 503 ? err.message : 'The file could not be saved securely. Please try again.'
+    });
   }
 });
 
-function isMissingDocumentsMetadataTable(error) {
-  const text = `${error?.code || ''} ${error?.message || ''}`.toLowerCase();
-  return text.includes('pgrst205') || (text.includes('documents_metadata') && text.includes('schema cache'));
-}
-
-function isMissingPortalDocumentSyncFunction(error) {
-  const code = String(error?.code || '');
-  const message = String(error?.message || '');
-  return ['PGRST202', '42883'].includes(code)
-    || /list_pending_document_sync.*(?:does not exist|schema cache)|could not find the function/i.test(message);
-}
-
 /**
- * GET /api/v1/documents/:id/serve
- * Stream/serve the physical file from Local Vault Storage to the browser/UI
+ * GET /api/v1/documents/:id/file
+ * Stream a document from private Supabase Storage.
  */
-router.get('/:id/serve', async (req, res) => {
+router.get('/:id/file', async (req, res) => {
   try {
-    let vaultPath = null;
-    let storageObject = null;
-
-    if (isConnected) {
-      const ownedClientIds = await getOwnedClientIds(req.user.id);
-      const { data, error } = await supabase
+    if (!isConnected || !supabase) {
+      return res.status(503).json({ success: false, message: 'Cloud document storage is unavailable.' });
+    }
+    const ownedClientIds = await getOwnedClientIds(req.user.id);
+    const { data: document, error } = await supabase
         .from('documents_metadata')
-        .select('client_id, source, created_at, vault_path, file_name, storage_bucket, storage_object_path, mime_type')
+        .select('id, client_id, source, created_at, file_name, category, storage_bucket, storage_object_path, mime_type')
         .eq('id', req.params.id)
         .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000'])
         .single();
-      if (error) throw error;
-      if (data.source === 'Telegram') {
-        return res.status(404).json({ success: false, message: 'Telegram files are not available. Use the secure client portal for document uploads.' });
-      }
-      vaultPath = data.vault_path;
-      if (data.storage_bucket && data.storage_object_path) {
-        const expectedStorageObject = data.source === 'Portal'
-          && isExpectedPortalObject({
-            bucket: data.storage_bucket,
-            objectKey: data.storage_object_path,
-            userId: req.user.id,
-            clientId: data.client_id,
-            documentId: req.params.id,
-            createdAt: data.created_at,
-            fileName: data.file_name
-          });
-        if (!expectedStorageObject) {
-          console.error(`[Documents] Refusing unexpected cloud storage reference for document ${req.params.id}.`);
-          return res.status(404).json({ success: false, message: 'The cloud document reference is invalid.' });
-        }
-        storageObject = {
-          bucket: data.storage_bucket,
-          objectKey: data.storage_object_path,
-          mimeType: normalizeMimeType(data.mime_type)
-        };
-      }
-    } else {
-      const doc = fallbackDocuments.find(d => d.id === req.params.id);
-      if (doc) vaultPath = doc.vault_path;
+    if (error) {
+      if (error.code === 'PGRST116') return res.status(404).json({ success: false, message: 'Document not found.' });
+      throw error;
     }
-
-    if (storageObject) {
-      const buffer = await downloadDocument(storageObject.bucket, storageObject.objectKey);
-      res.setHeader('Cache-Control', 'private, no-store');
-      res.setHeader('Content-Type', storageObject.mimeType);
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('Content-Disposition', 'attachment');
-      return res.send(buffer);
+    if (document.source === 'Telegram') {
+      return res.status(404).json({ success: false, message: 'Telegram files are not available. Use the secure client portal for document uploads.' });
     }
-
-    if (!vaultPath || !vaultFileExists(vaultPath)) {
-      return res.status(404).json({ success: false, message: 'Physical file not found in Local Vault Storage.' });
+    const storageObject = getCloudObject(document, req.user.id);
+    if (!storageObject) {
+      return res.status(409).json({ success: false, message: 'This document has not been migrated to private cloud storage yet.' });
     }
-
-    res.sendFile(path.resolve(vaultPath));
+    const buffer = await downloadDocument(storageObject.bucket, storageObject.objectKey);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Type', storageObject.mimeType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', 'attachment');
+    return res.send(buffer);
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error(`[Documents] Cloud download failed for ${req.params.id}:`, err.message);
+    return res.status(500).json({ success: false, message: 'The cloud document could not be downloaded.' });
   }
 });
 
-router.get('/sync/pending', async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
-    const deviceId = String(req.query.deviceId || '');
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(deviceId)) {
-      return res.status(400).json({ success: false, message: 'A valid deviceId is required.' });
+    if (!isConnected || !supabase) {
+      return res.status(503).json({ success: false, message: 'Cloud document storage is unavailable.' });
     }
-
-    const limitValue = Number(req.query.limit || 50);
-    if (!Number.isInteger(limitValue) || limitValue < 1 || limitValue > 100) {
-      return res.status(400).json({ success: false, message: 'limit must be between 1 and 100.' });
-    }
-
-    const { data: documents, error } = await supabase.rpc('list_pending_document_sync', {
-      p_user_id: req.user.id,
-      p_device_id: deviceId,
-      p_limit: limitValue
-    });
-    if (error) throw error;
-
-    const pending = (documents || []).map(document => {
-        const createdAt = new Date(document.created_at);
-        if (Number.isNaN(createdAt.getTime())) throw new Error(`Document ${document.document_id} has an invalid creation date.`);
-        return {
-          id: document.document_id,
-          clientName: document.client_name || 'unknown',
-          fileName: document.file_name,
-          sha256: document.file_sha256,
-          source: document.source,
-          year: String(createdAt.getUTCFullYear()),
-          month: new Intl.DateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' }).format(createdAt)
-        };
-      });
-
-    return res.json({ success: true, data: pending });
-  } catch (error) {
-    console.error('[Documents] Local sync queue error:', error.message);
-    if (isMissingPortalDocumentSyncFunction(error)) {
-      return res.status(503).json({
-        success: false,
-        message: 'Client-portal file sync is not set up in this Supabase project. Apply the Telegram setup migrations to the database used by this backend, then retry.',
-      });
-    }
-    return res.status(503).json({ success: false, message: 'Could not load the client-portal file sync queue. Check the backend database connection and retry.' });
-  }
-});
-
-router.post('/sync/receipt', async (req, res) => {
-  try {
-    const { deviceId, documentId, sha256 } = req.body || {};
-    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    if (!uuidPattern.test(String(deviceId || '')) || !uuidPattern.test(String(documentId || ''))) {
-      return res.status(400).json({ success: false, message: 'Valid deviceId and documentId values are required.' });
-    }
-    if (!/^[0-9a-f]{64}$/i.test(String(sha256 || ''))) {
-      return res.status(400).json({ success: false, message: 'A valid SHA-256 checksum is required.' });
-    }
-
     const ownedClientIds = await getOwnedClientIds(req.user.id);
-    const { data: document, error: documentError } = await supabase
-      .from('documents_metadata')
-      .select('id, file_sha256')
-      .eq('id', documentId)
+    const { data: document, error: lookupError } = await supabase.from('documents_metadata')
+      .select('id, client_id, source, created_at, file_name, category, storage_bucket, storage_object_path, vault_path')
+      .eq('id', req.params.id)
       .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000'])
       .single();
-    if (documentError) throw documentError;
-    if (!document.file_sha256 || document.file_sha256 !== String(sha256).toLowerCase()) {
-      return res.status(409).json({ success: false, message: 'The local file checksum does not match the stored document.' });
+    if (lookupError) {
+      if (lookupError.code === 'PGRST116') return res.status(404).json({ success: false, message: 'Document not found.' });
+      throw lookupError;
     }
-
-    const { error } = await supabase.from('document_sync_receipts').upsert({
-      user_id: req.user.id,
-      device_id: deviceId,
-      document_id: documentId,
-      file_sha256: document.file_sha256,
-      synced_at: new Date().toISOString()
-    }, { onConflict: 'user_id,device_id,document_id' });
-    if (error) throw error;
-    return res.json({ success: true });
+    if (document.source === 'Telegram') {
+      return res.status(404).json({ success: false, message: 'Document not found.' });
+    }
+    if (document.storage_bucket && document.storage_object_path) {
+      const storageObject = getCloudObject(document, req.user.id);
+      if (!storageObject) {
+        return res.status(404).json({ success: false, message: 'The cloud document reference is invalid.' });
+      }
+      await deleteDocument(storageObject.bucket, storageObject.objectKey);
+    } else if (document.vault_path) {
+      return res.status(409).json({ success: false, message: 'This legacy document must be migrated to cloud storage before it can be deleted.' });
+    }
+    const { error: deleteError } = await supabase.from('documents_metadata').delete()
+      .eq('id', document.id)
+      .eq('client_id', document.client_id);
+    if (deleteError) throw deleteError;
+    return res.json({ success: true, source: 'supabase', data: { id: document.id } });
   } catch (error) {
-    console.error('[Documents] Local sync receipt error:', error.message);
-    return res.status(500).json({ success: false, message: 'Could not record the local document sync.' });
+    console.error(`[Documents] Cloud deletion failed for ${req.params.id}:`, error.message);
+    return res.status(500).json({ success: false, message: 'The document could not be deleted securely. Please retry.' });
   }
 });
 

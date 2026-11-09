@@ -3,7 +3,7 @@ import { Icon } from '../components/Icon';
 import { FileArtifactCard } from '../components/FileArtifactCard';
 import { DocumentPreviewDialog } from '../components/DocumentPreviewDialog';
 import { useAppState, useDispatch } from '../state/store';
-import { deleteVaultFile, fetchVaultFile, fetchVaultTree, uploadToLocalVault, type VaultTreeEntry } from '../lib/api';
+import { deleteCloudDocument, fetchClientDocumentTree, fetchCloudDocumentFile, uploadDocument, type DocumentTreeEntry } from '../lib/api';
 import { openWithDefaultApp, supportsNativeFileOpen } from '../lib/nativeFiles';
 import { fDT } from '../lib/format';
 
@@ -14,14 +14,14 @@ function formatBytes(bytes = 0) {
 }
 function extension(name: string) { return name.split('.').pop()?.toLowerCase() || 'file'; }
 function fileClass(name: string) { return `vault-file-icon ext-${extension(name)}`; }
-function folderPaths(entries: VaultTreeEntry[], prefix = ''): string[] {
+function folderPaths(entries: DocumentTreeEntry[], prefix = ''): string[] {
   return entries.flatMap(entry => {
     const path = `${prefix}/${entry.name}`;
     return entry.type === 'folder' ? [path, ...folderPaths(entry.children || [], path)] : [];
   });
 }
 
-function findEntryAtPath(entries: VaultTreeEntry[], target: string, prefix = ''): VaultTreeEntry | null {
+function findEntryAtPath(entries: DocumentTreeEntry[], target: string, prefix = ''): DocumentTreeEntry | null {
   for (const entry of entries) {
     const path = `${prefix}/${entry.name}`;
     if (path === target) return entry;
@@ -33,7 +33,7 @@ function findEntryAtPath(entries: VaultTreeEntry[], target: string, prefix = '')
   return null;
 }
 
-function findFileByName(entries: VaultTreeEntry[], fileName: string, prefix = ''): { entry: VaultTreeEntry; path: string } | null {
+function findFileByName(entries: DocumentTreeEntry[], fileName: string, prefix = ''): { entry: DocumentTreeEntry; path: string } | null {
   for (const entry of entries) {
     const path = `${prefix}/${entry.name}`;
     if (entry.type === 'file' && entry.name.toLocaleLowerCase() === fileName.toLocaleLowerCase()) return { entry, path };
@@ -45,7 +45,19 @@ function findFileByName(entries: VaultTreeEntry[], fileName: string, prefix = ''
   return null;
 }
 
-function addFileToFolder(entries: VaultTreeEntry[], target: string, file: VaultTreeEntry, prefix = ''): VaultTreeEntry[] {
+function findFileById(entries: DocumentTreeEntry[], documentId: string, prefix = ''): { entry: DocumentTreeEntry; path: string } | null {
+  for (const entry of entries) {
+    const path = `${prefix}/${entry.name}`;
+    if (entry.type === 'file' && entry.documentId === documentId) return { entry, path };
+    if (entry.type === 'folder') {
+      const match = findFileById(entry.children || [], documentId, path);
+      if (match) return match;
+    }
+  }
+  return null;
+}
+
+function addFileToFolder(entries: DocumentTreeEntry[], target: string, file: DocumentTreeEntry, prefix = ''): DocumentTreeEntry[] {
   return entries.map(entry => {
     const path = `${prefix}/${entry.name}`;
     if (path === target && entry.type === 'folder') {
@@ -62,7 +74,7 @@ function fileTypeLabel(name: string) {
   return ext === 'XLSX' || ext === 'CSV' ? 'Spreadsheet' : `${ext} document`;
 }
 
-function countChildren(entry: VaultTreeEntry) {
+function countChildren(entry: DocumentTreeEntry) {
   const children = entry.children || [];
   return {
     folders: children.filter(child => child.type === 'folder').length,
@@ -70,23 +82,23 @@ function countChildren(entry: VaultTreeEntry) {
   };
 }
 
-function FileCard({ item, onOpen, onDelete }: { item: VaultTreeEntry; onOpen: () => void; onDelete: () => void }) {
+function FileCard({ item, onOpen, onDelete }: { item: DocumentTreeEntry; onOpen: () => void; onDelete: () => void }) {
   return (
     <FileArtifactCard
       fileName={item.name}
-      detailText={`${fileTypeLabel(item.name)}${item.cloudRetained ? ' · private cloud recovery copy' : ''}`}
+      detailText={fileTypeLabel(item.name)}
       sizeText={formatBytes(item.size)}
       modifiedText={fDT(new Date(item.modifiedAt))}
       onOpen={onOpen}
-      onDelete={item.cloudRetained ? undefined : onDelete}
+      onDelete={onDelete}
       className="vault-file-card"
     />
   );
 }
 
 function TreeNode({ entry, depth, path, expanded, selectedPath, toggle, select }: {
-  entry: VaultTreeEntry; depth: number; path: string; expanded: Set<string>; selectedPath: string;
-  toggle: (path: string) => void; select: (entry: VaultTreeEntry, path: string) => void;
+  entry: DocumentTreeEntry; depth: number; path: string; expanded: Set<string>; selectedPath: string;
+  toggle: (path: string) => void; select: (entry: DocumentTreeEntry, path: string) => void;
 }) {
   const folder = entry.type === 'folder';
   const open = expanded.has(path);
@@ -109,124 +121,84 @@ export function FilesPage() {
   const s = useAppState();
   const dispatch = useDispatch();
   const [clientId, setClientId] = useState(s.clients[0]?.id || '');
-  const [entries, setEntries] = useState<VaultTreeEntry[]>([]);
+  const [entries, setEntries] = useState<DocumentTreeEntry[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [selected, setSelected] = useState<{ entry: VaultTreeEntry; path: string } | null>(null);
+  const [selected, setSelected] = useState<{ entry: DocumentTreeEntry; path: string } | null>(null);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [fallback, setFallback] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [clientMenuOpen, setClientMenuOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState('');
   const [uploadMessageKind, setUploadMessageKind] = useState<'success' | 'warning' | 'error' | ''>('');
-  const [pendingDelete, setPendingDelete] = useState<{ entry: VaultTreeEntry; path: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ entry: DocumentTreeEntry; path: string } | null>(null);
   const [deletingFile, setDeletingFile] = useState(false);
   const [openingFile, setOpeningFile] = useState(false);
   const [activeVaultPreview, setActiveVaultPreview] = useState<{ fileName: string; file: Blob } | null>(null);
   const [openingNativePreview, setOpeningNativePreview] = useState(false);
   const [nativePreviewError, setNativePreviewError] = useState('');
   const [loadedClientId, setLoadedClientId] = useState('');
-  const [pendingOpenFile, setPendingOpenFile] = useState<{ clientId: string; fileName: string; relativePath?: string } | null>(null);
+  const [pendingOpenFile, setPendingOpenFile] = useState<{ clientId: string; fileName: string; documentId?: string } | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const client = s.clients.find(item => item.id === clientId) || s.clients[0];
 
   useEffect(() => {
     const onOpenFile = (event: Event) => {
-      const detail = (event as CustomEvent<{ clientId: string; fileName: string; relativePath?: string }>).detail;
+      const detail = (event as CustomEvent<{ clientId: string; fileName: string; documentId?: string }>).detail;
       if (!detail?.clientId || !detail.fileName || !s.clients.some(clientItem => clientItem.id === detail.clientId)) return;
       setClientId(detail.clientId);
       setSelected(null);
       setQuery(detail.fileName);
       setPendingOpenFile(detail);
     };
-    window.addEventListener('taxflow:open-vault-file', onOpenFile);
-    return () => window.removeEventListener('taxflow:open-vault-file', onOpenFile);
+    window.addEventListener('taxflow:open-document', onOpenFile);
+    return () => window.removeEventListener('taxflow:open-document', onOpenFile);
   }, [s.clients]);
 
-  const fallbackTree = useMemo<VaultTreeEntry[]>(() => {
-    if (!client) return [];
-    const years = new Map<string, VaultTreeEntry>();
-    const now = new Date();
-    const currentYear = String(now.getFullYear());
-    const currentMonth = `${String(now.getMonth() + 1).padStart(2, '0')} - ${new Intl.DateTimeFormat('en-US', { month: 'long' }).format(now)}`;
-    const currentYearNode: VaultTreeEntry = { name: currentYear, type: 'folder', modifiedAt: now.toISOString(), children: [] };
-    const currentMonthNode: VaultTreeEntry = { name: currentMonth, type: 'folder', modifiedAt: now.toISOString(), children: [
-      { name: 'Raw', type: 'folder', modifiedAt: now.toISOString(), children: [] },
-      { name: 'Extracted', type: 'folder', modifiedAt: now.toISOString(), children: [] },
-    ] };
-    currentYearNode.children?.push(currentMonthNode);
-    years.set(currentYear, currentYearNode);
-    s.files.filter(file => file.client === client.id).forEach(file => {
-      const yearName = String(file.year);
-      const monthName = `${String(file.mo + 1).padStart(2, '0')} - ${new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date(2020, file.mo, 1))}`;
-      const year = years.get(yearName) || { name: yearName, type: 'folder', modifiedAt: new Date().toISOString(), children: [] };
-      const month = (year.children || []).find(item => item.name === monthName) || { name: monthName, type: 'folder', modifiedAt: new Date().toISOString(), children: [] };
-      if (!year.children?.includes(month)) year.children?.push(month);
-      const bucketName = file.bucket === 'Extracted' || file.bucket === 'Generated' ? 'Extracted' : 'Raw';
-      const bucket = (month.children || []).find(item => item.name === bucketName) || { name: bucketName, type: 'folder', modifiedAt: new Date().toISOString(), children: [] };
-      if (!month.children?.includes(bucket)) month.children?.push(bucket);
-      bucket.children?.push({ name: file.name, type: 'file', size: file.size * 1024, modifiedAt: file.at.toISOString() });
-      years.set(yearName, year);
-    });
-    return Array.from(years.values());
-  }, [client, s.files]);
-
-  function addRoot(items: VaultTreeEntry[]) { return client ? [{ name: client.name, type: 'folder' as const, modifiedAt: new Date().toISOString(), children: items }] : items; }
+  function addRoot(items: DocumentTreeEntry[]) { return client ? [{ name: client.name, type: 'folder' as const, modifiedAt: new Date().toISOString(), children: items }] : items; }
 
   useEffect(() => {
     if (!clientId) return;
     let cancelled = false;
     setLoading(true); setError('');
-    fetchVaultTree(clientId).then(result => {
+    fetchClientDocumentTree(clientId).then(result => {
       if (cancelled) return;
       const tree = addRoot(result.entries || []);
-      setEntries(tree); setFallback(false); setLoadedClientId(clientId); setExpanded(new Set(folderPaths(tree)));
+      setEntries(tree); setLoadedClientId(clientId); setExpanded(new Set(folderPaths(tree)));
       if (selected?.path) {
         const refreshedSelection = findEntryAtPath(tree, selected.path);
         setSelected(refreshedSelection ? { entry: refreshedSelection, path: selected.path } : null);
       }
     }).catch(err => {
       if (cancelled) return;
-      const tree = addRoot(fallbackTree);
-      setEntries(tree); setFallback(true); setLoadedClientId(clientId); setExpanded(new Set(folderPaths(tree)));
-      if (selected?.path) {
-        const refreshedSelection = findEntryAtPath(tree, selected.path);
-        setSelected(refreshedSelection ? { entry: refreshedSelection, path: selected.path } : null);
-      }
-      setError(err.message || 'The local vault could not be read. Showing indexed document data.');
+      setEntries([]);
+      setSelected(null);
+      setLoadedClientId(clientId);
+      setError(err.message || 'Cloud documents could not be loaded.');
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [clientId, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!pendingOpenFile || loadedClientId !== pendingOpenFile.clientId || !client) return;
-    const requestedPath = pendingOpenFile.relativePath
-      ? `/${client.name}/${pendingOpenFile.relativePath.replace(/[\\/]+/g, '/')}`
-      : '';
-    const match = requestedPath
-      ? (() => {
-          const entry = findEntryAtPath(entries, requestedPath);
-          return entry ? { entry, path: requestedPath } : null;
-        })()
+    const match = pendingOpenFile.documentId
+      ? findFileById(entries, pendingOpenFile.documentId)
       : findFileByName(entries, pendingOpenFile.fileName);
     if (match) {
       setSelected(match);
     } else {
       setUploadMessageKind('error');
-      setUploadMessage('This file is no longer available in the client vault. Refresh the folder and search again.');
+      setUploadMessage('This cloud document is no longer available. Refresh the list and search again.');
     }
     setPendingOpenFile(null);
   }, [pendingOpenFile, loadedClientId, client, entries]);
 
-  useEffect(() => { if (fallback && !loading) { const tree = addRoot(fallbackTree); setEntries(tree); setExpanded(new Set(folderPaths(tree))); } }, [fallbackTree, fallback, loading]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const visibleEntries = useMemo(() => {
     const term = query.trim().toLowerCase();
     if (!term) return entries;
-    const filter = (items: VaultTreeEntry[]): VaultTreeEntry[] => items.flatMap(item => {
+    const filter = (items: DocumentTreeEntry[]): DocumentTreeEntry[] => items.flatMap(item => {
       if (item.type === 'file') return item.name.toLowerCase().includes(term) ? [item] : [];
       const children = filter(item.children || []);
       return item.name.toLowerCase().includes(term) || children.length ? [{ ...item, children }] : [];
@@ -248,7 +220,7 @@ export function FilesPage() {
 
   function toggle(path: string) { setExpanded(previous => { const next = new Set(previous); next.has(path) ? next.delete(path) : next.add(path); return next; }); }
 
-  function removeFileAtPath(items: VaultTreeEntry[], target: string, prefix = ''): VaultTreeEntry[] {
+  function removeFileAtPath(items: DocumentTreeEntry[], target: string, prefix = ''): DocumentTreeEntry[] {
     return items.flatMap(item => {
       const path = `${prefix}/${item.name}`;
       if (path === target) return [];
@@ -282,19 +254,23 @@ export function FilesPage() {
     setUploadMessage('');
     setUploadMessageKind('');
     try {
-      const result = await uploadToLocalVault({
+      const result = await uploadDocument({
         clientId: client.id,
-        clientName: client.name,
         fileName: file.name,
         fileType: extensionName,
         category: uploadCategory,
         fileBase64: await toBase64(file),
         source: 'Manual',
       });
-      const savedName = result.data?.fileName || (result.data as any)?.file_name || file.name;
-      const savedSize = Number(result.data?.fileSize || (result.data as any)?.file_size_kb || file.size);
-      const savedAt = (result.data as any)?.created_at || new Date().toISOString();
-      const uploadedEntry: VaultTreeEntry = { name: savedName, type: 'file', size: savedSize * (savedSize < 1024 ? 1024 : 1), modifiedAt: savedAt };
+      const uploadedDocument = result.data;
+      if (!uploadedDocument?.id) throw new Error('The upload succeeded but returned no document ID.');
+      const savedName = uploadedDocument.file_name || file.name;
+      const savedSize = Number(uploadedDocument.file_size_kb || 0) * 1024;
+      const savedAt = uploadedDocument.created_at || new Date().toISOString();
+      const uploadedEntry: DocumentTreeEntry = {
+        name: savedName, type: 'file', documentId: uploadedDocument.id,
+        size: savedSize, modifiedAt: savedAt
+      };
       const selectedPath = selected?.path;
       if (selectedPath) {
         setEntries(previous => addFileToFolder(previous, selectedPath, uploadedEntry));
@@ -302,8 +278,8 @@ export function FilesPage() {
           ? { ...previous, entry: { ...previous.entry, children: [...(previous.entry.children || []), uploadedEntry] } }
           : previous);
       }
-      setUploadMessageKind(result.warning ? 'warning' : 'success');
-      setUploadMessage(result.warning || `${file.name} uploaded successfully.`);
+      setUploadMessageKind('success');
+      setUploadMessage(`${file.name} uploaded to private cloud storage.`);
       setRefresh(value => value + 1);
     } catch (err) {
       setUploadMessageKind('error');
@@ -315,22 +291,21 @@ export function FilesPage() {
 
   async function permanentlyDeleteFile() {
     if (!client || !pendingDelete) return;
-    const rootPrefix = `/${client.name}/`;
-    const relativePath = pendingDelete.path.startsWith(rootPrefix) ? pendingDelete.path.slice(rootPrefix.length) : '';
-    if (!relativePath) {
-      setDeleteError('This file path could not be verified. Nothing was deleted.');
+    const documentId = pendingDelete.entry.documentId;
+    if (!documentId) {
+      setDeleteError('This file has no cloud document ID and cannot be deleted here.');
       return;
     }
 
     setDeletingFile(true);
     setDeleteError('');
     try {
-      await deleteVaultFile(client.id, relativePath);
+      await deleteCloudDocument(documentId);
       setEntries(previous => removeFileAtPath(previous, pendingDelete.path));
       if (selected?.path === pendingDelete.path) setSelected(null);
       setPendingDelete(null);
       setUploadMessageKind('success');
-      setUploadMessage(`${pendingDelete.entry.name} was permanently deleted from the local vault.`);
+      setUploadMessage(`${pendingDelete.entry.name} was permanently deleted from cloud storage.`);
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'The file could not be deleted.');
     } finally {
@@ -340,11 +315,10 @@ export function FilesPage() {
 
   async function openSelectedFile() {
     if (!client || selected?.entry.type !== 'file' || openingFile) return;
-    const rootPrefix = `/${client.name}/`;
-    const relativePath = selected.path.startsWith(rootPrefix) ? selected.path.slice(rootPrefix.length) : '';
-    if (!relativePath) {
+    const documentId = selected.entry.documentId;
+    if (!documentId) {
       setUploadMessageKind('error');
-      setUploadMessage('This file path could not be verified. It was not opened.');
+      setUploadMessage('This file has no cloud document ID and cannot be opened.');
       return;
     }
 
@@ -352,7 +326,7 @@ export function FilesPage() {
     setUploadMessage('');
     setNativePreviewError('');
     try {
-      const file = await fetchVaultFile(client.id, relativePath);
+      const file = await fetchCloudDocumentFile(documentId);
       try {
         if (await openWithDefaultApp(file, selected.entry.name)) {
           setUploadMessageKind('success');
@@ -365,7 +339,7 @@ export function FilesPage() {
       setActiveVaultPreview({ fileName: selected.entry.name, file });
     } catch (error) {
       setUploadMessageKind('error');
-      setUploadMessage(error instanceof Error ? error.message : 'The vault file could not be opened.');
+      setUploadMessage(error instanceof Error ? error.message : 'The cloud document could not be opened.');
     } finally {
       setOpeningFile(false);
     }
@@ -386,22 +360,22 @@ export function FilesPage() {
 
   if (!client) {
     return <div className="vault-page">
-      <div className="ph vault-page-head" data-tour="files-intro"><div><div className="eyebrow">LOCAL VAULT</div><h1>Client folders</h1><p>Your private document workspace is ready when you add your first client.</p></div><div className="vault-health"><span className="health-dot ok" /><span>Vault ready</span></div></div>
+      <div className="ph vault-page-head" data-tour="files-intro"><div><div className="eyebrow">PRIVATE CLOUD STORAGE</div><h1>Client documents</h1><p>Your private document workspace is ready when you add your first client.</p></div><div className="vault-health"><span className="health-dot ok" /><span>Cloud storage</span></div></div>
       <div className="card workspace-empty vault-empty-files" data-tour="files-empty">
         <div className="workspace-empty-visual"><span className="workspace-empty-ring ring-one" /><span className="workspace-empty-ring ring-two" /><span className="workspace-empty-orb"><Icon name="folder" size={30} /></span><span className="workspace-empty-float float-one"><Icon name="check" size={14} /></span><span className="workspace-empty-float float-two"><Icon name="file" size={14} /></span></div>
-        <div className="workspace-empty-copy"><span className="eyebrow">A PRIVATE HOME FOR EVERY FILE</span><h2>Start with your first client folder</h2><p>Each client gets a structured Local Vault for Raw documents, Extracted data, and files ready for review.</p><button className="btn pri" onClick={() => dispatch({ type: 'GO', page: 'clients' })}><Icon name="users" size={14} />Add your first client</button></div>
+        <div className="workspace-empty-copy"><span className="eyebrow">A PRIVATE HOME FOR EVERY FILE</span><h2>Start with your first client folder</h2><p>Each client gets a private cloud folder for original documents, generated files, and records ready for review.</p><button className="btn pri" onClick={() => dispatch({ type: 'GO', page: 'clients' })}><Icon name="users" size={14} />Add your first client</button></div>
         <div className="workspace-empty-steps"><div><span>01</span><b>Raw</b><small>Keep original uploads untouched</small></div><div><span>02</span><b>Extracted</b><small>Organise reviewed information</small></div><div><span>03</span><b>Review</b><small>Open the right file when needed</small></div></div>
       </div>
     </div>;
   }
 
   return <div className="vault-page">
-    <div className="ph vault-page-head" data-tour="files-intro"><div><div className="eyebrow">LOCAL VAULT</div><h1>Client folders</h1><p>Browse the selected client folder and inspect its local documents.</p></div><div className="vault-health"><span className={`health-dot ${error ? 'warn' : 'ok'}`} /><span>{error ? 'Limited access' : 'Vault ready'}</span></div></div>
+    <div className="ph vault-page-head" data-tour="files-intro"><div><div className="eyebrow">PRIVATE CLOUD STORAGE</div><h1>Client documents</h1><p>Browse documents stored for the selected client in private Supabase Storage.</p></div><div className="vault-health"><span className={`health-dot ${error ? 'warn' : 'ok'}`} /><span>{error ? 'Limited access' : 'Cloud storage'}</span></div></div>
     <div className="vault-toolbar" data-tour="files-controls"><div className={`vault-client-select ${clientMenuOpen ? 'menu-open' : ''}`} title="Select client" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setClientMenuOpen(false); }}><button className="vault-client-name" onClick={() => s.clients.length && setClientMenuOpen(value => !value)} disabled={!s.clients.length} aria-haspopup="listbox" aria-expanded={clientMenuOpen}>{client?.name || 'No clients'}</button><span className="vault-client-arrow" aria-hidden="true" />{clientMenuOpen && s.clients.length > 0 && <div className="vault-client-menu" role="listbox">{s.clients.map(item => <button key={item.id} className={`vault-client-option ${item.id === client?.id ? 'active' : ''}`} role="option" aria-selected={item.id === client?.id} onClick={() => { setClientId(item.id); setSelected(null); setUploadMessage(''); setClientMenuOpen(false); }}>{item.name}{item.id === client?.id && <Icon name="check" size={13} />}</button>)}</div>}</div><div className="vault-path-label"><Icon name="folder" size={15} /><span>{pathLabel}</span></div><label className="vault-search"><Icon name="search" size={15} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search this vault" aria-label="Search this vault" />{query && <button onClick={() => setQuery('')} aria-label="Clear search"><Icon name="x" size={13} /></button>}</label></div>
     {selected?.entry.type === 'file' && <div className="vault-global-open"><span className="mut">Selected file: <b>{selected.entry.name}</b></span><button className="btn pri" onClick={() => void openSelectedFile()} disabled={openingFile}><Icon name="open" size={14} />{openingFile ? 'Opening…' : supportsNativeFileOpen() ? 'Open with default app' : 'Preview file'}</button></div>}
     <div className="vault-two-pane">
-      <section className="vault-tree-panel card" data-tour="files-tree"><div className="vault-panel-head"><div><span className="eyebrow">FOLDER TREE</span><h2>{client?.name || 'No client selected'}</h2></div><button className="btn ghost" onClick={() => setRefresh(value => value + 1)} disabled={loading || !clientId}><Icon name="refresh" size={14} />Refresh</button></div>{error && <div className="vault-notice"><Icon name="bell" size={15} /><span>{error}</span></div>}<div className="vault-tree-scroll">{loading ? <div className="vault-loading"><span className="spin" /><span>Reading vault…</span></div> : visibleEntries.length ? visibleEntries.map(entry => <TreeNode key={entry.name} entry={entry} depth={0} path={`/${entry.name}`} expanded={expanded} selectedPath={selected?.path || ''} toggle={toggle} select={(entry, path) => setSelected({ entry, path })} />) : <div className="vault-empty"><span className="vault-empty-icon"><Icon name="folder" size={22} /></span><b>{query ? 'No matching items' : 'This vault is empty'}</b><span>{query ? 'Try a different search.' : 'Files will appear here when added.'}</span></div>}</div></section>
-      <section className="vault-contents-panel card"><div className="vault-panel-head"><div><span className="eyebrow">SELECTED FOLDER</span><h2>{selected?.entry.name || client?.name || 'Folder contents'}</h2><small>{selected?.entry.type === 'folder' ? `${folderCount} folder${folderCount === 1 ? '' : 's'} · ${fileCount} file${fileCount === 1 ? '' : 's'}` : 'Select a folder in the tree'}</small></div><div className="vault-upload-action"><input ref={fileInputRef} type="file" className="vault-file-input" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv" onChange={uploadSelectedFile} /><button className="btn pri" onClick={() => fileInputRef.current?.click()} disabled={!canUpload} title={uploadCategory ? `Upload to ${selectedFolderName}` : 'Select the Raw or Extracted folder first'}><Icon name="upload" size={14} />{uploading ? 'Uploading…' : 'Upload file'}</button></div></div>{uploading && <div className="vault-uploading-state"><span className="vault-upload-orbit"><Icon name="upload" size={17} /></span><div><b>Uploading securely to {selectedFolderName}</b><small>Saving the file to the Local Vault and refreshing this folder…</small></div></div>}{uploadMessage && <div className={`vault-upload-message ${uploadMessageKind}`}><Icon name={uploadMessageKind === 'success' ? 'check' : uploadMessageKind === 'error' ? 'x' : 'bell'} size={14} /><span>{uploadMessage}</span></div>}{selected?.entry.type === 'file' ? <div className="vault-file-preview"><FileArtifactCard fileName={selected.entry.name} detailText={fileTypeLabel(selected.entry.name)} sizeText={formatBytes(selected.entry.size)} modifiedText={fDT(new Date(selected.entry.modifiedAt))} statusText="Stored in this client’s local vault" onOpen={() => void openSelectedFile()} openLabel={supportsNativeFileOpen() ? 'Open with default app' : 'Preview file'} opening={openingFile} /><div className="vault-detail-path">{selected.path}</div><div className="kv"><span>Type</span><b>{extension(selected.entry.name).toUpperCase()} file</b><span>Size</span><b>{formatBytes(selected.entry.size)}</b><span>Modified</span><b>{fDT(new Date(selected.entry.modifiedAt))}</b></div></div> : selected ? <div className="vault-contents"><div className="vault-current-path"><Icon name="folder" size={15} /><span>{selected.path}</span></div>{selectedChildren.length ? <div className="vault-file-grid">{selectedChildren.map(item => item.type === 'folder' ? <button className="vault-folder-card" key={item.name} onClick={() => setSelected({ entry: item, path: `${selected.path}/${item.name}` })}><span className="vault-folder-card-icon"><Icon name="folder" size={22} /></span><span><b>{item.name}</b><small>{item.children?.length || 0} items</small></span><Icon name="chev" size={14} /></button> : <FileCard key={item.name} item={item} onOpen={() => setSelected({ entry: item, path: `${selected.path}/${item.name}` })} onDelete={() => { setDeleteError(''); setPendingDelete({ entry: item, path: `${selected.path}/${item.name}` }); }} />)}</div> : <div className="vault-empty"><span className="vault-empty-icon"><Icon name="folder" size={22} /></span><b>This folder is empty</b><span>Files added to this folder will appear here.</span></div>}</div> : <div className="vault-overview"><div className="vault-overview-icon"><Icon name="folder" size={28}></Icon></div><b>Select a folder</b><span>Choose a folder from the tree to view everything inside it.</span></div>}</section>
+      <section className="vault-tree-panel card" data-tour="files-tree"><div className="vault-panel-head"><div><span className="eyebrow">FOLDER TREE</span><h2>{client?.name || 'No client selected'}</h2></div><button className="btn ghost" onClick={() => setRefresh(value => value + 1)} disabled={loading || !clientId}><Icon name="refresh" size={14} />Refresh</button></div>{error && <div className="vault-notice"><Icon name="bell" size={15} /><span>{error}</span></div>}<div className="vault-tree-scroll">{loading ? <div className="vault-loading"><span className="spin" /><span>Loading cloud files…</span></div> : visibleEntries.length ? visibleEntries.map(entry => <TreeNode key={entry.name} entry={entry} depth={0} path={`/${entry.name}`} expanded={expanded} selectedPath={selected?.path || ''} toggle={toggle} select={(entry, path) => setSelected({ entry, path })} />) : <div className="vault-empty"><span className="vault-empty-icon"><Icon name="folder" size={22} /></span><b>{query ? 'No matching items' : 'No documents yet'}</b><span>{query ? 'Try a different search.' : 'Files will appear here when added.'}</span></div>}</div></section>
+      <section className="vault-contents-panel card"><div className="vault-panel-head"><div><span className="eyebrow">SELECTED FOLDER</span><h2>{selected?.entry.name || client?.name || 'Folder contents'}</h2><small>{selected?.entry.type === 'folder' ? `${folderCount} folder${folderCount === 1 ? '' : 's'} · ${fileCount} file${fileCount === 1 ? '' : 's'}` : 'Select a folder in the tree'}</small></div><div className="vault-upload-action"><input ref={fileInputRef} type="file" className="vault-file-input" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv" onChange={uploadSelectedFile} /><button className="btn pri" onClick={() => fileInputRef.current?.click()} disabled={!canUpload} title={uploadCategory ? `Upload to ${selectedFolderName}` : 'Select the Raw or Extracted folder first'}><Icon name="upload" size={14} />{uploading ? 'Uploading…' : 'Upload file'}</button></div></div>{uploading && <div className="vault-uploading-state"><span className="vault-upload-orbit"><Icon name="upload" size={17} /></span><div><b>Uploading securely to {selectedFolderName}</b><small>Saving securely to private cloud storage and refreshing this folder…</small></div></div>}{uploadMessage && <div className={`vault-upload-message ${uploadMessageKind}`}><Icon name={uploadMessageKind === 'success' ? 'check' : uploadMessageKind === 'error' ? 'x' : 'bell'} size={14} /><span>{uploadMessage}</span></div>}{selected?.entry.type === 'file' ? <div className="vault-file-preview"><FileArtifactCard fileName={selected.entry.name} detailText={fileTypeLabel(selected.entry.name)} sizeText={formatBytes(selected.entry.size)} modifiedText={fDT(new Date(selected.entry.modifiedAt))} statusText="Stored in this client’s private cloud storage" onOpen={() => void openSelectedFile()} openLabel={supportsNativeFileOpen() ? 'Open with default app' : 'Preview file'} opening={openingFile} /><div className="vault-detail-path">{selected.path}</div><div className="kv"><span>Type</span><b>{extension(selected.entry.name).toUpperCase()} file</b><span>Size</span><b>{formatBytes(selected.entry.size)}</b><span>Modified</span><b>{fDT(new Date(selected.entry.modifiedAt))}</b></div></div> : selected ? <div className="vault-contents"><div className="vault-current-path"><Icon name="folder" size={15} /><span>{selected.path}</span></div>{selectedChildren.length ? <div className="vault-file-grid">{selectedChildren.map(item => item.type === 'folder' ? <button className="vault-folder-card" key={item.name} onClick={() => setSelected({ entry: item, path: `${selected.path}/${item.name}` })}><span className="vault-folder-card-icon"><Icon name="folder" size={22} /></span><span><b>{item.name}</b><small>{item.children?.length || 0} items</small></span><Icon name="chev" size={14} /></button> : <FileCard key={item.name} item={item} onOpen={() => setSelected({ entry: item, path: `${selected.path}/${item.name}` })} onDelete={() => { setDeleteError(''); setPendingDelete({ entry: item, path: `${selected.path}/${item.name}` }); }} />)}</div> : <div className="vault-empty"><span className="vault-empty-icon"><Icon name="folder" size={22} /></span><b>This folder is empty</b><span>Files added to this folder will appear here.</span></div>}</div> : <div className="vault-overview"><div className="vault-overview-icon"><Icon name="folder" size={28}></Icon></div><b>Select a folder</b><span>Choose a folder from the tree to view everything inside it.</span></div>}</section>
     </div>
     {activeVaultPreview && (
       <DocumentPreviewDialog
@@ -414,6 +388,6 @@ export function FilesPage() {
         nativeError={nativePreviewError}
       />
     )}
-    {pendingDelete && <div className="modal delete-confirm-modal vault-delete-modal" onMouseDown={event => { if (event.target === event.currentTarget && !deletingFile) setPendingDelete(null); }}><div className="card delete-confirm-card vault-delete-card" role="alertdialog" aria-modal="true" aria-labelledby="delete-vault-file-title"><div className="delete-confirm-icon"><Icon name="trash" size={22} /></div><span className="eyebrow">Permanent deletion</span><h2 id="delete-vault-file-title">Delete this file?</h2><p><strong>{pendingDelete.entry.name}</strong> will be permanently removed from your local vault folder. This cannot be undone.</p>{deleteError && <div className="ob-error">{deleteError}</div>}<div className="delete-confirm-actions"><button className="btn gh" disabled={deletingFile} onClick={() => setPendingDelete(null)}>Keep file</button><button className="btn danger" disabled={deletingFile} onClick={permanentlyDeleteFile}>{deletingFile ? <><i className="spin" />Deleting</> : <><Icon name="trash" size={14} />Delete permanently</>}</button></div></div></div>}
+    {pendingDelete && <div className="modal delete-confirm-modal vault-delete-modal" onMouseDown={event => { if (event.target === event.currentTarget && !deletingFile) setPendingDelete(null); }}><div className="card delete-confirm-card vault-delete-card" role="alertdialog" aria-modal="true" aria-labelledby="delete-vault-file-title"><div className="delete-confirm-icon"><Icon name="trash" size={22} /></div><span className="eyebrow">Permanent deletion</span><h2 id="delete-vault-file-title">Delete this file?</h2><p><strong>{pendingDelete.entry.name}</strong> will be permanently removed from your private cloud storage folder. This cannot be undone.</p>{deleteError && <div className="ob-error">{deleteError}</div>}<div className="delete-confirm-actions"><button className="btn gh" disabled={deletingFile} onClick={() => setPendingDelete(null)}>Keep file</button><button className="btn danger" disabled={deletingFile} onClick={permanentlyDeleteFile}>{deletingFile ? <><i className="spin" />Deleting</> : <><Icon name="trash" size={14} />Delete permanently</>}</button></div></div></div>}
   </div>;
 }

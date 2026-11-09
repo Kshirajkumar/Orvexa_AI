@@ -11,13 +11,16 @@ import {
   hasOpenRouterApiKey,
   isDesktopApp,
   saveOpenRouterApiKey,
-} from '../lib/localVault';
+} from '../lib/secureCredentials';
 import {
   fetchOpenRouterModels,
+  getOpenRouterFallbackSettings,
   getSelectedOpenRouterModel,
   isUsingLocalOpenRouterKey,
+  setOpenRouterFallbackSettings,
   setSelectedOpenRouterModel,
   setUsingLocalOpenRouterKey,
+  type OpenRouterFallbackSettings,
   type OpenRouterModel,
 } from '../lib/openRouter';
 
@@ -136,12 +139,11 @@ export function ClientsPage() {
     setDeleteSaving(true);
     setDeleteError('');
     try {
-      const deleted = await deleteClient(selectedClient.id);
+      await deleteClient(selectedClient.id);
       dispatch({ type: 'DELETE_CLIENT', id: selectedClient.id });
       setDeleteConfirm(false);
       setEditingClient(false);
       setSelectedClient(null);
-      if (deleted.vaultWarning) console.warn(deleted.vaultWarning);
     } catch (err: any) {
       setDeleteError(err.message || 'Could not delete this client. Nothing was removed.');
     } finally {
@@ -237,7 +239,7 @@ export function ClientsPage() {
             <div className="client-details-section"><span className="eyebrow">Selected filings</span><div className="client-details-filings">{(selectedClient.filingTypes?.length ? selectedClient.filingTypes : selectedClient.svc).map(type => <span key={type} className="chip blue">{type}</span>)}</div></div>
             <div className="client-details-section client-portal-access">
               <span className="eyebrow">Secure client portal</span>
-              <p>Clients upload documents here. Files are stored privately and delivered to your desktop app’s local vault.</p>
+              <p>Clients upload documents here. Files are stored in the configured private Supabase Storage bucket.</p>
               {portalError && <div className="ob-error" role="alert">{portalError}</div>}
               {portalMessage && <div className="portal-success-message" role="status">{portalMessage}</div>}
               <div className="row">
@@ -267,7 +269,7 @@ export function ClientsPage() {
           <div className="delete-confirm-icon"><Icon name="trash" size={22} /></div>
           <span className="eyebrow">Permanent deletion</span>
           <h2 id="delete-client-title">Delete {selectedClient.name}?</h2>
-          <p>This permanently removes the client, filing selections, documents, deadlines, messages, AI records, and local vault folder. This action cannot be undone.</p>
+          <p>This permanently removes the client, filing selections, documents, deadlines, messages, AI records, and private cloud documents. This action cannot be undone.</p>
           {deleteError && <div className="ob-error">{deleteError}</div>}
           <div className="delete-confirm-actions"><button className="btn gh" disabled={deleteSaving} onClick={() => setDeleteConfirm(false)}>Cancel</button><button className="btn danger" disabled={deleteSaving} onClick={permanentlyDeleteClient}>{deleteSaving ? <><i className="spin" />Deleting</> : 'Permanently delete'}</button></div>
         </div>
@@ -296,6 +298,7 @@ function OpenRouterSettings() {
   const [models, setModels] = React.useState<OpenRouterModel[]>([]);
   const [selectedModel, setSelectedModel] = React.useState('');
   const [loadingModels, setLoadingModels] = React.useState(true);
+  const [fallbackSettings, setFallbackSettings] = React.useState<OpenRouterFallbackSettings>({ enabled: true, maxAttempts: 3 });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
   const [notice, setNotice] = React.useState('');
@@ -310,6 +313,7 @@ function OpenRouterSettings() {
 
     try {
       setUseLocalKey(isUsingLocalOpenRouterKey());
+      setFallbackSettings(getOpenRouterFallbackSettings());
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not read the AI provider setting.');
     }
@@ -427,6 +431,17 @@ function OpenRouterSettings() {
     }
   }
 
+  function changeFallbackSettings(nextSettings: OpenRouterFallbackSettings) {
+    try {
+      setOpenRouterFallbackSettings(nextSettings);
+      setFallbackSettings(nextSettings);
+      setError('');
+      setNotice('OpenRouter fallback settings updated.');
+    } catch (settingError) {
+      setError(settingError instanceof Error ? settingError.message : 'Could not save the fallback settings.');
+    }
+  }
+
   return (
     <section className="card ai-provider-card" aria-labelledby="ai-provider-title">
       <div className="card-h">
@@ -454,7 +469,40 @@ function OpenRouterSettings() {
               {!loadingModels && !models.length && <option value="">No eligible models available</option>}
               {models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
             </select>
-            <small>OpenRouter requests use only this model. If it is unavailable or rate-limited, the request fails without trying another model.</small>
+            <small>This is the first model tried. If it has a temporary or model-specific error, enabled fallback can try other models.</small>
+          </div>
+        </div>
+
+        <div className="setrow ai-fallback-row">
+          <div className="tx">
+            <b>Automatically try fallback models</b>
+            <small>On temporary failures, try distinct models after your selected model. The first request counts toward the limit, and each attempt uses a separate OpenRouter request.</small>
+          </div>
+          <div className="ai-fallback-controls">
+            <select
+              id="ai-fallback-attempts"
+              className="sel"
+              value={fallbackSettings.maxAttempts}
+              onChange={event => changeFallbackSettings({
+                ...fallbackSettings,
+                maxAttempts: Number(event.target.value) as OpenRouterFallbackSettings['maxAttempts'],
+              })}
+              disabled={!fallbackSettings.enabled || loadingModels || !models.length || saving}
+              aria-label="Maximum model attempts"
+            >
+              <option value={2}>2 attempts</option>
+              <option value={3}>3 attempts</option>
+              <option value={5}>5 attempts</option>
+            </select>
+            <button
+              className={'tg' + (fallbackSettings.enabled ? ' on' : '')}
+              type="button"
+              role="switch"
+              aria-label="Automatically try fallback models"
+              aria-checked={fallbackSettings.enabled}
+              onClick={() => changeFallbackSettings({ ...fallbackSettings, enabled: !fallbackSettings.enabled })}
+              disabled={loadingModels || !models.length || saving}
+            />
           </div>
         </div>
 
@@ -497,7 +545,7 @@ function OpenRouterSettings() {
 
         <div className="ai-provider-warning" role="note">
           <Icon name="info" size={15} />
-          <p>Your key stays on this device. Chat uses it automatically when saved. OpenRouter requests use only the selected model; no alternate model or provider is tried. Prompts and images sent through local-key features go directly to OpenRouter. Local-key extraction accepts JPG, PNG, WEBP, and GIF images only.</p>
+          <p>Your key stays on this device. Chat uses it automatically when saved. When enabled, automatic fallback tries other listed models after temporary or model-specific failures; it does not retry invalid keys or unsupported input. Prompts and images sent through local-key features go directly to OpenRouter. Local-key extraction accepts JPG, PNG, WEBP, and GIF images only.</p>
         </div>
 
         <div className="setrow ai-local-key-row">

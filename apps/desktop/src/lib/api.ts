@@ -3,10 +3,11 @@
 import {
   extractWithOpenRouter,
   generateOpenRouterNoticeResponse,
+  type OpenRouterFallbackCallback,
   isUsingLocalOpenRouterKey,
   sendOpenRouterChat,
 } from './openRouter';
-import { hasOpenRouterApiKey } from './localVault';
+import { hasOpenRouterApiKey } from './secureCredentials';
 
 const API_ORIGIN = String(
   import.meta.env.VITE_API_URL
@@ -26,7 +27,6 @@ export interface AuthUser {
   membershipNo?: string | null;
   role: string;
   onboardingComplete: boolean;
-  vaultConfigured: boolean;
 }
 
 export interface AuthResponse {
@@ -232,7 +232,6 @@ export interface Client {
   countryId?: string;
   countryName?: string;
   currencyCode?: string;
-  vaultFolder?: string;
 }
 
 export interface SupportedCountry {
@@ -307,7 +306,7 @@ export interface DocumentItem {
   category: string;
   source: string;
   status: string;
-  vaultPath?: string;
+  created_at?: string;
   uploadDate: string;
   confidenceScore: number;
   extractedData?: any;
@@ -321,7 +320,6 @@ export interface WhatsAppMessage {
   direction: 'inbound' | 'outbound';
   messageType: 'text' | 'document' | 'image';
   body: string;
-  vaultFileRef?: string;
   timestamp: string;
   status: string;
 }
@@ -468,65 +466,12 @@ export async function apiUpdateProfile(data: {
   return res.json();
 }
 
-export async function apiSetupVault(vaultPath?: string): Promise<{ success: boolean; message: string }> {
-  const hostname = new URL(API_ORIGIN).hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  const localBackend = hostname === 'localhost' || hostname === '::1' || /^127\./.test(hostname);
-  const res = await fetch(`${API_BASE_URL}/auth/vault-setup`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify(localBackend && vaultPath ? { vaultPath } : {})
-  });
-  return res.json();
-}
-
-export interface PendingLocalDocument {
-  id: string;
-  clientName: string;
-  fileName: string;
-  sha256: string;
-  year: string;
-  month: string;
-  source: 'Portal';
-}
-
-export async function fetchPendingLocalDocuments(deviceId: string): Promise<PendingLocalDocument[]> {
-  const query = new URLSearchParams({ deviceId, limit: '20' });
-  const response = await authRequest<{ success: boolean; message?: string; data?: PendingLocalDocument[] }>(
-    `${API_BASE_URL}/documents/sync/pending?${query}`,
-    { method: 'GET', headers: authHeaders() },
+export async function apiCompleteOnboarding(): Promise<{ success: boolean; message?: string }> {
+  return authRequest(
+    `${API_BASE_URL}/auth/onboarding-complete`,
+    { method: 'POST', headers: authHeaders(), body: '{}' },
+    true,
   );
-  if (!response.success) throw new Error(response.message || 'Could not load pending local documents.');
-  return response.data || [];
-}
-
-export async function downloadDocumentForLocalVault(documentId: string): Promise<ArrayBuffer> {
-  const response = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/serve`, {
-    method: 'GET',
-    headers: authHeaders(),
-  });
-  if (!response.ok) {
-    let message = `Document download failed (HTTP ${response.status}).`;
-    try {
-      const payload = await response.json() as { message?: string };
-      if (payload.message) message = payload.message;
-    } catch {
-      // Keep the HTTP error visible when the server response is not JSON.
-    }
-    throw new Error(message);
-  }
-  return response.arrayBuffer();
-}
-
-export async function acknowledgeLocalDocumentSync(deviceId: string, documentId: string, sha256: string): Promise<void> {
-  const response = await authRequest<{ success: boolean; message?: string }>(
-    `${API_BASE_URL}/documents/sync/receipt`,
-    {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ deviceId, documentId, sha256 }),
-    },
-  );
-  if (!response.success) throw new Error(response.message || 'Could not record local document sync.');
 }
 
 export interface ClientPortalAccess {
@@ -650,7 +595,7 @@ export async function updateClient(clientId: string, clientData: Partial<Client>
   return json.data;
 }
 
-export async function deleteClient(clientId: string): Promise<{ id: string; name: string; vaultWarning?: string | null }> {
+export async function deleteClient(clientId: string): Promise<{ id: string; name: string }> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE_URL}/clients/${encodeURIComponent(clientId)}`, {
@@ -667,27 +612,26 @@ export async function deleteClient(clientId: string): Promise<{ id: string; name
   return json.data;
 }
 
-export interface VaultTreeEntry {
+export interface DocumentTreeEntry {
   name: string;
   type: 'folder' | 'file';
+  documentId?: string;
   size?: number;
   modifiedAt: string;
-  children?: VaultTreeEntry[];
-  cloudRetained?: boolean;
+  children?: DocumentTreeEntry[];
 }
 
-export interface VaultTreeResponse {
+export interface DocumentTreeResponse {
   clientId: string;
   clientName: string;
-  root: string;
-  entries: VaultTreeEntry[];
+  entries: DocumentTreeEntry[];
 }
 
-export interface VaultFileSearchResult {
+export interface CloudDocumentSearchResult {
+  documentId: string;
   clientId: string;
   clientName: string;
   fileName: string;
-  relativePath: string;
   size: number;
   modifiedAt: string;
 }
@@ -700,12 +644,12 @@ export interface TelegramSearchResult {
   createdAt: string;
 }
 
-export async function searchVaultFiles(query: string, signal?: AbortSignal): Promise<VaultFileSearchResult[]> {
+export async function searchCloudDocuments(query: string, signal?: AbortSignal): Promise<CloudDocumentSearchResult[]> {
   const params = new URLSearchParams({ q: query });
-  const res = await fetch(`${API_BASE_URL}/clients/search/files?${params}`, { headers: authHeaders(), signal });
+  const res = await fetch(`${API_BASE_URL}/documents/search?${params}`, { headers: authHeaders(), signal });
   let json: any;
-  try { json = await res.json(); } catch { throw new Error(`The vault search returned an invalid response (HTTP ${res.status}).`); }
-  if (!res.ok || !json.success) throw new Error(json.message || `Could not search vault files (HTTP ${res.status}).`);
+  try { json = await res.json(); } catch { throw new Error(`Cloud document search returned an invalid response (HTTP ${res.status}).`); }
+  if (!res.ok || !json.success) throw new Error(json.message || `Could not search cloud documents (HTTP ${res.status}).`);
   return Array.isArray(json.data) ? json.data : [];
 }
 
@@ -718,18 +662,17 @@ export async function searchTelegramMessages(query: string, signal?: AbortSignal
   return Array.isArray(json.data) ? json.data : [];
 }
 
-export async function fetchVaultFile(clientId: string, relativePath: string): Promise<Blob> {
-  const params = new URLSearchParams({ relativePath });
+export async function fetchCloudDocumentFile(documentId: string): Promise<Blob> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE_URL}/clients/${encodeURIComponent(clientId)}/vault-file?${params}`, {
+    res = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/file`, {
       headers: authHeaders(),
     });
   } catch {
-    throw new Error('The backend is unavailable. The vault file could not be opened.');
+    throw new Error('The backend is unavailable. The cloud document could not be opened.');
   }
   if (!res.ok) {
-    let message = `Could not open the vault file (HTTP ${res.status}).`;
+    let message = `Could not open the cloud document (HTTP ${res.status}).`;
     try {
       const json = await res.json();
       message = json.message || message;
@@ -739,29 +682,28 @@ export async function fetchVaultFile(clientId: string, relativePath: string): Pr
   return res.blob();
 }
 
-export async function fetchVaultTree(clientId: string): Promise<VaultTreeResponse> {
+export async function fetchClientDocumentTree(clientId: string): Promise<DocumentTreeResponse> {
   const headers = authHeaders();
-  const res = await fetch(`${API_BASE_URL}/clients/${encodeURIComponent(clientId)}/vault-tree`, { headers });
+  const res = await fetch(`${API_BASE_URL}/clients/${encodeURIComponent(clientId)}/documents/tree`, { headers });
   let json: any;
-  try { json = await res.json(); } catch { throw new Error(`The vault returned an invalid response (HTTP ${res.status}).`); }
-  if (!res.ok || !json.success) throw new Error(json.message || `Could not read the vault (HTTP ${res.status}).`);
+  try { json = await res.json(); } catch { throw new Error(`Cloud document listing returned an invalid response (HTTP ${res.status}).`); }
+  if (!res.ok || !json.success) throw new Error(json.message || `Could not load cloud documents (HTTP ${res.status}).`);
   return json.data;
 }
 
-export async function deleteVaultFile(clientId: string, relativePath: string): Promise<void> {
+export async function deleteCloudDocument(documentId: string): Promise<void> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE_URL}/clients/${encodeURIComponent(clientId)}/vault-file`, {
+    res = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}`, {
       method: 'DELETE',
       headers: authHeaders(),
-      body: JSON.stringify({ relativePath }),
     });
   } catch {
-    throw new Error('The backend is unavailable. The file was not deleted.');
+    throw new Error('The backend is unavailable. The cloud document was not deleted.');
   }
 
   let json: any;
-  try { json = await res.json(); } catch { throw new Error(`The vault returned an invalid response (HTTP ${res.status}).`); }
+  try { json = await res.json(); } catch { throw new Error(`The cloud document endpoint returned an invalid response (HTTP ${res.status}).`); }
   if (!res.ok || !json.success) throw new Error(json.message || `The file could not be deleted (HTTP ${res.status}).`);
 }
 
@@ -789,27 +731,30 @@ export async function fetchClientDocuments(clientId: string, signal?: AbortSigna
   return Array.isArray(json.data) ? json.data : [];
 }
 
-export interface VaultUploadResponse {
-  data?: DocumentItem;
+export interface DocumentUploadResponse {
+  data?: {
+    id: string;
+    client_id: string;
+    file_name: string;
+    file_size_kb?: number;
+    created_at?: string;
+  };
   message?: string;
-  warning?: string;
   source?: string;
-  metadataSaved?: boolean;
 }
 
-export async function uploadToLocalVault(payload: {
+export async function uploadDocument(payload: {
   clientId: string;
-  clientName?: string;
   fileName: string;
   fileType: string;
   category: string;
   assessmentYear?: string;
   fileBase64?: string;
   source?: string;
-}): Promise<VaultUploadResponse> {
+}): Promise<DocumentUploadResponse> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE_URL}/documents/upload-vault`, {
+    res = await fetch(`${API_BASE_URL}/documents`, {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify(payload)
@@ -831,16 +776,16 @@ export async function uploadToLocalVault(payload: {
   return json;
 }
 
-export function getVaultFileUrl(docId: string): string {
-  return `${API_BASE_URL}/documents/${encodeURIComponent(docId)}/serve`;
+export function getDocumentFileUrl(docId: string): string {
+  return `${API_BASE_URL}/documents/${encodeURIComponent(docId)}/file`;
 }
 
 export async function fetchDocumentPreview(documentId: string, signal?: AbortSignal): Promise<Blob> {
   let res: Response;
   try {
-    res = await fetch(getVaultFileUrl(documentId), { headers: authHeaders(), signal });
+    res = await fetch(getDocumentFileUrl(documentId), { headers: authHeaders(), signal });
   } catch {
-    throw new Error('The original file could not be reached. Check that the backend and Local Vault are available.');
+    throw new Error('The original file could not be reached. Check the backend connection.');
   }
   if (!res.ok) {
     let message = '';
@@ -867,12 +812,20 @@ export async function verifyDocumentExtraction(documentId: string, verifiedBy = 
   }
 }
 
-export async function processDocumentExtraction(documentId: string, category = 'General', file?: File) {
+export async function processDocumentExtraction(
+  documentId: string,
+  category = 'General',
+  file?: File,
+  onFallback?: OpenRouterFallbackCallback,
+  clientName?: string,
+  createdAt?: string,
+  clientId?: string,
+) {
   if (isUsingLocalOpenRouterKey()) {
     if (!file) {
       throw new Error('The local OpenRouter key needs the original image or PDF. Choose the file again and retry.');
     }
-    const extraction = await extractWithOpenRouter(file, category);
+    const extraction = await extractWithOpenRouter(file, category, onFallback);
     const saved = await authRequest<{
       success: boolean;
       message?: string;
@@ -884,11 +837,15 @@ export async function processDocumentExtraction(documentId: string, category = '
         headers: authHeaders(),
         body: JSON.stringify({
           documentId,
+          category,
           extractedData: extraction.extractedData,
           model: extraction.model,
           inputTokens: extraction.inputTokens,
           outputTokens: extraction.outputTokens,
           durationMs: extraction.durationMs,
+          clientName,
+          createdAt,
+          clientId,
         }),
       },
       true,
@@ -912,7 +869,7 @@ export async function processDocumentExtraction(documentId: string, category = '
       body: JSON.stringify({ documentId, category }),
     });
   } catch {
-    throw new Error('The extraction service is unavailable. The uploaded file is still safe in the client vault.');
+    throw new Error('The extraction service is unavailable. The uploaded file is still safe in private Supabase Storage.');
   }
 
   let json: any;
@@ -941,7 +898,6 @@ export async function fetchWhatsAppMessages(): Promise<WhatsAppMessage[]> {
           ? message.messageType
           : 'text',
       body: String(message.body || ''),
-      vaultFileRef: String(message.vault_file_ref || message.vaultFileRef || '') || undefined,
       timestamp: String(message.created_at || message.timestamp || ''),
       status: String(message.status || 'received'),
     }));
@@ -1082,9 +1038,9 @@ export async function generateNoticeResponse(payload: {
   clientId: string;
   noticeText: string;
   section?: string;
-}) {
+}, onFallback?: OpenRouterFallbackCallback) {
   if (isUsingLocalOpenRouterKey()) {
-    const result = await generateOpenRouterNoticeResponse(payload);
+    const result = await generateOpenRouterNoticeResponse(payload, onFallback);
     return {
       success: true,
       source: 'openrouter',
@@ -1262,19 +1218,13 @@ export async function retryTelegramSchedule(scheduleId: string): Promise<void> {
   if (!response.success) throw new Error(response.message || 'Could not retry scheduled reminder.');
 }
 
-export async function getHealthStatus() {
-  try {
-    const res = await fetch(`${API_BASE_URL}/health`);
-    return await res.json();
-  } catch (err) {
-    return { status: 'offline' };
-  }
-}
-
-export async function sendChatMessage(messages: Array<{ role: 'user' | 'assistant'; content: string }>) {
+export async function sendChatMessage(
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  onFallback?: OpenRouterFallbackCallback,
+) {
   const hasSavedLocalKey = await hasOpenRouterApiKey();
   if (hasSavedLocalKey || isUsingLocalOpenRouterKey()) {
-    const result = await sendOpenRouterChat(messages);
+    const result = await sendOpenRouterChat(messages, onFallback);
     return { text: result.text, model: result.model };
   }
 

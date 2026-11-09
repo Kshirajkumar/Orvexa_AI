@@ -1,9 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
 const express = require('express');
 
 process.env.SUPABASE_URL = 'https://example.supabase.co';
@@ -13,7 +10,7 @@ const { decryptPortalInviteToken, hashInviteToken } = require('../lib/clientPort
 const { getStorageObjectKey } = require('../lib/documentStorage');
 const telegramRouter = require('../routes/telegram');
 
-const tables = { clients: [], client_portal_access: [], client_portal_invites: [], telegram_link_tokens: [], telegram_messages: [], documents_metadata: [], document_sync_receipts: [] };
+const tables = { clients: [], client_portal_access: [], client_portal_invites: [], telegram_link_tokens: [], telegram_messages: [], documents_metadata: [] };
 const missingSchemaTables = new Set();
 
 function matches(row, filters) {
@@ -56,11 +53,8 @@ function fakeQuery(table) {
       }
       const records = tables[table];
       if (operation === 'upsert') {
-        const keys = table === 'document_sync_receipts' ? ['user_id', 'device_id', 'document_id'] : [];
-        const existing = records.find(row => keys.length && keys.every(key => row[key] === payload[key]));
-        if (existing) Object.assign(existing, payload);
-        else records.push({ ...payload });
-        return { data: existing || payload, error: null };
+        records.push({ ...payload });
+        return { data: payload, error: null };
       }
       if (operation === 'insert') {
         const values = Array.isArray(payload) ? payload : [payload];
@@ -613,65 +607,48 @@ test('Telegram diagnostics expect the separate relay when direct webhook registr
   }
 });
 
-test('Authenticated desktop sync lists only pending owned files and acknowledges verified copies', async (t) => {
+test('Cloud document endpoints download only owned private objects and expose the existing Files tree', async (t) => {
   const oldFrom = database.supabase.from;
-  const oldRpc = database.supabase.rpc;
   const oldStorageFrom = database.supabase.storage.from;
-  const oldVaultPath = process.env.VAULT_PATH;
-  const oldStorageBucket = process.env.SUPABASE_STORAGE_BUCKET;
-  const fileBytes = Buffer.from('%PDF-1.7 sync download');
-  const checksum = crypto.createHash('sha256').update(fileBytes).digest('hex');
+  const oldGetBucket = database.supabase.storage.getBucket;
+  const oldRpc = database.supabase.rpc;
+  const oldBucket = process.env.SUPABASE_STORAGE_BUCKET;
+  const fileBytes = Buffer.from('%PDF-1.7 cloud document');
   const ownerId = '11752602-62fa-4252-ae1d-23c4fb3b7312';
   const clientId = '20314145-9020-45f0-85a0-68bc63eb359e';
   const documentId = crypto.randomUUID();
-  const deviceId = crypto.randomUUID();
-  const localServerVault = fs.mkdtempSync(path.join(os.tmpdir(), 'taxflow-sync-vault-'));
+  const objectKey = `${ownerId}/${clientId}/2026/October/Raw/${documentId}_inbound.pdf`;
   Object.values(tables).forEach((rows) => { rows.length = 0; });
-  tables.clients.push({ id: clientId, user_id: ownerId, name: 'Sync Client' });
+  tables.clients.push({ id: clientId, user_id: ownerId, name: 'Cloud Client', created_at: '2026-10-01T12:00:00.000Z' });
   tables.documents_metadata.push({
     id: documentId,
     client_id: clientId,
+    client_name: 'Cloud Client',
     source: 'Portal',
     file_name: 'inbound.pdf',
+    category: 'General',
     file_size_kb: fileBytes.length / 1024,
-    file_sha256: checksum,
     created_at: '2026-10-18T12:00:00.000Z',
     storage_bucket: 'taxflow-intake',
-    storage_object_path: `${ownerId}/${clientId}/2026/October/${documentId}_inbound.pdf`,
+    storage_object_path: objectKey,
     mime_type: 'application/pdf',
-    vault_path: 'supabase://taxflow-intake/owner/client/2026/October/inbound.pdf'
-  });
-  const legacyTelegramDocumentId = crypto.randomUUID();
-  tables.documents_metadata.push({
-    id: legacyTelegramDocumentId,
-    client_id: clientId,
-    source: 'Telegram',
-    file_name: 'legacy-telegram.pdf',
-    created_at: '2026-10-18T11:00:00.000Z',
-    vault_path: 'legacy-local-file.pdf'
+    telegram_message_id: null,
+    vault_path: null
   });
   database.supabase.from = (table) => fakeQuery(table);
-  database.supabase.rpc = async (name, args) => {
-    assert.equal(name, 'list_pending_document_sync');
-    assert.equal(args.p_user_id, ownerId);
-    assert.equal(args.p_device_id, deviceId);
-    return {
-      data: [{
-        document_id: documentId,
-        client_name: 'Sync Client',
-        file_name: 'inbound.pdf',
-        file_sha256: checksum,
-        created_at: '2026-10-18T12:00:00.000Z',
-        source: 'Portal'
-      }],
-      error: null
-    };
-  };
+  database.supabase.rpc = async () => ({ error: null });
+  const uploadedObjects = [];
+  let bucketPublic = false;
+  database.supabase.storage.getBucket = async () => ({ data: { public: bucketPublic }, error: null });
   database.supabase.storage.from = (bucket) => ({
     async download(key) {
       assert.equal(bucket, 'taxflow-intake');
-      assert.equal(key, `${ownerId}/${clientId}/2026/October/${documentId}_inbound.pdf`);
+      assert.equal(key, objectKey);
       return { data: new Blob([fileBytes]), error: null };
+    },
+    async upload(key, data, options) {
+      uploadedObjects.push({ bucket, key, data, options });
+      return { data: { path: key }, error: null };
     }
   });
   process.env.SUPABASE_STORAGE_BUCKET = 'taxflow-intake';
@@ -680,103 +657,103 @@ test('Authenticated desktop sync lists only pending owned files and acknowledges
   app.use(express.json());
   app.use('/api/v1/documents', (req, _res, next) => { req.user = { id: ownerId }; next(); }, require('../routes/documents'));
   app.use('/api/v1/clients', (req, _res, next) => { req.user = { id: ownerId }; next(); }, require('../routes/clients'));
-  process.env.VAULT_PATH = localServerVault;
   const server = app.listen(0);
   t.after(async () => {
     await new Promise((resolve) => server.close(resolve));
     database.supabase.from = oldFrom;
-    database.supabase.rpc = oldRpc;
     database.supabase.storage.from = oldStorageFrom;
-    if (oldVaultPath === undefined) delete process.env.VAULT_PATH; else process.env.VAULT_PATH = oldVaultPath;
-    if (oldStorageBucket === undefined) delete process.env.SUPABASE_STORAGE_BUCKET;
-    else process.env.SUPABASE_STORAGE_BUCKET = oldStorageBucket;
-    fs.rmSync(localServerVault, { recursive: true, force: true });
+    database.supabase.storage.getBucket = oldGetBucket;
+    database.supabase.rpc = oldRpc;
+    if (oldBucket === undefined) delete process.env.SUPABASE_STORAGE_BUCKET;
+    else process.env.SUPABASE_STORAGE_BUCKET = oldBucket;
   });
-  const baseUrl = `http://127.0.0.1:${server.address().port}/api/v1/documents`;
+  const baseUrl = `http://127.0.0.1:${server.address().port}/api/v1`;
 
-  const pendingResponse = await fetch(`${baseUrl}/sync/pending?deviceId=${deviceId}&limit=20`);
-  assert.equal(pendingResponse.status, 200);
-  const pending = await pendingResponse.json();
-  assert.deepEqual(pending.data, [{
-    id: documentId,
-    clientName: 'Sync Client',
-    fileName: 'inbound.pdf',
-    sha256: checksum,
-    source: 'Portal',
-    year: '2026',
-    month: 'October'
-  }]);
-
-  database.supabase.rpc = async () => ({
-    data: null,
-    error: { code: 'PGRST202', message: 'Could not find the function public.list_pending_document_sync in the schema cache' }
-  });
-  const missingSyncMigrationResponse = await fetch(`${baseUrl}/sync/pending?deviceId=${deviceId}&limit=20`);
-  assert.equal(missingSyncMigrationResponse.status, 503);
-  assert.match((await missingSyncMigrationResponse.json()).message, /Client-portal file sync is not set up/i);
-  database.supabase.rpc = async (_name, args) => {
-    assert.equal(args.p_user_id, ownerId);
-    assert.equal(args.p_device_id, deviceId);
-    return {
-      data: [{
-        document_id: documentId,
-        client_name: 'Sync Client',
-        file_name: 'inbound.pdf',
-        file_sha256: checksum,
-        created_at: '2026-10-18T12:00:00.000Z',
-        source: 'Portal'
-      }],
-      error: null
-    };
-  };
-
-  const listResponse = await fetch(baseUrl);
-  assert.equal(listResponse.status, 200);
-  const listedDocuments = await listResponse.json();
-  assert.deepEqual(listedDocuments.data.map((document) => document.file_name), ['inbound.pdf']);
-
-  const downloadResponse = await fetch(`${baseUrl}/${documentId}/serve`);
+  const downloadResponse = await fetch(`${baseUrl}/documents/${documentId}/file`);
   assert.equal(downloadResponse.status, 200);
   assert.equal(Buffer.from(await downloadResponse.arrayBuffer()).toString(), fileBytes.toString());
   assert.equal(downloadResponse.headers.get('content-type'), 'application/pdf');
 
-  const legacyTelegramDownload = await fetch(`${baseUrl}/${legacyTelegramDocumentId}/serve`);
-  assert.equal(legacyTelegramDownload.status, 404);
-
-  const clientBaseUrl = `http://127.0.0.1:${server.address().port}/api/v1/clients/${clientId}`;
-  const treeResponse = await fetch(`${clientBaseUrl}/vault-tree`);
+  const treeResponse = await fetch(`${baseUrl}/clients/${clientId}/documents/tree`);
   assert.equal(treeResponse.status, 200);
   const tree = await treeResponse.json();
-  const syncedFile = tree.data.entries
+  const cloudFile = tree.data.entries
     .find(entry => entry.name === '2026')
     ?.children.find(entry => entry.name === 'October')
     ?.children.find(entry => entry.name === 'Raw')
     ?.children.find(entry => entry.name === 'inbound.pdf');
-  assert.equal(syncedFile?.cloudRetained, true);
-  assert.equal(syncedFile?.size, fileBytes.length);
+  assert.equal(cloudFile?.documentId, documentId);
+  assert.equal(cloudFile?.size, fileBytes.length);
 
-  const localCopyResponse = await fetch(`${clientBaseUrl}/vault-file?${new URLSearchParams({ relativePath: '2026/October/Raw/inbound.pdf' })}`);
-  assert.equal(localCopyResponse.status, 200);
-  assert.equal(Buffer.from(await localCopyResponse.arrayBuffer()).toString(), fileBytes.toString());
+  const [storedDocument] = tables.documents_metadata.splice(0);
+  const emptyTreeResponse = await fetch(`${baseUrl}/clients/${clientId}/documents/tree`);
+  assert.equal(emptyTreeResponse.status, 200);
+  const emptyMonth = (await emptyTreeResponse.json()).data.entries
+    .find(entry => entry.name === '2026')
+    ?.children.find(entry => entry.name === 'October');
+  assert.deepEqual(emptyMonth?.children.map(entry => entry.name), ['Raw', 'Extracted']);
+  assert.equal(uploadedObjects.length, 0);
+  tables.documents_metadata.push(storedDocument);
+
+  const staffFile = Buffer.from('%PDF-1.7 staff upload');
+  const uploadResponse = await fetch(`${baseUrl}/documents`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      clientId,
+      fileName: 'staff-upload.pdf',
+      fileType: 'PDF',
+      category: 'General',
+      source: 'Upload',
+      fileBase64: staffFile.toString('base64')
+    })
+  });
+  assert.equal(uploadResponse.status, 201);
+  assert.equal(uploadedObjects.length, 1);
+  assert.equal(uploadedObjects[0].bucket, 'taxflow-intake');
+  assert.equal(Buffer.from(uploadedObjects[0].data).toString(), staffFile.toString());
+  const uploadedDocument = tables.documents_metadata.find(document => document.file_name === 'staff-upload.pdf');
+  const uploadedAt = new Date(uploadedDocument.created_at);
+  const uploadedYear = String(uploadedAt.getUTCFullYear());
+  const uploadedMonth = new Intl.DateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' }).format(uploadedAt);
+  assert.ok(uploadedObjects[0].key.includes(`/${uploadedYear}/${uploadedMonth}/Raw/`));
+  assert.equal(uploadedDocument.storage_bucket, 'taxflow-intake');
+  assert.equal(uploadedDocument.vault_path, undefined);
+
+  const invalidFileResponse = await fetch(`${baseUrl}/documents`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      clientId,
+      fileName: 'bad.pdf',
+      fileType: 'PDF',
+      category: 'General',
+      source: 'Upload',
+      fileBase64: Buffer.from('not a PDF').toString('base64')
+    })
+  });
+  assert.equal(invalidFileResponse.status, 400);
+  assert.equal(uploadedObjects.length, 1);
+
+  bucketPublic = true;
+  const publicBucketResponse = await fetch(`${baseUrl}/documents`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      clientId,
+      fileName: 'public-bucket.pdf',
+      fileType: 'PDF',
+      category: 'General',
+      source: 'Upload',
+      fileBase64: staffFile.toString('base64')
+    })
+  });
+  assert.equal(publicBucketResponse.status, 503);
+  assert.equal(uploadedObjects.length, 1);
 
   tables.documents_metadata[0].storage_object_path = 'other-owner/client/2026/October/inbound.pdf';
-  const unexpectedObjectResponse = await fetch(`${baseUrl}/${documentId}/serve`);
-  assert.equal(unexpectedObjectResponse.status, 404);
-
-  const receiptResponse = await fetch(`${baseUrl}/sync/receipt`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ deviceId, documentId, sha256: checksum })
-  });
-  assert.equal(receiptResponse.status, 200);
-  assert.equal(tables.document_sync_receipts.length, 1);
-
-  const mismatchResponse = await fetch(`${baseUrl}/sync/receipt`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ deviceId, documentId, sha256: '0'.repeat(64) })
-  });
-  assert.equal(mismatchResponse.status, 409);
+  const invalidDownload = await fetch(`${baseUrl}/documents/${documentId}/file`);
+  assert.equal(invalidDownload.status, 409);
 });
 
 test('Telegram file send and download endpoints permanently reject file transfers', async (t) => {

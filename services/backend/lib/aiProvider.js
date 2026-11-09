@@ -1,4 +1,5 @@
 const { supabase, isConnected } = require('../db/supabase');
+const { TAXFLOW_SYSTEM_PROMPT } = require('./systemPrompt');
 
 const PROVIDER_TIMEOUT_MS = 30000;
 
@@ -64,7 +65,7 @@ async function generateGeminiChat({ ownerUserId, messages }) {
         signal: controller.signal,
         body: JSON.stringify({
           systemInstruction: {
-            parts: [{ text: 'You are TaxFlow AI Assistant, a concise and helpful assistant for Indian tax professionals. Do not claim to file returns or access live government portals. Ask for clarification when information is missing.' }],
+            parts: [{ text: TAXFLOW_SYSTEM_PROMPT }],
           },
           contents,
           generationConfig: { temperature: 0.4, maxOutputTokens: 1024 },

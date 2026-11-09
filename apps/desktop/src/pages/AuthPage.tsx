@@ -34,10 +34,10 @@ const PAIN_POINTS: PainPoint[] = [
     tag: 'PAIN POINT 02 OF 07',
     category: 'Client Document Collection',
     problem: 'Endless WhatsApp & Email Document Chasing Chaos',
-    solution: 'Autonomous 24/7 WhatsApp AI Bot & Vault Ingestion',
+    solution: 'Secure Client Portal & Cloud Intake',
     description:
-      'Clients snap bank statements, vendor bills, and Form 16 on WhatsApp. TaxFlow AI instantly extracts line items, verifies GSTIN checksums, and files them directly into your encrypted local client vault with zero staff intervention.',
-    metric: 'Zero Lost Invoices • Instant WhatsApp Filing Receipts',
+      'Clients upload sensitive tax documents through their private TaxFlow portal. Originals are stored in private Supabase Storage, while structured metadata and extracted fields remain in the database for staff review.',
+    metric: 'Private portal uploads • Reviewable extraction history',
     icon: 'chat',
   },
   {
@@ -530,12 +530,12 @@ export function AuthPage() {
               <div className="showcase-trust-strip">
                 <div className="trust-item">
                   <Icon name="shield" size={13} />
-                  <span>Local Vault AES-256 Storage</span>
+                  <span>Private Cloud Document Storage</span>
                 </div>
                 <span className="trust-dot">•</span>
                 <div className="trust-item">
                   <Icon name="lock" size={13} />
-                  <span>Zero Cloud File Transmission</span>
+                  <span>Account-Scoped Cloud Access</span>
                 </div>
                 <span className="trust-dot">•</span>
                 <div className="trust-item">
@@ -786,7 +786,7 @@ export function AuthPage() {
                           onChange={(e) => setSignupAgree(e.target.checked)}
                         />
                         <span>
-                          I confirm local vault storage on this PC &amp; agree to confidentiality terms.
+                          I confirm private cloud document storage &amp; agree to confidentiality terms.
                         </span>
                       </label>
                     </div>
@@ -830,7 +830,7 @@ export function AuthPage() {
                     <div>
                       <h1 className="card-title">Welcome Back</h1>
                       <p className="card-desc">
-                        Sign in to access your local client vaults, pending filings, and WhatsApp automations.
+                        Sign in to manage your clients, cloud-stored documents, pending filings, and messaging workflows.
                       </p>
                     </div>
                   </div>

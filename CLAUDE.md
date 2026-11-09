@@ -27,7 +27,7 @@ TaxFlow.AI is a full-stack practice suite for tax professionals, consisting of a
   - **Business Logic**: Domain-specific logic (tax calculations, auditing) in `apps/desktop/src/lib/domain.ts`.
 - **Backend**: An Express API server (`services/backend/index.js`) that orchestrates data and AI services.
   - **Database**: Uses **Supabase (Postgres)** for metadata (clients, documents, logs, compliance tasks).
-  - **File Storage**: A **Local Vault System** (`services/backend/vault/`) for physical document storage, organized by client ID and category.
+  - **File Storage**: Private Supabase Storage for client uploads, staff uploads, and generated documents; Supabase Postgres stores metadata and extracted fields.
   - **AI Integration**: Integrates **Google Gemini** for OCR/extraction and report generation.
   - **Communications**: Integrates **WhatsApp Business API** for client reminders and messaging.
 
@@ -42,7 +42,7 @@ TaxFlow.AI is a full-stack practice suite for tax professionals, consisting of a
 - `data/`: Seed data for demo mode.
 
 #### Backend (`services/backend/`)
-- `index.js`: Entry point; mounts all API routes and initializes the vault.
+- `index.js`: Entry point; mounts all API routes.
 - `routes/`: Modular route handlers for `auth`, `clients`, `documents`, `extraction`, `whatsapp`, `deadlines`, and `generate`.
 - `db/`: Supabase client configuration and connection logic.
-- `vault/`: Logic for managing physical file storage on the local filesystem.
+- `lib/documentStorage.js`: Private cloud document upload, download, and deletion helpers.

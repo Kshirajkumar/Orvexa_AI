@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
-import { open } from '@tauri-apps/plugin-dialog';
 import { AppProvider, useAppState } from './state/store';
 import { Titlebar } from './components/Titlebar';
 import { Sidebar } from './components/Sidebar';
 import { Chat } from './components/Chat';
-import { Icon } from './components/Icon';
 import { AuthPage } from './pages/AuthPage';
 import { apiGetMeWithToken } from './lib/api';
 import { useDispatch } from './state/store';
@@ -21,42 +19,12 @@ import { ClientsPage, SettingsPage } from './pages/Other';
 import { ProfilePage } from './pages/Profile';
 import { SubscriptionsPage } from './pages/Subscriptions';
 import { AppTour, markTourWelcomeSeen, shouldShowTourWelcome, TourWelcome } from './components/AppTour';
-import {
-  acknowledgeLocalDocumentSync,
-  downloadDocumentForLocalVault,
-  fetchPendingLocalDocuments,
-} from './lib/api';
-import {
-  configureLocalVault,
-  getLocalVaultStatus,
-  isDesktopApp,
-  saveSyncedDocument,
-} from './lib/localVault';
 
 function Shell() {
   const s = useAppState();
   const dispatch = useDispatch();
-  const [vaultSyncNotice, setVaultSyncNotice] = useState<{
-    id: number;
-    message: string;
-    kind: 'info' | 'success' | 'warning' | 'error';
-  } | null>(null);
-  const [configuringVault, setConfiguringVault] = useState(false);
   const [showTourWelcome, setShowTourWelcome] = useState(false);
   const [tourActive, setTourActive] = useState(false);
-  const syncNowRef = useRef<(() => void) | null>(null);
-  const vaultNoticeSequenceRef = useRef(0);
-
-  function showVaultSyncNotice(message: string, kind: 'info' | 'success' | 'warning' | 'error') {
-    setVaultSyncNotice({ id: ++vaultNoticeSequenceRef.current, message, kind });
-  }
-
-  useEffect(() => {
-    if (!vaultSyncNotice) return undefined;
-    const duration = vaultSyncNotice.kind === 'error' ? 10_000 : vaultSyncNotice.kind === 'warning' ? 8_000 : 5_000;
-    const timer = window.setTimeout(() => setVaultSyncNotice(null), duration);
-    return () => window.clearTimeout(timer);
-  }, [vaultSyncNotice]);
 
   // Apply the theme before the browser paints the next frame. Using a normal
   // effect here briefly rendered the new page background with the previous
@@ -87,87 +55,6 @@ function Shell() {
   useEffect(() => {
     document.body.classList.toggle('sidebar-collapsed', !!s.sidebarCollapsed);
   }, [s.sidebarCollapsed]);
-
-  useEffect(() => {
-    if (!s.currentUser?.onboardingComplete || !isDesktopApp()) return;
-
-    let disposed = false;
-    let syncing = false;
-    const syncDocuments = async () => {
-      if (syncing || disposed) return;
-      syncing = true;
-      try {
-        const vault = await getLocalVaultStatus();
-        if (disposed) return;
-        if (!vault) {
-          showVaultSyncNotice('Choose a local vault folder to securely receive client files on this device.', 'warning');
-          return;
-        }
-        const pending = await fetchPendingLocalDocuments(vault.deviceId);
-        let syncedCount = 0;
-        for (const document of pending) {
-          if (disposed) return;
-          const content = await downloadDocumentForLocalVault(document.id);
-          if (disposed) return;
-          const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', content));
-          const actualHash = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
-          if (actualHash !== document.sha256.toLowerCase()) {
-            throw new Error(`Checksum mismatch for ${document.fileName}.`);
-          }
-          await saveSyncedDocument(document, content);
-          if (disposed) return;
-          await acknowledgeLocalDocumentSync(vault.deviceId, document.id, actualHash);
-          syncedCount += 1;
-        }
-        if (!disposed) {
-          if (syncedCount) {
-            showVaultSyncNotice(`${syncedCount} secure file${syncedCount === 1 ? '' : 's'} synced to the local vault.`, 'success');
-          } else {
-            setVaultSyncNotice(null);
-          }
-        }
-      } catch (error) {
-        console.error('[Vault Sync] Incoming client document sync failed:', error);
-        if (!disposed) {
-          const detail = error instanceof Error ? error.message : 'An unexpected sync error occurred.';
-          const message = /failed to fetch|networkerror|network request failed/i.test(detail)
-            ? 'Could not reach the TaxFlow server. Check your internet connection and backend availability.'
-            : /401|unauthori[sz]ed|session.*expir/i.test(detail)
-              ? 'Your session may have expired. Sign in again, then retry syncing client-portal uploads.'
-              : `Could not sync client-portal uploads to this device. ${detail}`;
-          showVaultSyncNotice(message, 'error');
-        }
-      } finally {
-        syncing = false;
-      }
-    };
-
-    syncNowRef.current = () => { void syncDocuments(); };
-    void syncDocuments();
-    const timer = window.setInterval(() => { void syncDocuments(); }, 60_000);
-    return () => {
-      disposed = true;
-      syncNowRef.current = null;
-      window.clearInterval(timer);
-    };
-  }, [s.currentUser?.id, s.currentUser?.onboardingComplete]);
-
-  async function handleConfigureLocalVault() {
-    setConfiguringVault(true);
-    try {
-      const selected = await open({ directory: true, multiple: false, title: 'Select Your TaxFlow Local Vault Folder' });
-      if (typeof selected !== 'string') return;
-      await configureLocalVault(selected);
-      showVaultSyncNotice('Local vault configured. Checking for incoming client files…', 'info');
-      syncNowRef.current?.();
-    } catch (error) {
-      console.error('[Vault Sync] Local vault configuration failed:', error);
-      const detail = error instanceof Error ? error.message : 'Choose a writable folder and try again.';
-      showVaultSyncNotice(`Could not configure the local vault. ${detail}`, 'error');
-    } finally {
-      setConfiguringVault(false);
-    }
-  }
 
   const startTour = useCallback(() => {
     if (s.currentUser) markTourWelcomeSeen(s.currentUser.id);
@@ -207,38 +94,8 @@ function Shell() {
   }[s.page] || Dashboard;
 
   return (
-    <div className={`app${vaultSyncNotice ? ' has-vault-sync-status' : ''}`}>
+    <div className="app">
       <Titlebar />
-      {vaultSyncNotice && (
-        <div
-          key={vaultSyncNotice.id}
-          className={`vault-sync-toast ${vaultSyncNotice.kind}`}
-          role={vaultSyncNotice.kind === 'error' ? 'alert' : 'status'}
-          aria-live={vaultSyncNotice.kind === 'error' ? 'assertive' : 'polite'}
-        >
-          <span className="vault-sync-toast-icon">
-            <Icon name={vaultSyncNotice.kind === 'success' ? 'check' : vaultSyncNotice.kind === 'warning' ? 'folder' : vaultSyncNotice.kind === 'error' ? 'info' : 'refresh'} size={15} />
-          </span>
-          <span className="vault-sync-toast-copy">
-            <b>{vaultSyncNotice.kind === 'error' ? 'Client portal sync needs attention' : vaultSyncNotice.kind === 'warning' ? 'Local vault setup required' : vaultSyncNotice.kind === 'success' ? 'Client portal files synced' : 'Client portal file sync'}</b>
-            <span>{vaultSyncNotice.message}</span>
-          </span>
-          {vaultSyncNotice.kind === 'error' && (
-            <button type="button" className="vault-sync-toast-action" onClick={() => { showVaultSyncNotice('Retrying client-portal file sync…', 'info'); syncNowRef.current?.(); }}>
-              Retry now
-            </button>
-          )}
-          {vaultSyncNotice.kind === 'warning' && (
-            <button type="button" className="vault-sync-toast-action" onClick={handleConfigureLocalVault} disabled={configuringVault}>
-              {configuringVault ? 'Opening…' : 'Choose folder'}
-            </button>
-          )}
-          <button type="button" className="vault-sync-toast-close" onClick={() => setVaultSyncNotice(null)} aria-label="Dismiss notification">
-            <Icon name="x" size={13} />
-          </button>
-          <span className="vault-sync-toast-timer" aria-hidden="true"><i key={vaultSyncNotice.id} /></span>
-        </div>
-      )}
       <div className="shell">
         <Sidebar />
         <main className={`main${s.page === 'whatsapp' ? ' main-inbox' : ''}`}>

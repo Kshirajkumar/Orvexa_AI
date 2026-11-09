@@ -50,6 +50,15 @@ test('document sync repair returns portal documents only', () => {
   assert.doesNotMatch(sql.slice(createIndex), /d\.source\s*=\s*'Telegram'/);
 });
 
+test('cloud document migration secures the shared bucket and removes desktop sync objects', () => {
+  const sql = fs.readFileSync(path.join(migrationDirectory, 'migrate_cloud_document_storage.sql'), 'utf8');
+  assert.match(sql, /VALUES \('taxflow-intake', 'taxflow-intake', FALSE, 20971520\)/i);
+  assert.match(sql, /ALTER COLUMN vault_path DROP NOT NULL/i);
+  assert.match(sql, /storage_object_path TEXT/i);
+  assert.match(sql, /DROP FUNCTION IF EXISTS public\.list_pending_document_sync/i);
+  assert.match(sql, /DROP TABLE IF EXISTS public\.document_sync_receipts/i);
+});
+
 test('Telegram file-transfer cleanup preserves message history while removing document links', () => {
   const sql = fs.readFileSync(path.join(migrationDirectory, 'decommission_telegram_file_transfer.sql'), 'utf8');
   assert.match(sql, /UPDATE public\.telegram_messages/);

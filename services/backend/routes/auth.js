@@ -5,18 +5,16 @@
  * - Signup  → supabase.auth.signUp  → trigger auto-creates user_profiles row
  * - Login   → supabase.auth.signInWithPassword → fetches profile + onboarding status
  * - /me     → supabase.auth.getUser(token) → validates JWT + returns profile
- * - Vault Setup → stores an onboarding marker; local filesystem paths stay on the machine
+ * - Onboarding → stores completion status in the Supabase profile
  * - Forgot  → supabase.auth.resetPasswordForEmail → real email via Supabase SMTP
  *
  * Security:
  * - Rate limiting (5 failed attempts → 60 sec lockout) per IP+email
- * - Desktop vault paths are persisted only in the desktop's local app configuration
  * - No in-memory user stores, no mock credentials, no demo bypass
  * - All tokens validated with Supabase on every /me request
  */
 
 const express = require('express');
-const path = require('node:path');
 const crypto = require('node:crypto');
 const { createClient } = require('@supabase/supabase-js');
 const router = express.Router();
@@ -99,11 +97,6 @@ function decodeChallengeSub(token) {
   }
 }
 
-function isLoopbackAddress(address) {
-  const value = String(address || '').toLowerCase();
-  return value === '::1' || value.startsWith('127.') || value.startsWith('::ffff:127.');
-}
-
 // ──────────────────────────────────────────────────────────
 // Rate Limiting (in-memory, per IP+email)
 // Max 5 failed attempts in 60 s → 60 s lockout
@@ -167,8 +160,6 @@ async function fetchUserProfile(userId) {
 
 // ──────────────────────────────────────────────────────────
 // Helper: build sanitised user object for API responses
-// vault_path is intentionally omitted from login/me — only
-// the backend uses it internally when serving vault routes
 // ──────────────────────────────────────────────────────────
 function buildUserResponse(supaUser, profile) {
   return {
@@ -178,8 +169,7 @@ function buildUserResponse(supaUser, profile) {
     practiceType: profile?.practice_type || supaUser.user_metadata?.practice_type || 'Chartered Accountant (CA)',
     membershipNo: profile?.membership_no || supaUser.user_metadata?.membership_no || null,
     role: profile?.role || 'Managing Partner',
-    onboardingComplete: profile?.onboarding_complete ?? false,
-    vaultConfigured: !!(profile?.vault_path)
+    onboardingComplete: profile?.onboarding_complete ?? false
   };
 }
 
@@ -317,7 +307,7 @@ router.post('/login', async (req, res) => {
 
     clearRateLimit(rateKey);
 
-    // Fetch profile from user_profiles table (includes onboarding status + vaultConfigured)
+    // Fetch profile from user_profiles table for onboarding status.
     const profile = await fetchUserProfile(supaAuth.user.id);
 
     return res.json({
@@ -523,7 +513,7 @@ router.post('/delete-account/confirm', async (req, res) => {
     return res.json({
       success: true,
       message: 'Your account and account-owned cloud data were permanently deleted.',
-      data: { deletedObjectCount, deletedSecretCount, localVaultPreserved: true }
+      data: { deletedObjectCount, deletedSecretCount }
     });
   } catch (error) {
     console.error(`[AUTH] Account deletion failed before auth removal for ${userId}:`, error.message);
@@ -562,12 +552,8 @@ router.get('/me', async (req, res) => {
   });
 });
 
-// ──────────────────────────────────────────────────────────
-// POST /api/v1/auth/vault-setup
-// Marks onboarding complete; a local backend may also apply a folder path
-// supplied over loopback, but no machine-specific path is stored in Supabase.
-// ──────────────────────────────────────────────────────────
-router.post('/vault-setup', async (req, res) => {
+// Mark the user's profile and initial client setup as complete.
+router.post('/onboarding-complete', async (req, res) => {
   if (!requireSupabase(res)) return;
 
   const authHeader = req.headers.authorization;
@@ -576,13 +562,6 @@ router.post('/vault-setup', async (req, res) => {
   }
 
   const token = authHeader.split(' ')[1];
-  const requestedVaultPath = typeof req.body?.vaultPath === 'string' ? req.body.vaultPath.trim() : '';
-  if (requestedVaultPath && (!isLoopbackAddress(req.socket.remoteAddress) || !path.isAbsolute(requestedVaultPath))) {
-    return res.status(400).json({ success: false, message: 'A local vault path can only be applied by a local backend.' });
-  }
-  if (req.body?.vaultPath !== undefined && !requestedVaultPath) {
-    return res.status(400).json({ success: false, message: 'A valid local vault folder path is required.' });
-  }
 
   // Verify the JWT
   const { data, error } = await supabase.auth.getUser(token);
@@ -593,43 +572,18 @@ router.post('/vault-setup', async (req, res) => {
   // Keep the onboarding marker but never persist a machine-specific folder path.
   const { error: updateErr } = await supabase
     .from('user_profiles')
-    .update({ vault_path: 'desktop-local', onboarding_complete: true, updated_at: new Date().toISOString() })
+    .update({ onboarding_complete: true, updated_at: new Date().toISOString() })
     .eq('id', data.user.id);
 
   if (updateErr) {
-    console.error('[AUTH] Local vault onboarding save error:', updateErr.message);
-    return res.status(500).json({ success: false, message: 'Failed to save vault onboarding. Please try again.' });
+    console.error('[AUTH] Onboarding completion save error:', updateErr.message);
+    return res.status(500).json({ success: false, message: 'Failed to complete onboarding. Please try again.' });
   }
 
-  let vaultWarnings = [];
-  if (requestedVaultPath) {
-    try {
-      const { updateVaultBaseDir, ensureClientVaultStructure } = require('../vault/vaultManager');
-      updateVaultBaseDir(requestedVaultPath);
-      const { data: clients, error: clientsError } = await supabase
-        .from('clients')
-        .select('id, name')
-        .eq('user_id', data.user.id);
-      if (clientsError) throw clientsError;
-      for (const client of clients || []) {
-        try {
-          ensureClientVaultStructure(client.name);
-        } catch (clientError) {
-          console.error(`[AUTH] Client vault reconciliation failed for ${client.id}:`, clientError);
-          vaultWarnings.push(client.name);
-        }
-      }
-    } catch (vaultError) {
-      console.error('[AUTH] Local vault configuration failed:', vaultError);
-      vaultWarnings.push('local vault');
-    }
-  }
-
-  console.log(`[AUTH] Local vault onboarding completed for user ${data.user.id}.`);
+  console.log(`[AUTH] Onboarding completed for user ${data.user.id}.`);
   return res.json({
     success: true,
-    message: 'Local vault configured and onboarding complete.',
-    ...(vaultWarnings.length ? { vaultWarnings: `Could not create all local client folders: ${vaultWarnings.join(', ')}` } : {})
+    message: 'Onboarding completed.'
   });
 });
 
