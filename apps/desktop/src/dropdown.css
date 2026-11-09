@@ -1,0 +1,30 @@
+:root {
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root select {
+  color: var(--tx);
+  background-color: var(--panel);
+  border-color: var(--line2);
+}
+
+:root select:focus-visible,
+:root .wa-template-picker select:focus-visible {
+  border-color: var(--blue);
+  outline: 2px solid color-mix(in srgb, var(--blue) 45%, transparent);
+  outline-offset: 1px;
+}
+
+:root select option {
+  color: var(--tx);
+  background-color: var(--panel);
+}
+
+:root select option:checked {
+  color: var(--panel);
+  background-color: var(--blue);
+}
