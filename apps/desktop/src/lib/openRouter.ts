@@ -98,12 +98,6 @@ function providerResponseError(message: string, status = 502): OpenRouterProvide
   return error;
 }
 
-function isRetryableProviderError(error: unknown): error is OpenRouterProviderError {
-  if (!(error instanceof Error) || !('providerStatus' in error) || typeof error.providerStatus !== 'number') return false;
-  const status = error.providerStatus;
-  return status === 404 || status === 408 || status === 429 || status >= 500;
-}
-
 async function requestOpenRouterModel(
   apiKey: string,
   model: string,
@@ -159,9 +153,12 @@ async function requestOpenRouterModel(
     }
     throw providerResponseError('OpenRouter returned an invalid response.');
   }
-  globalThis.clearTimeout(timeout);
-
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    globalThis.clearTimeout(timeout);
+    throw providerResponseError('OpenRouter returned an invalid response.');
+  }
   const content = payload.choices?.[0]?.message?.content;
+  globalThis.clearTimeout(timeout);
   const text = typeof content === 'string'
     ? content.trim()
     : Array.isArray(content)
@@ -202,26 +199,8 @@ async function openRouterRequest(
     throw new Error('The selected model is no longer supported. Choose one of the five available models in Settings.');
   }
 
-  const models = [
-    selectedModel,
-    ...FREE_VISION_MODELS.map(model => model.id).filter(model => model !== selectedModel),
-  ];
   const start = Date.now();
-  let lastProviderError: OpenRouterProviderError | null = null;
-  for (let index = 0; index < models.length; index += 1) {
-    const remainingMs = REQUEST_TIMEOUT_MS - (Date.now() - start);
-    if (remainingMs <= 0) {
-      throw new Error('The OpenRouter request timed out after trying the configured free models.');
-    }
-    try {
-      return await requestOpenRouterModel(apiKey, models[index], messages, jsonOutput, Math.min(remainingMs, 15_000), start);
-    } catch (error) {
-      if (!isRetryableProviderError(error)) throw error;
-      lastProviderError = error;
-    }
-  }
-
-  throw new Error(`All configured free models failed. ${lastProviderError?.message || 'Try again later.'}`);
+  return requestOpenRouterModel(apiKey, selectedModel, messages, jsonOutput, REQUEST_TIMEOUT_MS, start);
 }
 
 export async function sendOpenRouterChat(

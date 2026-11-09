@@ -409,8 +409,8 @@ function OpenRouterSettings() {
       setUsingLocalOpenRouterKey(next);
       setUseLocalKey(next);
       setNotice(next
-        ? 'AI requests will use your saved OpenRouter key. Prompts and images are sent to OpenRouter.'
-        : 'AI requests will use the current TaxFlow AI service.');
+        ? 'Other supported AI requests will use your saved OpenRouter key. Chat also uses the saved key automatically.'
+        : 'Other supported AI requests will use the current TaxFlow AI service. Chat still uses a saved device key automatically.');
     } catch (settingError) {
       setError(settingError instanceof Error ? settingError.message : 'Could not update the AI provider setting.');
     }
@@ -442,7 +442,7 @@ function OpenRouterSettings() {
             </select>
           </div>
           <div className="ai-setting-field">
-            <label htmlFor="ai-model">Free vision model</label>
+            <label htmlFor="ai-model">OpenRouter model</label>
             <select
               id="ai-model"
               className="sel"
@@ -454,7 +454,7 @@ function OpenRouterSettings() {
               {!loadingModels && !models.length && <option value="">No eligible models available</option>}
               {models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
             </select>
-            <small>The selected model is tried first, then the remaining models are tried in this order when an endpoint is unavailable or rate-limited.</small>
+            <small>OpenRouter requests use only this model. If it is unavailable or rate-limited, the request fails without trying another model.</small>
           </div>
         </div>
 
@@ -497,13 +497,13 @@ function OpenRouterSettings() {
 
         <div className="ai-provider-warning" role="note">
           <Icon name="info" size={15} />
-          <p>Your key stays on this device. When enabled, prompts and document images are sent to OpenRouter and may be sent to another listed model provider during fallback. An internet connection is required. Local-key extraction accepts JPG, PNG, WEBP, and GIF images only.</p>
+          <p>Your key stays on this device. Chat uses it automatically when saved. OpenRouter requests use only the selected model; no alternate model or provider is tried. Prompts and images sent through local-key features go directly to OpenRouter. Local-key extraction accepts JPG, PNG, WEBP, and GIF images only.</p>
         </div>
 
         <div className="setrow ai-local-key-row">
           <div className="tx">
             <b>Use my local OpenRouter key</b>
-            <small>When off, AI requests use the current TaxFlow AI service. When on, supported AI requests go directly from this app to OpenRouter.</small>
+            <small>Chat uses a saved device key automatically. This switch controls local OpenRouter routing for other supported AI requests.</small>
           </div>
           <button
             className={'tg' + (useLocalKey ? ' on' : '')}

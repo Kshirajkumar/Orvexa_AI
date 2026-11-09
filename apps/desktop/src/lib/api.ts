@@ -6,6 +6,7 @@ import {
   isUsingLocalOpenRouterKey,
   sendOpenRouterChat,
 } from './openRouter';
+import { hasOpenRouterApiKey } from './localVault';
 
 const API_ORIGIN = String(
   import.meta.env.VITE_API_URL
@@ -1271,7 +1272,8 @@ export async function getHealthStatus() {
 }
 
 export async function sendChatMessage(messages: Array<{ role: 'user' | 'assistant'; content: string }>) {
-  if (isUsingLocalOpenRouterKey()) {
+  const hasSavedLocalKey = await hasOpenRouterApiKey();
+  if (hasSavedLocalKey || isUsingLocalOpenRouterKey()) {
     const result = await sendOpenRouterChat(messages);
     return { text: result.text, model: result.model };
   }
@@ -1302,13 +1304,26 @@ export async function sendChatMessage(messages: Array<{ role: 'user' | 'assistan
     }
   } catch {
     window.clearTimeout(timeout);
-    throw new Error('The AI service timed out or is unavailable. Please try again.');
-  } finally {
-    window.clearTimeout(timeout);
+    if (controller.signal.aborted) {
+      throw new Error('The AI request timed out. Please try again.');
+    }
+    throw new Error('The AI service could not be reached. Check your connection and try again.');
   }
 
   let json: any;
-  try { json = await response.json(); } catch { throw new Error(`The AI service returned an invalid response (HTTP ${response.status}).`); }
+  try {
+    json = await response.json();
+  } catch {
+    if (controller.signal.aborted) {
+      throw new Error('The AI request timed out. Please try again.');
+    }
+    throw new Error(`The AI service returned an invalid response (HTTP ${response.status}).`);
+  } finally {
+    window.clearTimeout(timeout);
+  }
+  if (!json || typeof json !== 'object' || Array.isArray(json)) {
+    throw new Error(`The AI service returned an invalid response (HTTP ${response.status}).`);
+  }
   if (response.status === 401) {
     throw new Error('Your session has expired. Please sign in again, then retry your message.');
   }

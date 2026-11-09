@@ -12,6 +12,18 @@ function sendChatError(res, status, message, code) {
   });
 }
 
+async function logChatUsage(entry, outcome) {
+  try {
+    const { error } = await supabase.from('ai_usage_log').insert([entry]);
+    if (error) console.warn(`[Chat] Could not log ${outcome} AI usage:`, error.message);
+  } catch (error) {
+    console.warn(
+      `[Chat] Could not log ${outcome} AI usage:`,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
 router.post('/', async (req, res) => {
   const rawMessages = Array.isArray(req.body?.messages) ? req.body.messages : [];
   let messages = rawMessages
@@ -43,7 +55,7 @@ router.post('/', async (req, res) => {
 
     const result = await generateGeminiChat({ ownerUserId: req.user.id, messages });
 
-    const { error: usageError } = await supabase.from('ai_usage_log').insert([{
+    await logChatUsage({
       operation: 'chat',
       model_used: result.model,
       input_tokens: result.inputTokens,
@@ -51,8 +63,7 @@ router.post('/', async (req, res) => {
       cost_usd: ((result.inputTokens * 0.000075 + result.outputTokens * 0.0003) / 1000),
       duration_ms: result.durationMs,
       success: true,
-    }]);
-    if (usageError) console.warn('[Chat] Could not log successful AI usage:', usageError.message);
+    }, 'successful');
 
     return res.json({
       success: true,
@@ -60,13 +71,20 @@ router.post('/', async (req, res) => {
       data: { text: result.text, model: result.model },
     });
   } catch (error) {
-    console.error('[Chat] AI request failed:', error.providerStatus ? `provider HTTP ${error.providerStatus}` : 'backend error', error.message);
-    const { error: usageError } = await supabase.from('ai_usage_log').insert([{
-      operation: 'chat', model_used: error.model || 'unknown', success: false, error_message: error.message,
-    }]);
-    if (usageError) console.warn('[Chat] Could not log failed AI usage:', usageError.message);
-    const status = Number.isInteger(error.status) ? error.status : 500;
-    return sendChatError(res, status, error.message, error.code);
+    const failure = error instanceof Error ? error : new Error('The AI request failed unexpectedly.');
+    console.error('[Chat] AI request failed:', failure.providerStatus ? `provider HTTP ${failure.providerStatus}` : 'backend error', failure.message);
+    await logChatUsage({
+      operation: 'chat',
+      model_used: failure.model || 'unknown',
+      success: false,
+      error_message: failure.message,
+    }, 'failed');
+    const hasSafeStatus = Number.isInteger(failure.status);
+    const status = hasSafeStatus ? failure.status : 500;
+    const message = hasSafeStatus
+      ? failure.message
+      : 'The AI service encountered an unexpected error. Please try again.';
+    return sendChatError(res, status, message, failure.code);
   }
 });
 
