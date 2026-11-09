@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Icon } from './Icon';
 import { ThemeToggle } from './ThemeToggle';
-import { BrandMark } from './BrandMark';
+import { BrandLogo } from './BrandLogo';
 import { useAppState, useDispatch } from '../state/store';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { fetchNotifications, markNotificationsRead, searchTelegramMessages, searchVaultFiles, type NotificationItem, type TelegramSearchResult, type VaultFileSearchResult } from '../lib/api';
@@ -286,10 +286,7 @@ export function Titlebar() {
     <header className="titlebar">
       {/* Brand */}
       <div className="brand" data-tauri-drag-region>
-        <span className="logo">
-          <BrandMark />
-        </span>
-        <span className="brand-name">Taxflow<span className="brand-dot">.</span>AI</span>
+        <BrandLogo className="titlebar-brand-logo" />
         <small className="brand-badge">CA Suite</small>
       </div>
 

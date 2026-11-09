@@ -13,7 +13,7 @@ import { useState, useEffect } from 'react';
 import { useAppState, useDispatch } from '../state/store';
 import { apiUpdateProfile, apiSetupVault, createClient } from '../lib/api';
 import { FilingTypePicker } from '../components/FilingTypePicker';
-import { BrandMark } from '../components/BrandMark';
+import { BrandLogo } from '../components/BrandLogo';
 import { open } from '@tauri-apps/plugin-dialog';
 import { configureLocalVault, isDesktopApp } from '../lib/localVault';
 
@@ -247,8 +247,7 @@ export function OnboardingFlow() {
         {/* Header */}
         <div className="ob-header">
           <div className="ob-logo">
-            <span className="ob-logo-icon"><BrandMark size={24} /></span>
-            <span className="ob-logo-text">TaxFlow<span>.AI</span></span>
+            <BrandLogo className="onboarding-brand-logo" />
           </div>
           <StepDots step={step} total={3} />
         </div>
@@ -448,10 +447,7 @@ export function OnboardingFlow() {
           background: rgba(255,255,255,0.02);
         }
 
-        .ob-logo { display: flex; align-items: center; gap: 10px; }
-        .ob-logo-icon { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 9px; background: #6366f1; color: #fff; }
-        .ob-logo-text { font-size: 18px; font-weight: 700; color: #fff; letter-spacing: -0.5px; }
-        .ob-logo-text span { color: #6366f1; }
+        .ob-logo { display: flex; align-items: center; }
 
         .ob-dots { display: flex; gap: 8px; }
         .ob-dot {

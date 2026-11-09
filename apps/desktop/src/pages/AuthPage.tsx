@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Icon } from '../components/Icon';
-import { BrandMark } from '../components/BrandMark';
+import { BrandLogo } from '../components/BrandLogo';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { apiLogin, apiSignup, apiForgotPassword, AuthUser } from '../lib/api';
 import { useDispatch } from '../state/store';
@@ -401,10 +401,7 @@ export function AuthPage() {
       {/* Top bar with drag handle and app title */}
       <header className="auth-header">
         <div className="auth-brand" data-tauri-drag-region>
-          <div className="auth-brand-badge">
-            <BrandMark size={15} />
-          </div>
-          <span className="auth-brand-name">TaxFlow.AI</span>
+          <BrandLogo className="auth-brand-logo" />
           <span className="auth-brand-chip">Enterprise CA Edition</span>
         </div>
 
