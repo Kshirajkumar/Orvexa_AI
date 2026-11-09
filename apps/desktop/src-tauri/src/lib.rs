@@ -7,6 +7,135 @@ use std::time::{Duration, SystemTime};
 use tauri::Manager;
 use uuid::Uuid;
 
+const OPENROUTER_CREDENTIAL_TARGET: &str = "TaxFlow.AI.OpenRouter";
+
+fn validate_openrouter_key(api_key: &str) -> Result<(), String> {
+    let api_key = api_key.trim();
+    if !api_key.starts_with("sk-or-v1-")
+        || api_key.len() <= "sk-or-v1-".len()
+        || api_key.len() > 1024
+    {
+        return Err("Enter a valid OpenRouter API key beginning with sk-or-v1-.".into());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+mod windows_credentials {
+    use super::OPENROUTER_CREDENTIAL_TARGET;
+    use std::ptr::null_mut;
+    use std::slice;
+    use windows_sys::Win32::Foundation::{ERROR_NOT_FOUND, GetLastError};
+    use windows_sys::Win32::Security::Credentials::{
+        CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC, CREDENTIALW, CredDeleteW, CredFree,
+        CredReadW, CredWriteW,
+    };
+
+    fn target_name() -> Vec<u16> {
+        OPENROUTER_CREDENTIAL_TARGET
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect()
+    }
+
+    pub fn save(api_key: &str) -> Result<(), String> {
+        let mut target = target_name();
+        let mut username = "OpenRouter\0".encode_utf16().collect::<Vec<_>>();
+        let mut secret = api_key.as_bytes().to_vec();
+        let mut credential: CREDENTIALW = unsafe { std::mem::zeroed() };
+        credential.Type = CRED_TYPE_GENERIC;
+        credential.TargetName = target.as_mut_ptr();
+        credential.CredentialBlobSize = secret.len() as u32;
+        credential.CredentialBlob = secret.as_mut_ptr();
+        credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
+        credential.UserName = username.as_mut_ptr();
+
+        let saved = unsafe { CredWriteW(&credential, 0) } != 0;
+        secret.fill(0);
+        if !saved {
+            return Err(format!(
+                "Windows Credential Manager could not save the OpenRouter key: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn read() -> Result<Option<String>, String> {
+        let target = target_name();
+        let mut credential = null_mut();
+        if unsafe { CredReadW(target.as_ptr(), CRED_TYPE_GENERIC, 0, &mut credential) } == 0 {
+            if unsafe { GetLastError() } == ERROR_NOT_FOUND {
+                return Ok(None);
+            }
+            return Err(format!(
+                "Windows Credential Manager could not read the OpenRouter key: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+
+        let decoded = unsafe {
+            let credential = &*credential;
+            if credential.CredentialBlob.is_null() || credential.CredentialBlobSize == 0 {
+                Err("The saved OpenRouter key is empty.".to_string())
+            } else {
+                let bytes = slice::from_raw_parts(
+                    credential.CredentialBlob,
+                    credential.CredentialBlobSize as usize,
+                );
+                std::str::from_utf8(bytes)
+                    .map(str::to_owned)
+                    .map_err(|_| "The saved OpenRouter key is invalid.".to_string())
+            }
+        };
+        unsafe { CredFree(credential.cast()) };
+        decoded.map(Some)
+    }
+
+    pub fn delete() -> Result<(), String> {
+        let target = target_name();
+        if unsafe { CredDeleteW(target.as_ptr(), CRED_TYPE_GENERIC, 0) } == 0
+            && unsafe { GetLastError() } != ERROR_NOT_FOUND
+        {
+            return Err(format!(
+                "Windows Credential Manager could not remove the OpenRouter key: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[tauri::command]
+fn save_openrouter_api_key(api_key: String) -> Result<(), String> {
+    validate_openrouter_key(&api_key)?;
+    #[cfg(windows)]
+    return windows_credentials::save(api_key.trim());
+    #[cfg(not(windows))]
+    Err("Secure OpenRouter key storage is available only in the Windows desktop app.".into())
+}
+
+#[tauri::command]
+fn get_openrouter_api_key() -> Result<Option<String>, String> {
+    #[cfg(windows)]
+    return windows_credentials::read();
+    #[cfg(not(windows))]
+    Err("Secure OpenRouter key storage is available only in the Windows desktop app.".into())
+}
+
+#[tauri::command]
+fn has_openrouter_api_key() -> Result<bool, String> {
+    get_openrouter_api_key().map(|api_key| api_key.is_some())
+}
+
+#[tauri::command]
+fn delete_openrouter_api_key() -> Result<(), String> {
+    #[cfg(windows)]
+    return windows_credentials::delete();
+    #[cfg(not(windows))]
+    Err("Secure OpenRouter key storage is available only in the Windows desktop app.".into())
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LocalVaultSettings {
@@ -394,7 +523,7 @@ fn save_synced_document_chunk(
 
 #[cfg(test)]
 mod tests {
-    use super::{safe_component, safe_file_name};
+    use super::{safe_component, safe_file_name, validate_openrouter_key};
 
     #[test]
     fn client_directory_names_match_the_backend_sanitizer() {
@@ -407,6 +536,14 @@ mod tests {
         assert!(safe_file_name("").is_err());
         assert!(safe_file_name("..").is_err());
         assert_eq!(safe_file_name("../invoice.pdf").unwrap(), "..invoice.pdf");
+    }
+
+    #[test]
+    fn openrouter_key_validation_rejects_empty_or_unrecognized_keys() {
+        assert!(validate_openrouter_key("sk-or-v1-test-key").is_ok());
+        assert!(validate_openrouter_key("").is_err());
+        assert!(validate_openrouter_key("not-an-openrouter-key").is_err());
+        assert!(validate_openrouter_key(&format!("sk-or-v1-{}", "x".repeat(1024))).is_err());
     }
 }
 
@@ -430,7 +567,11 @@ pub fn run() {
             configure_local_vault,
             get_local_vault_status,
             save_synced_document_chunk,
-            open_file_with_default_app
+            open_file_with_default_app,
+            save_openrouter_api_key,
+            get_openrouter_api_key,
+            has_openrouter_api_key,
+            delete_openrouter_api_key
         ])
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())

@@ -118,12 +118,12 @@ export function ProfilePage() {
 
   return (
     <div className="profile-page">
-      <div className="ph profile-page-head">
+      <div className="ph profile-page-head" data-tour="profile-intro">
         <div><span className="eyebrow"><span className="eyebrow-dot" />ACCOUNT CENTRE</span><h1>Profile</h1><p>Manage your identity, practice details, and workspace access in one place.</p></div>
         <span className="profile-live-chip"><i />Account active</span>
       </div>
 
-      <section className="card profile-hero">
+      <section className="card profile-hero" data-tour="profile-details">
         <div className="profile-hero-glow" />
         <div className="profile-avatar-xl">{initials}<span /></div>
         <div className="profile-hero-copy"><span className="eyebrow">PERSONAL PROFILE</span><h2>{user.name || 'Your profile'}</h2><p>{accountLabel} · Member since your TaxFlow account was created</p><div className="profile-hero-tags"><span><Icon name="check" size={12} />Verified workspace</span><span><Icon name="folder" size={12} />Local Vault enabled</span></div></div>

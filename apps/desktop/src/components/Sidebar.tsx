@@ -144,6 +144,7 @@ export function Sidebar() {
               <button
                 key={id}
                 className={'nav' + (isActive ? ' on' : '') + (id === 'extraction-review' ? ' nav-review' : '')}
+                data-tour={`nav-${id}`}
                 onClick={() => dispatch({ type: 'GO', page: id })}
                 title={collapsed ? `${label}${b ? ` (${b.n})` : ''}` : undefined}
                 aria-label={label}

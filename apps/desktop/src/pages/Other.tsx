@@ -4,7 +4,22 @@ import { useAppState, useDispatch } from '../state/store';
 import { allTasks, missing } from '../lib/domain';
 import { money, sum } from '../lib/format';
 import { createClient, deleteClient, fetchClientPortalAccess, inviteClientToPortal, revokeClientPortalAccess, updateClient } from '../lib/api';
+import { ClientFormCard, type ClientFormValues } from '../components/ClientFormCard';
 import { FilingTypePicker } from '../components/FilingTypePicker';
+import {
+  deleteOpenRouterApiKey,
+  hasOpenRouterApiKey,
+  isDesktopApp,
+  saveOpenRouterApiKey,
+} from '../lib/localVault';
+import {
+  fetchOpenRouterModels,
+  getSelectedOpenRouterModel,
+  isUsingLocalOpenRouterKey,
+  setSelectedOpenRouterModel,
+  setUsingLocalOpenRouterKey,
+  type OpenRouterModel,
+} from '../lib/openRouter';
 
 export function ClientsPage() {
   const s = useAppState();
@@ -27,8 +42,8 @@ export function ClientsPage() {
   const [portalMessage, setPortalMessage] = React.useState('');
   const [portalError, setPortalError] = React.useState('');
   const [editForm, setEditForm] = React.useState({ name: '', entityType: 'Individual', pan: '', gstin: '', phone: '', email: '', countryId: '', filingTypes: [] as string[] });
-  const [form, setForm] = React.useState({ name: '', entityType: 'Individual', pan: '', gstin: '', phone: '', email: '', countryId: '', filingTypes: [] as string[] });
-  const update = (key: string, value: any) => setForm(prev => ({ ...prev, [key]: value }));
+  const [form, setForm] = React.useState<ClientFormValues>({ name: '', entityType: 'Individual', pan: '', gstin: '', phone: '', email: '', countryId: '', filingTypes: [] });
+  const update = (key: keyof ClientFormValues, value: string | string[]) => setForm(prev => ({ ...prev, [key]: value }));
   React.useEffect(() => {
     let disposed = false;
     if (!selectedClient) return undefined;
@@ -160,13 +175,13 @@ export function ClientsPage() {
   }
   return (
     <>
-      <div className="ph"><div><h1>Clients</h1><p>Everyone you file for, with their services and current workload.</p></div><button className="btn pri" onClick={() => setShowAdd(true)}>+ Add client</button></div>
+      <div className="ph" data-tour="clients-intro"><div><h1>Clients</h1><p>Everyone you file for, with their services and current workload.</p></div><button className="btn pri" onClick={() => setShowAdd(true)}>+ Add client</button></div>
       {portalNotice && <div className="ob-error" role="status">{portalNotice}</div>}
-      {!s.clients.length ? <section className="card client-empty-state" aria-labelledby="clients-empty-title">
+      {!s.clients.length ? <section className="card client-empty-state" data-tour="clients-empty" aria-labelledby="clients-empty-title">
         <div className="client-empty-visual"><div className="client-empty-orb"><Icon name="users" size={28} /></div><span className="client-empty-spark client-empty-spark-one"><Icon name="check" size={11} /></span><span className="client-empty-spark client-empty-spark-two"><Icon name="file" size={11} /></span></div>
         <div className="client-empty-copy"><span className="eyebrow"><span className="eyebrow-dot" />CLIENT WORKSPACE</span><h2 id="clients-empty-title">Your client list starts here</h2><p>Add your first client to organize filings, secure documents, deadlines, and extraction work in one place.</p><button className="btn pri" onClick={() => setShowAdd(true)}><Icon name="users" size={14} />Add your first client</button></div>
         <div className="client-empty-steps" aria-label="What you can do with a client workspace"><div><span><Icon name="folder" size={14} /></span><b>Keep records together</b><small>Profile, tax IDs, and selected filings</small></div><div><span><Icon name="spark" size={14} /></span><b>Extract with confidence</b><small>Review documents against the right client</small></div><div><span><Icon name="check" size={14} /></span><b>Stay ahead of work</b><small>Deadlines and missing documents in view</small></div></div>
-      </section> : <div className="grid g3">
+      </section> : <div className="grid g3" data-tour="clients-list">
         {s.clients.map((c) => {
           const mine = allTasks(s.tasks).filter((x) => x.t.client === c.id);
           const pct = mine.length ? Math.round((sum(mine, (x) => x.done) / sum(mine, (x) => x.total)) * 100) : 0;
@@ -258,28 +273,245 @@ export function ClientsPage() {
         </div>
       </div>}
       {showAdd && <div className="modal" onMouseDown={e => { if (e.target === e.currentTarget) setShowAdd(false); }}>
-        <div className="card" style={{ width: 'min(680px, 100%)', maxHeight: '90vh', overflow: 'auto' }}>
-          <div className="card-h"><h2>Add new client</h2><button className="btn gh" onClick={() => setShowAdd(false)}>Close</button></div>
-          <div className="card-b">
-            <div className="fields-grid-2">
-              <label className="f">Client / firm name *<input className="modal-input" value={form.name} onChange={e => update('name', e.target.value)} /></label>
-              <label className="f">Entity type<select className="modal-input" value={form.entityType} onChange={e => update('entityType', e.target.value)}><option>Individual</option><option>Partnership</option><option>Pvt Ltd</option><option>LLP</option><option>Trust</option><option>HUF</option><option>OPC</option></select></label>
-              <label className="f">PAN<input className="modal-input" maxLength={10} value={form.pan} onChange={e => update('pan', e.target.value.toUpperCase())} /></label>
-              <label className="f">GSTIN<input className="modal-input" maxLength={15} value={form.gstin} onChange={e => update('gstin', e.target.value.toUpperCase())} /></label>
-              <label className="f">Phone<input className="modal-input" value={form.phone} onChange={e => update('phone', e.target.value)} /></label>
-              <label className="f">Email<input className="modal-input" type="email" value={form.email} onChange={e => update('email', e.target.value)} /></label>
-            </div>
-            <FilingTypePicker countryId={form.countryId} selectedTypes={form.filingTypes} onCountryChange={value => setForm(prev => ({ ...prev, countryId: value, filingTypes: [] }))} onTypesChange={value => update('filingTypes', value)} />
-            {error && <div className="ob-error" style={{ marginTop: 14 }}>{error}</div>}
-            <div className="row" style={{ justifyContent: 'flex-end', marginTop: 20, gap: 8 }}><button className="btn gh" onClick={() => setShowAdd(false)}>Cancel</button><button className="btn pri" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save client'}</button></div>
-          </div>
-        </div>
+        <ClientFormCard
+          form={form}
+          onChange={update}
+          error={error}
+          onDismiss={() => setShowAdd(false)}
+        >
+          <button className="btn gh" onClick={() => setShowAdd(false)}>Cancel</button>
+          <button className="btn pri" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save client'}</button>
+        </ClientFormCard>
       </div>}
     </>
   );
 }
 
-export function SettingsPage() {
+function OpenRouterSettings() {
+  const [desktopApp] = React.useState(isDesktopApp());
+  const [keySaved, setKeySaved] = React.useState(false);
+  const [useLocalKey, setUseLocalKey] = React.useState(false);
+  const [apiKey, setApiKey] = React.useState('');
+  const [models, setModels] = React.useState<OpenRouterModel[]>([]);
+  const [selectedModel, setSelectedModel] = React.useState('');
+  const [loadingModels, setLoadingModels] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [notice, setNotice] = React.useState('');
+
+  React.useEffect(() => {
+    let active = true;
+    if (!desktopApp) {
+      setLoadingModels(false);
+      setUseLocalKey(false);
+      return () => { active = false; };
+    }
+
+    try {
+      setUseLocalKey(isUsingLocalOpenRouterKey());
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Could not read the AI provider setting.');
+    }
+
+    hasOpenRouterApiKey()
+      .then(saved => {
+        if (!active) return;
+        setKeySaved(saved);
+        if (!saved && isUsingLocalOpenRouterKey()) {
+          setUsingLocalOpenRouterKey(false);
+          setUseLocalKey(false);
+          setError('The saved OpenRouter key is unavailable. The app has switched back to the TaxFlow AI service.');
+        }
+      })
+      .catch(loadError => {
+        if (active) setError(loadError instanceof Error ? loadError.message : 'Could not check secure key storage.');
+      });
+
+    fetchOpenRouterModels()
+      .then(availableModels => {
+        if (!active) return;
+        setModels(availableModels);
+        const savedModel = getSelectedOpenRouterModel();
+        const nextModel = availableModels.some(model => model.id === savedModel)
+          ? savedModel
+          : availableModels[0].id;
+        setSelectedModel(nextModel);
+        setSelectedOpenRouterModel(nextModel);
+      })
+      .catch(loadError => {
+        if (active) {
+          setError(loadError instanceof Error ? loadError.message : 'Could not load OpenRouter models.');
+          try {
+            const previouslySelected = getSelectedOpenRouterModel();
+            if (previouslySelected) {
+              setSelectedModel(previouslySelected);
+              setModels([{ id: previouslySelected, name: previouslySelected, context_length: 0 }]);
+            }
+          } catch {
+            // The model catalog error is more useful than a second storage error here.
+          }
+        }
+      })
+      .finally(() => { if (active) setLoadingModels(false); });
+
+    return () => { active = false; };
+  }, []);
+
+  async function saveKey(event: React.FormEvent) {
+    event.preventDefault();
+    const trimmedKey = apiKey.trim();
+    if (!trimmedKey.startsWith('sk-or-v1-') || trimmedKey.length <= 'sk-or-v1-'.length || trimmedKey.length > 1024) {
+      setError('Enter a valid OpenRouter API key beginning with sk-or-v1-.');
+      setNotice('');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setNotice('');
+    try {
+      await saveOpenRouterApiKey(trimmedKey);
+      setApiKey('');
+      setKeySaved(true);
+      setNotice('OpenRouter key saved in Windows Credential Manager. OpenRouter will validate it when you make your first AI request.');
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not save the OpenRouter key securely.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeKey() {
+    setSaving(true);
+    setError('');
+    setNotice('');
+    try {
+      setUsingLocalOpenRouterKey(false);
+      setUseLocalKey(false);
+      await deleteOpenRouterApiKey();
+      setKeySaved(false);
+      setNotice('OpenRouter key removed from Windows Credential Manager.');
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not remove the OpenRouter key.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function toggleLocalKey() {
+    const next = !useLocalKey;
+    setError('');
+    setNotice('');
+    try {
+      setUsingLocalOpenRouterKey(next);
+      setUseLocalKey(next);
+      setNotice(next
+        ? 'AI requests will use your saved OpenRouter key. Prompts and images are sent to OpenRouter.'
+        : 'AI requests will use the current TaxFlow AI service.');
+    } catch (settingError) {
+      setError(settingError instanceof Error ? settingError.message : 'Could not update the AI provider setting.');
+    }
+  }
+
+  function changeModel(model: string) {
+    try {
+      setSelectedOpenRouterModel(model);
+      setSelectedModel(model);
+      setError('');
+      setNotice('OpenRouter model updated.');
+    } catch (settingError) {
+      setError(settingError instanceof Error ? settingError.message : 'Could not save the selected model.');
+    }
+  }
+
+  return (
+    <section className="card ai-provider-card" aria-labelledby="ai-provider-title">
+      <div className="card-h">
+        <div><h2 id="ai-provider-title">AI provider</h2><p>Choose how this app sends AI requests.</p></div>
+        <span className="chip cyan"><Icon name="spark" size={12} />OpenRouter</span>
+      </div>
+      <div className="card-b">
+        <div className="fields-grid-2">
+          <div className="ai-setting-field">
+            <label htmlFor="ai-provider">Provider</label>
+            <select id="ai-provider" className="sel" value="openrouter" disabled>
+              <option value="openrouter">OpenRouter</option>
+            </select>
+          </div>
+          <div className="ai-setting-field">
+            <label htmlFor="ai-model">Free vision model</label>
+            <select
+              id="ai-model"
+              className="sel"
+              value={selectedModel}
+              onChange={event => changeModel(event.target.value)}
+              disabled={loadingModels || !models.length || saving}
+            >
+              {loadingModels && <option value="">Loading eligible models…</option>}
+              {!loadingModels && !models.length && <option value="">No eligible models available</option>}
+              {models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
+            </select>
+            <small>The selected model is tried first, then the remaining models are tried in this order when an endpoint is unavailable or rate-limited.</small>
+          </div>
+        </div>
+
+        <form className="ai-key-form" onSubmit={saveKey}>
+          <div className="ai-setting-field">
+            <label htmlFor="openrouter-api-key">OpenRouter API key</label>
+            <input
+              id="openrouter-api-key"
+              className="inp"
+              type="password"
+              value={apiKey}
+              onChange={event => setApiKey(event.target.value)}
+              placeholder={keySaved ? 'A key is saved securely' : 'sk-or-v1-…'}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              disabled={!desktopApp || saving}
+              aria-describedby="openrouter-key-help openrouter-settings-error"
+            />
+            <small id="openrouter-key-help">
+              {keySaved ? 'Saved on this Windows device. The key is never sent to or stored by the TaxFlow backend.' : 'The key is saved only in Windows Credential Manager.'}
+            </small>
+          </div>
+          <div className="ai-key-actions">
+            <button className="btn pri" type="submit" disabled={!desktopApp || saving || !apiKey.trim()}>
+              {saving ? 'Saving…' : keySaved ? 'Replace key' : 'Save key'}
+            </button>
+            {keySaved && <button className="btn" type="button" onClick={removeKey} disabled={saving}>Remove key</button>}
+          </div>
+        </form>
+
+        <div className="ai-provider-warning" role="note">
+          <Icon name="info" size={15} />
+          <p>Your key stays on this device. When enabled, prompts and document images are sent to OpenRouter and may be sent to another listed model provider during fallback. An internet connection is required. Local-key extraction accepts JPG, PNG, WEBP, and GIF images only.</p>
+        </div>
+
+        <div className="setrow ai-local-key-row">
+          <div className="tx">
+            <b>Use my local OpenRouter key</b>
+            <small>When off, AI requests use the current TaxFlow AI service. When on, supported AI requests go directly from this app to OpenRouter.</small>
+          </div>
+          <button
+            className={'tg' + (useLocalKey ? ' on' : '')}
+            type="button"
+            role="switch"
+            aria-label="Use my local OpenRouter key"
+            aria-checked={useLocalKey}
+            onClick={toggleLocalKey}
+            disabled={!desktopApp || !keySaved || !selectedModel || saving}
+          />
+        </div>
+
+        {error && <div id="openrouter-settings-error" className="ai-provider-message error" role="alert">{error}</div>}
+        {notice && <div className="ai-provider-message success" role="status">{notice}</div>}
+        {!desktopApp && <div className="ai-provider-message" role="status">Secure key storage is available only in the Windows desktop app.</div>}
+      </div>
+    </section>
+  );
+}
+
+export function SettingsPage({ onStartTour }: { onStartTour?: () => void } = {}) {
   const s = useAppState();
   const dispatch = useDispatch();
   const row = (title: string, desc: string, key: keyof typeof s.settings) => (
@@ -291,8 +523,9 @@ export function SettingsPage() {
 
   return (
     <>
-      <div className="ph"><div><h1>Settings</h1><p>Connections, automation rules and security.</p></div></div>
-      <div className="card">
+      <div className="ph" data-tour="settings-intro"><div><h1>Settings</h1><p>Connections, automation rules and security.</p></div></div>
+      <OpenRouterSettings />
+      <div className="card" data-tour="automation-settings">
         <div className="card-b">
           {row('Extract new bills automatically', 'Read every bill as soon as it reaches a client folder', 'autoExtract')}
           {row('Remind clients before deadlines', 'Schedule a document request before each due date', 'autoRemind')}
@@ -300,6 +533,10 @@ export function SettingsPage() {
           {row('Block duplicate invoices', 'Flag an invoice number that already exists for the same party', 'dupes')}
         </div>
       </div>
+      <section className="card tour-replay-card" data-tour="settings-replay">
+        <div><h2>Need a refresher?</h2><p>Replay the guided tour of your dashboard, client work, documents, and assistant.</p></div>
+        <button type="button" className="btn" onClick={onStartTour}><Icon name="refresh" size={14} />Replay app tour</button>
+      </section>
     </>
   );
 }

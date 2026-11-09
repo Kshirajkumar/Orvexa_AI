@@ -53,7 +53,7 @@ export function Chat() {
   const formatTime = (date: Date) => date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
   return (
-    <aside className="chat" aria-label="AI Assistant">
+    <aside className="chat" data-tour="ai-assistant" aria-label="AI Assistant">
       <div className="ch-h">
         <div className="ch-h-icon"><Icon name="spark" size={18} /><span className="ch-h-pulse" /></div>
         <div className="ch-h-text"><b>Taxflow Assistant</b><small><span className="online-dot" />Server-side Gemini gateway</small></div>

@@ -20,20 +20,20 @@ export function Dashboard() {
 
   return (
     <>
-      <div className="ph">
+      <div className="ph" data-tour="dashboard-intro">
         <div>
           <h1>Good morning</h1>
           <p>Saturday, 19 Sep 2026 · {over + week} filings need attention in the next 7 days</p>
         </div>
       </div>
 
-      {!s.clients.length ? <div className="card dashboard-empty-state">
+      {!s.clients.length ? <div className="card dashboard-empty-state" data-tour="dashboard-empty">
         <div className="dashboard-empty-visual"><span className="dashboard-empty-grid" /><span className="dashboard-empty-orbit orbit-one" /><span className="dashboard-empty-orbit orbit-two" /><span className="dashboard-empty-core"><Icon name="bolt" size={30} /></span><i className="dashboard-empty-scan" /></div>
         <div className="dashboard-empty-copy"><span className="eyebrow">YOUR PRACTICE, AT A GLANCE</span><h2>Build your first client view</h2><p>This dashboard becomes your daily command centre as soon as a client enters the practice. Add one to unlock live workload, document, deadline, and reminder signals.</p><button className="btn pri" onClick={() => dispatch({ type: 'GO', page: 'clients' })}><Icon name="plus" size={14} />Add your first client</button></div>
         <div className="dashboard-empty-metrics"><div><span><Icon name="users" size={14} /></span><b>Client workload</b><small>Ready to populate</small></div><div><span><Icon name="file" size={14} /></span><b>Document flow</b><small>Waiting for your first file</small></div><div><span><Icon name="cal" size={14} /></span><b>Deadline radar</b><small>Starts with a filing</small></div></div>
       </div> : <>
 
-      <div className="grid g4">
+      <div className="grid g4" data-tour="dashboard-metrics">
         <div className="card kpi"><span>Active clients</span><b>{s.clients.length}</b><em>India and UAE</em></div>
         <div className="card kpi"><span>Invoices extracted</span><b>{ext}</b><em>{queued} waiting in the queue</em></div>
         <div className="card kpi"><span>Due in 7 days</span><b>{week}</b><em>{over ? <span style={{ color: 'var(--red)' }}>{over} overdue</span> : 'Nothing overdue'}</em></div>
@@ -41,7 +41,7 @@ export function Dashboard() {
       </div>
 
       <div className="grid g2" style={{ marginTop: 14 }}>
-        <div className="card">
+        <div className="card" data-tour="dashboard-workload">
           <div className="card-h">
             <h2>Filings that need attention</h2>
             <button className="btn sm gh" onClick={() => dispatch({ type: 'GO', page: 'deadlines' })}>Open deadlines</button>
@@ -100,7 +100,7 @@ export function Dashboard() {
             </div>
           </div>
 
-          <div className="card">
+          <div className="card" data-tour="dashboard-documents">
             <div className="card-h"><h2>Document pipeline</h2><small>{s.docs.length} invoices</small></div>
             <div className="card-b">
               <div className="pipe">

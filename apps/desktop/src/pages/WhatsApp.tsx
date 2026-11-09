@@ -928,8 +928,8 @@ export function WhatsAppPage() {
   if (!c) {
     return (
       <div className="inbox-page">
-        <div className="ph inbox-page-head"><div><span className="eyebrow">MESSAGES</span><h1>Client Inbox</h1><p>Your WhatsApp and Telegram conversations.</p></div><label className="wa-channel-control"><span>Channel</span><select id="inbox-channel-empty" className="sel" value={channel} onChange={(e) => setChannel(e.target.value as 'whatsapp' | 'telegram')}><option value="telegram">Telegram</option><option value="whatsapp">WhatsApp</option></select></label></div>
-        <div className="card workspace-empty workspace-empty-inbox">
+        <div className="ph inbox-page-head" data-tour="inbox-intro"><div><span className="eyebrow">MESSAGES</span><h1>Client Inbox</h1><p>Your WhatsApp and Telegram conversations.</p></div><label className="wa-channel-control"><span>Channel</span><select id="inbox-channel-empty" className="sel" value={channel} onChange={(e) => setChannel(e.target.value as 'whatsapp' | 'telegram')}><option value="telegram">Telegram</option><option value="whatsapp">WhatsApp</option></select></label></div>
+        <div className="card workspace-empty workspace-empty-inbox" data-tour="inbox-empty">
           <div className="workspace-empty-visual"><span className="workspace-empty-ring ring-one" /><span className="workspace-empty-ring ring-two" /><span className="workspace-empty-orb"><Icon name="chat" size={30} /></span><span className="workspace-empty-float float-one"><Icon name="send" size={14} /></span><span className="workspace-empty-float float-two"><Icon name="bell" size={14} /></span></div>
           <div className="workspace-empty-copy"><span className="eyebrow">A QUIET INBOX IS A CLEAN START</span><h2>Your client conversations will appear here</h2><p>Once a client is added, chats, reminders, and approved message templates will stay together in one focused workspace.</p><button className="btn pri" onClick={() => dispatch({ type: 'GO', page: 'clients' })}><Icon name="users" size={14} />Add your first client</button></div>
           <div className="workspace-empty-note"><Icon name="check" size={16} /><div><b>Ready for WhatsApp and Telegram</b><span>Choose a channel when your first client is ready.</span></div></div>
@@ -1181,12 +1181,12 @@ export function WhatsAppPage() {
 
   return (
     <div className="inbox-page">
-      <div className="ph inbox-page-head">
+      <div className="ph inbox-page-head" data-tour="inbox-intro">
         <div><span className="eyebrow">MESSAGES</span><h1>Client Inbox</h1><p>Conversations, files, and follow-ups in one focused workspace.</p></div>
         <button className="btn sm" onClick={() => setShowSchedule(true)}><Icon name="plus" size={14} />Schedule reminder</button>
       </div>
 
-      <div className="card wa-top">
+      <div className="card wa-top" data-tour="inbox-controls">
         <label className="wa-channel-control" htmlFor="inbox-channel"><span>Channel</span><select id="inbox-channel" className="sel" value={channel} onChange={(e) => setChannel(e.target.value as 'whatsapp' | 'telegram')}>
           <option value="telegram">Telegram</option>
           <option value="whatsapp">WhatsApp</option>
@@ -1221,6 +1221,7 @@ export function WhatsAppPage() {
             <button
               key={tab}
               id={`inbox-tab-${tab}`}
+              data-tour={`nav-wa-${tab}`}
               type="button"
               role="tab"
               aria-selected={s.ui.wa.tab === tab}
@@ -1244,7 +1245,7 @@ export function WhatsAppPage() {
       </div>
 
       {s.ui.wa.tab === 'chats' && <div className={`card wa${contactsCollapsed ? ' contacts-collapsed' : ''}`} id="inbox-panel-chats" role="tabpanel" aria-labelledby="inbox-tab-chats">
-          <div className="wa-l">
+          <div className="wa-l" data-tour="inbox-conversations">
             <div className="wa-list-head">
               <div><b>Conversations</b><span>{visibleClients.length} clients</span></div>
               <label className="wa-client-search"><Icon name="search" size={13} /><input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Find a client" aria-label="Filter clients" /></label>
@@ -1769,7 +1770,7 @@ export function WhatsAppPage() {
         </div>}
 
       {s.ui.wa.tab === 'reminders' && (
-        <div className="wa-reminders" id="inbox-panel-reminders" role="tabpanel" aria-labelledby="inbox-tab-reminders">
+        <div className="wa-reminders" data-tour="inbox-reminders" id="inbox-panel-reminders" role="tabpanel" aria-labelledby="inbox-tab-reminders">
 
           {/* Header row */}
           <div className="wa-reminders-header">
@@ -1879,7 +1880,7 @@ export function WhatsAppPage() {
       )}
 
       {s.ui.wa.tab === 'templates' && (
-        <div id="inbox-panel-templates" role="tabpanel" aria-labelledby="inbox-tab-templates">
+        <div id="inbox-panel-templates" data-tour="inbox-templates" role="tabpanel" aria-labelledby="inbox-tab-templates">
 
           {/* Tab header */}
           <div className="wa-tpl-header">

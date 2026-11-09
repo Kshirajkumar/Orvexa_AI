@@ -1,5 +1,11 @@
 // TaxFlow.AI — API Client Service (Production Grade)
 // All API calls require Authorization header when user is authenticated.
+import {
+  extractWithOpenRouter,
+  generateOpenRouterNoticeResponse,
+  isUsingLocalOpenRouterKey,
+  sendOpenRouterChat,
+} from './openRouter';
 
 const API_ORIGIN = String(
   import.meta.env.VITE_API_URL
@@ -860,7 +866,43 @@ export async function verifyDocumentExtraction(documentId: string, verifiedBy = 
   }
 }
 
-export async function processDocumentExtraction(documentId: string, category = 'General') {
+export async function processDocumentExtraction(documentId: string, category = 'General', file?: File) {
+  if (isUsingLocalOpenRouterKey()) {
+    if (!file) {
+      throw new Error('The local OpenRouter key needs the original image or PDF. Choose the file again and retry.');
+    }
+    const extraction = await extractWithOpenRouter(file, category);
+    const saved = await authRequest<{
+      success: boolean;
+      message?: string;
+      data?: Record<string, unknown>;
+    }>(
+      `${API_BASE_URL}/extraction/save`,
+      {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          documentId,
+          extractedData: extraction.extractedData,
+          model: extraction.model,
+          inputTokens: extraction.inputTokens,
+          outputTokens: extraction.outputTokens,
+          durationMs: extraction.durationMs,
+        }),
+      },
+      true,
+    );
+    if (!saved.success || !saved.data) {
+      throw new Error(saved.message || 'The extraction was generated, but could not be saved to this client record.');
+    }
+    return {
+      success: true,
+      source: 'openrouter',
+      message: saved.message || 'Document extracted with your local OpenRouter key.',
+      data: saved.data,
+    };
+  }
+
   let res: Response;
   try {
     res = await fetch(`${API_BASE_URL}/extraction/process`, {
@@ -1040,17 +1082,30 @@ export async function generateNoticeResponse(payload: {
   noticeText: string;
   section?: string;
 }) {
-  try {
-    const res = await fetch(`${API_BASE_URL}/generate/notice-response`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify(payload)
-    });
-    return await res.json();
-  } catch (err) {
-    console.error('Failed to generate notice response', err);
-    return null;
+  if (isUsingLocalOpenRouterKey()) {
+    const result = await generateOpenRouterNoticeResponse(payload);
+    return {
+      success: true,
+      source: 'openrouter',
+      data: { draftText: result.text, model: result.model },
+    };
   }
+
+  const res = await fetch(`${API_BASE_URL}/generate/notice-response`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  });
+  let json: { success?: boolean; message?: string; [key: string]: unknown };
+  try {
+    json = await res.json() as typeof json;
+  } catch {
+    throw new Error(`The notice response service returned an invalid response (HTTP ${res.status}).`);
+  }
+  if (!res.ok || !json.success) {
+    throw new Error(json.message || `Could not generate the notice response (HTTP ${res.status}).`);
+  }
+  return json;
 }
 
 // ─── Health ────────────────────────────────────────────────────
@@ -1216,6 +1271,11 @@ export async function getHealthStatus() {
 }
 
 export async function sendChatMessage(messages: Array<{ role: 'user' | 'assistant'; content: string }>) {
+  if (isUsingLocalOpenRouterKey()) {
+    const result = await sendOpenRouterChat(messages);
+    return { text: result.text, model: result.model };
+  }
+
   let response: Response;
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 35000);

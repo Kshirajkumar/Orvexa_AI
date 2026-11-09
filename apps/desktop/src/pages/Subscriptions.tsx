@@ -31,7 +31,7 @@ export function SubscriptionsPage() {
 
   return (
     <div className="subscriptions-page">
-      <div className="ph">
+      <div className="ph" data-tour="subscriptions-intro">
         <div>
           <span className="eyebrow">ACCOUNT &amp; PLAN</span>
           <h1>Subscriptions</h1>
@@ -54,7 +54,7 @@ export function SubscriptionsPage() {
         <span className="chip blue">AED · monthly</span>
       </div>
 
-      <div className="subscription-plan-grid">
+      <div className="subscription-plan-grid" data-tour="subscription-plans">
         {PLANS.map((plan) => (
           <article key={plan.name} className={`card subscription-plan${plan.recommended ? ' recommended' : ''}`}>
             {plan.recommended && <span className="subscription-recommended">MOST FIRMS</span>}

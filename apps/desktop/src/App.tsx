@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { open } from '@tauri-apps/plugin-dialog';
 import { AppProvider, useAppState } from './state/store';
@@ -20,6 +20,7 @@ import { GeneratePage } from './pages/Generate';
 import { ClientsPage, SettingsPage } from './pages/Other';
 import { ProfilePage } from './pages/Profile';
 import { SubscriptionsPage } from './pages/Subscriptions';
+import { AppTour, markTourWelcomeSeen, shouldShowTourWelcome, TourWelcome } from './components/AppTour';
 import {
   acknowledgeLocalDocumentSync,
   downloadDocumentForLocalVault,
@@ -41,6 +42,8 @@ function Shell() {
     kind: 'info' | 'success' | 'warning' | 'error';
   } | null>(null);
   const [configuringVault, setConfiguringVault] = useState(false);
+  const [showTourWelcome, setShowTourWelcome] = useState(false);
+  const [tourActive, setTourActive] = useState(false);
   const syncNowRef = useRef<(() => void) | null>(null);
   const vaultNoticeSequenceRef = useRef(0);
 
@@ -74,6 +77,12 @@ function Shell() {
   useEffect(() => {
     if (s.page === 'extraction-review' && s.chatOpen) dispatch({ type: 'TOGGLE_CHAT' });
   }, [s.page, s.chatOpen, dispatch]);
+
+  useEffect(() => {
+    if (s.currentUser?.onboardingComplete && shouldShowTourWelcome(s.currentUser.id)) {
+      setShowTourWelcome(true);
+    }
+  }, [s.currentUser?.id, s.currentUser?.onboardingComplete]);
 
   useEffect(() => {
     document.body.classList.toggle('sidebar-collapsed', !!s.sidebarCollapsed);
@@ -160,6 +169,19 @@ function Shell() {
     }
   }
 
+  const startTour = useCallback(() => {
+    if (s.currentUser) markTourWelcomeSeen(s.currentUser.id);
+    setShowTourWelcome(false);
+    setTourActive(true);
+  }, [s.currentUser]);
+
+  const skipTourWelcome = useCallback(() => {
+    if (s.currentUser) markTourWelcomeSeen(s.currentUser.id);
+    setShowTourWelcome(false);
+  }, [s.currentUser]);
+
+  const finishTour = useCallback(() => setTourActive(false), []);
+
   // Not authenticated → show login / signup page
   if (!s.currentUser) {
     return <AuthPage />;
@@ -219,9 +241,13 @@ function Shell() {
       )}
       <div className="shell">
         <Sidebar />
-        <main className={`main${s.page === 'whatsapp' ? ' main-inbox' : ''}`}><Page /></main>
+        <main className={`main${s.page === 'whatsapp' ? ' main-inbox' : ''}`}>
+          {s.page === 'settings' ? <SettingsPage onStartTour={startTour} /> : <Page />}
+        </main>
         <Chat />
       </div>
+      {showTourWelcome && !tourActive && <TourWelcome onStart={startTour} onSkip={skipTourWelcome} />}
+      {tourActive && <AppTour onFinish={finishTour} />}
     </div>
   );
 }

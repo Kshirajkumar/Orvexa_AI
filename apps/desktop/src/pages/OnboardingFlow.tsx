@@ -1,18 +1,18 @@
 /**
  * TaxFlow.AI — Onboarding Flow
  *
- * A premium, animated 3-step onboarding shown to every new user
+ * A premium, animated 2-step onboarding shown to every new user
  * after their first login, until onboardingComplete = true.
  *
  * Step 1 — Personal Profile Setup (name, practice type, clients to work on)
  * Step 2 — Local Vault Setup (select folder via Tauri dialog or manual input)
- * Step 3 — App Tour (animated walkthrough of all 7 major features)
+ * The app tour starts from the dashboard after vault setup.
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAppState, useDispatch } from '../state/store';
 import { apiUpdateProfile, apiSetupVault, createClient } from '../lib/api';
-import { FilingTypePicker } from '../components/FilingTypePicker';
+import { ClientFormCard, type ClientFormValues } from '../components/ClientFormCard';
 import { BrandLogo } from '../components/BrandLogo';
 import { open } from '@tauri-apps/plugin-dialog';
 import { configureLocalVault, isDesktopApp } from '../lib/localVault';
@@ -39,81 +39,9 @@ function StepDots({ step, total }: { step: number; total: number }) {
   );
 }
 
-// ─── Feature Card for App Tour Step ──────────────────────────
-function FeatureCard({ icon, title, desc, delay }: { icon: string; title: string; desc: string; delay: number }) {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setVisible(true), delay);
-    return () => clearTimeout(t);
-  }, [delay]);
-  return (
-    <div className={`ob-feature-card ${visible ? 'visible' : ''}`}>
-      <div className="ob-feature-icon">{icon}</div>
-      <div>
-        <div className="ob-feature-title">{title}</div>
-        <div className="ob-feature-desc">{desc}</div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Client Row for adding clients inline ──────────────────────
-interface ClientDraft {
+interface ClientDraft extends ClientFormValues {
   id: string;
-  name: string;
-  pan: string;
-  gstin: string;
-  phone: string;
-  entityType: string;
-  countryId: string;
-  filingTypes: string[];
-}
-
-function ClientRow({
-  client,
-  onChange,
-  onRemove,
-}: {
-  client: ClientDraft;
-  onChange: (id: string, field: keyof ClientDraft, value: any) => void;
-  onRemove: (id: string) => void;
-}) {
-  return (
-    <div className="ob-client-row">
-      <div className="ob-client-fields">
-        <input
-          className="ob-input"
-          placeholder="Client / Firm Name *"
-          value={client.name}
-          onChange={e => onChange(client.id, 'name', e.target.value)}
-        />
-        <select
-          className="ob-input ob-select"
-          value={client.entityType}
-          onChange={e => onChange(client.id, 'entityType', e.target.value)}
-        >
-          <option value="Individual">Individual</option>
-          <option value="Partnership">Partnership</option>
-          <option value="Private Limited">Private Limited</option>
-          <option value="LLP">LLP</option>
-          <option value="Trust">Trust</option>
-          <option value="HUF">HUF</option>
-          <option value="Other">Other</option>
-        </select>
-        <input className="ob-input" placeholder="PAN (e.g. ABCDE1234F)" value={client.pan} onChange={e => onChange(client.id, 'pan', e.target.value.toUpperCase())} maxLength={10} />
-        <input className="ob-input" placeholder="GSTIN (optional)" value={client.gstin} onChange={e => onChange(client.id, 'gstin', e.target.value.toUpperCase())} maxLength={15} />
-        <input className="ob-input" placeholder="Phone (optional)" value={client.phone} onChange={e => onChange(client.id, 'phone', e.target.value)} />
-      </div>
-      <FilingTypePicker
-        countryId={client.countryId}
-        selectedTypes={client.filingTypes}
-        onCountryChange={value => onChange(client.id, 'countryId', value)}
-        onTypesChange={value => onChange(client.id, 'filingTypes', value)}
-        compact
-      />
-      <button className="ob-remove-btn" onClick={() => onRemove(client.id)} title="Remove client">✕</button>
-    </div>
-  );
 }
 
 // ─── Main Onboarding Flow ──────────────────────────────────────
@@ -143,11 +71,11 @@ export function OnboardingFlow() {
   function addClient() {
     setClients(prev => [
       ...prev,
-      { id: crypto.randomUUID(), name: '', pan: '', gstin: '', phone: '', entityType: 'Individual', countryId: '', filingTypes: [] }
+      { id: crypto.randomUUID(), name: '', entityType: 'Individual', pan: '', gstin: '', phone: '', email: '', countryId: '', filingTypes: [] }
     ]);
   }
 
-  function updateClient(id: string, field: keyof ClientDraft, value: any) {
+  function updateClient(id: string, field: keyof ClientFormValues, value: string | string[]) {
     setClients(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
   }
 
@@ -183,6 +111,7 @@ export function OnboardingFlow() {
           pan: c.pan.trim(),
           gstin: c.gstin.trim(),
           phone: c.phone.trim(),
+          email: c.email.trim(),
           entityType: c.entityType,
           countryId: c.countryId,
           filingTypes: c.filingTypes,
@@ -228,17 +157,12 @@ export function OnboardingFlow() {
       const res = await apiSetupVault(trimmed);
       if (!res.success) throw new Error(res.message || 'Failed to save vault setup');
       setVaultSuccess(true);
-      setTimeout(() => goToStep(3), 1200);
+      setTimeout(() => dispatch({ type: 'COMPLETE_ONBOARDING' }), 900);
     } catch (err: any) {
       setVaultError(err.message || 'Failed to save vault configuration.');
     } finally {
       setVaultSaveLoading(false);
     }
-  }
-
-  // ── Step 3: Complete Onboarding ────────────────────────────
-  function handleComplete() {
-    dispatch({ type: 'COMPLETE_ONBOARDING' });
   }
 
   return (
@@ -249,13 +173,13 @@ export function OnboardingFlow() {
           <div className="ob-logo">
             <BrandLogo className="onboarding-brand-logo" />
           </div>
-          <StepDots step={step} total={3} />
+          <StepDots step={step} total={2} />
         </div>
 
         {/* ── STEP 1: Profile & Clients ── */}
         {step === 1 && (
           <div className="ob-body">
-            <div className="ob-step-badge">Step 1 of 3</div>
+            <div className="ob-step-badge">Step 1 of 2</div>
             <h1 className="ob-title">Set Up Your Practice</h1>
             <p className="ob-subtitle">Let's configure your personal CA workspace and add your first clients so TaxFlow.AI is ready to go from day one.</p>
 
@@ -275,7 +199,13 @@ export function OnboardingFlow() {
             </div>
             <div className="ob-clients-list">
               {clients.map(c => (
-                <ClientRow key={c.id} client={c} onChange={updateClient} onRemove={removeClient} />
+                <ClientFormCard
+                  key={c.id}
+                  form={c}
+                  onChange={(field, value) => updateClient(c.id, field, value)}
+                  dismissLabel="Remove"
+                  onDismiss={() => removeClient(c.id)}
+                />
               ))}
               {clients.length === 0 && (
                 <div className="ob-empty-clients">
@@ -299,7 +229,7 @@ export function OnboardingFlow() {
         {/* ── STEP 2: Vault Setup ── */}
         {step === 2 && (
           <div className="ob-body">
-            <div className="ob-step-badge">Step 2 of 3</div>
+            <div className="ob-step-badge">Step 2 of 2</div>
             <h1 className="ob-title">Configure Your Local Vault</h1>
             <p className="ob-subtitle">
               Choose a folder on <strong>this computer</strong>. Secure client-portal documents are copied into each client’s year/month/Raw folder after a verified download. A private cloud copy is retained for recovery and syncing other authorized devices.
@@ -381,31 +311,6 @@ export function OnboardingFlow() {
           </div>
         )}
 
-        {/* ── STEP 3: App Tour ── */}
-        {step === 3 && (
-          <div className="ob-body ob-tour-body">
-            <div className="ob-step-badge">Step 3 of 3</div>
-            <h1 className="ob-title">You're All Set! Here's What You Can Do</h1>
-            <p className="ob-subtitle">TaxFlow.AI is your complete CA practice operating system. Here's a quick overview of every feature.</p>
-
-            <div className="ob-features-grid">
-              <FeatureCard delay={50} icon="📊" title="Dashboard" desc="Live snapshot of your practice — active clients, upcoming deadlines, vault activity, and AI usage metrics all in one view." />
-              <FeatureCard delay={150} icon="🔍" title="AI Document Extraction" desc="Upload GST invoices, bank statements, Form 16, and IT notices. Gemini AI extracts data instantly with confidence scoring." />
-              <FeatureCard delay={250} icon="💬" title="WhatsApp Integration" desc="Receive client documents directly via WhatsApp. Auto-match to clients, save to vault, and send reminders — all from one place." />
-              <FeatureCard delay={350} icon="🗄️" title="Local Vault Files" desc="Browse all client files organized by category and assessment year. Preview, download, or trigger AI extraction at any time." />
-              <FeatureCard delay={450} icon="📅" title="Deadlines & Compliance" desc="Track GSTR-3B, ITR, TDS, and audit filing deadlines for all clients with smart priority sorting and status tracking." />
-              <FeatureCard delay={550} icon="📝" title="AI Document Generator" desc="Generate notice responses, computation sheets, and client reports with a single click using your extracted data." />
-              <FeatureCard delay={650} icon="👥" title="Client Manager" desc="Full CRM for your practice — manage PAN, GSTIN, contact details, and all work done for each client." />
-            </div>
-
-            <div className="ob-actions ob-actions-center">
-              <button className="ob-btn-primary ob-btn-large" onClick={handleComplete}>
-                <span>🚀</span>
-                <span>Go to My Dashboard</span>
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       <style>{`

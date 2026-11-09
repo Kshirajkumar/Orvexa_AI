@@ -230,6 +230,118 @@ router.post('/process', async (req, res) => {
 });
 
 /**
+ * POST /api/v1/extraction/save
+ * Save results created directly by the desktop app without receiving an AI key.
+ */
+router.post('/save', async (req, res) => {
+  const { documentId, extractedData } = req.body || {};
+  if (typeof documentId !== 'string' || !documentId.trim()) {
+    return res.status(400).json({ success: false, message: 'A document ID is required.' });
+  }
+  if (!extractedData || typeof extractedData !== 'object' || Array.isArray(extractedData)) {
+    return res.status(400).json({ success: false, message: 'Extraction results must be a JSON object.' });
+  }
+
+  let serializedData;
+  try {
+    serializedData = JSON.stringify(extractedData);
+  } catch {
+    return res.status(400).json({ success: false, message: 'Extraction results are not valid JSON.' });
+  }
+  if (!serializedData || serializedData.length > 200_000) {
+    return res.status(413).json({ success: false, message: 'Extraction results are too large to save.' });
+  }
+
+  if (!isConnected || !supabase) {
+    return res.json({
+      success: true,
+      source: 'demo',
+      message: 'Extraction completed. Results are available for this session; the database is not connected.',
+      data: { id: documentId, status: 'Extracted', extracted_data: extractedData },
+    });
+  }
+
+  try {
+    const ownedClientIds = await getOwnedClientIds(req.user.id);
+    if (!ownedClientIds.length) {
+      return res.status(404).json({ success: false, message: 'This document was not found in your workspace.' });
+    }
+
+    const { data: document, error: documentError } = await supabase
+      .from('documents_metadata')
+      .select('id, client_id, client_name, file_name, source')
+      .eq('id', documentId.trim())
+      .in('client_id', ownedClientIds)
+      .maybeSingle();
+    if (documentError) throw documentError;
+    if (!document || document.source === 'Telegram') {
+      return res.status(404).json({ success: false, message: 'This document was not found or is not available for extraction.' });
+    }
+
+    const { data: updatedDocument, error: updateError } = await supabase
+      .from('documents_metadata')
+      .update({ status: 'Extracted', extracted_data: extractedData, confidence_score: null })
+      .eq('id', document.id)
+      .eq('client_id', document.client_id)
+      .select()
+      .single();
+    if (updateError) throw updateError;
+
+    const model = typeof req.body.model === 'string' ? req.body.model.slice(0, 200) : 'OpenRouter';
+    const inputTokens = Number.isSafeInteger(req.body.inputTokens) && req.body.inputTokens >= 0 ? req.body.inputTokens : 0;
+    const outputTokens = Number.isSafeInteger(req.body.outputTokens) && req.body.outputTokens >= 0 ? req.body.outputTokens : 0;
+    const durationMs = Number.isSafeInteger(req.body.durationMs) && req.body.durationMs >= 0 ? req.body.durationMs : 0;
+
+    try {
+      const { error: usageError } = await supabase.from('ai_usage_log').insert([{
+        client_id: document.client_id,
+        document_id: document.id,
+        operation: 'extraction',
+        model_used: `openrouter/${model}`,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        cost_usd: 0,
+        duration_ms: durationMs,
+        success: true,
+      }]);
+      if (usageError) throw usageError;
+    } catch (usageError) {
+      console.warn('[Extraction] Could not record local-key AI usage:', usageError.message);
+    }
+
+    try {
+      await supabase.rpc('increment_client_ai_calls', { cid: document.client_id });
+    } catch (rpcError) {
+      console.warn('[Extraction] Could not increment client AI call count:', rpcError.message);
+    }
+
+    let extractedVaultPath = null;
+    try {
+      const sourceName = document.file_name || document.id;
+      const baseName = path.basename(sourceName, path.extname(sourceName));
+      extractedVaultPath = saveTextFileToVault(
+        document.client_name || document.client_id,
+        `${baseName}_extracted`,
+        JSON.stringify({ documentId: document.id, extractedData }, null, 2),
+        'Extracted',
+      ).vaultPath;
+    } catch (vaultError) {
+      console.error('[Extraction] Could not save local-key extraction output:', vaultError.message);
+    }
+
+    return res.json({
+      success: true,
+      source: 'supabase',
+      message: 'Document extracted with your local OpenRouter key.',
+      data: { ...updatedDocument, extracted_vault_path: extractedVaultPath },
+    });
+  } catch (error) {
+    console.error('[Extraction] Could not save local-key results:', error.message);
+    return res.status(500).json({ success: false, message: 'Could not save extraction results. Try again.' });
+  }
+});
+
+/**
  * GET /api/v1/extraction/pending
  * Get all documents awaiting CA review/verification
  */

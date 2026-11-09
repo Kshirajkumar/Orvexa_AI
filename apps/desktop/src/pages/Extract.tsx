@@ -75,7 +75,7 @@ export function ExtractPage() {
       const id = upload.data?.id;
       if (!id) throw new Error('The file was saved, but no document ID was returned for extraction.');
       setDocumentId(id); setStep('extracting');
-      const result = await processDocumentExtraction(id, category);
+      const result = await processDocumentExtraction(id, category, file);
       setStep('saving');
       await new Promise((resolve) => window.setTimeout(resolve, 450));
       setExtracted(result.data?.extracted_data || { summary: result.message || 'Extraction completed.' });
@@ -91,7 +91,7 @@ export function ExtractPage() {
   }
 
   return <div className="extract-workspace">
-    <div className="ph extract-header"><div><div className="eyebrow"><span className="eyebrow-dot" />AI DOCUMENT WORKSPACE</div><h1>Extract with confidence</h1><p>Upload a document, choose its client, and let the secure server-side AI pipeline structure the data for you.</p></div><div className="extract-header-status"><span className="status-pulse" />Vault &amp; AI ready</div></div>
+    <div className="ph extract-header"><div><div className="eyebrow"><span className="eyebrow-dot" />AI DOCUMENT WORKSPACE</div><h1>Extract with confidence</h1><p>Upload a document and choose whether to use the TaxFlow AI service or your local OpenRouter key in Settings.</p></div><div className="extract-header-status"><span className="status-pulse" />Vault &amp; AI ready</div></div>
     {!s.clients.length ? <section className="card extract-no-client-state" aria-labelledby="extract-empty-title">
       <div className="extract-no-client-visual"><div className="pipeline-orb"><Icon name="spark" size={27} /></div><span><Icon name="folder" size={13} /></span><span><Icon name="file" size={13} /></span></div>
       <div className="extract-no-client-copy"><span className="eyebrow"><span className="eyebrow-dot" />READY WHEN YOU ARE</span><h2 id="extract-empty-title">Add a client before extracting</h2><p>Every document is linked to a client workspace first. Create one to keep files, extracted fields, and review history organized and private.</p><button className="btn pri" onClick={() => dispatch({ type: 'GO', page: 'clients' })}><Icon name="users" size={14} />Go to Clients</button></div>
