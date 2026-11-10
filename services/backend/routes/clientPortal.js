@@ -95,6 +95,13 @@ function getPortalAuthFailure(error) {
       message: 'Client portal enrollment is not configured correctly on the practice server. Please contact your practice administrator.',
     };
   }
+  if (/database error creating new user|user_profiles|on_auth_user_created|trigger/i.test(message)) {
+    return {
+      status: 503,
+      code: 'portal_auth_schema',
+      message: 'Client portal enrollment needs a database update on the practice server. Please contact your practice administrator.',
+    };
+  }
   return {
     status: 503,
     code: 'portal_auth_unavailable',

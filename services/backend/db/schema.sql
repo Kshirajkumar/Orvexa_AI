@@ -35,6 +35,10 @@ LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = public
 AS $$
 BEGIN
+  IF COALESCE(NEW.raw_app_meta_data ->> 'taxflow_client_portal', 'false') = 'true' THEN
+    RETURN NEW;
+  END IF;
+
   INSERT INTO public.user_profiles (id, full_name, practice_type, membership_no)
   VALUES (
     NEW.id,

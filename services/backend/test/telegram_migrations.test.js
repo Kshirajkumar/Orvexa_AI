@@ -17,6 +17,13 @@ test('portal invitation migration adds server-encrypted token storage for privat
   assert.match(sql, /authenticated-encrypted invitation token/i);
 });
 
+test('portal auth trigger skips staff profile creation for portal identities', () => {
+  const sql = fs.readFileSync(path.join(migrationDirectory, 'client_portal_auth_trigger.sql'), 'utf8');
+  assert.match(sql, /raw_app_meta_data.*taxflow_client_portal/i);
+  assert.match(sql, /RETURN NEW/i);
+  assert.match(sql, /CREATE TRIGGER on_auth_user_created\s+AFTER INSERT ON auth\.users/i);
+});
+
 test('portal migration enables existing active clients with email without reactivating prior access records', () => {
   const sql = fs.readFileSync(path.join(migrationDirectory, 'client_portal.sql'), 'utf8');
   assert.match(sql, /INSERT INTO public\.client_portal_access/i);
