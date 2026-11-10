@@ -19,7 +19,7 @@ function matches(row, filters) {
     if (operator === 'neq') return row[field] !== value;
     if (operator === 'lt') return row[field] < value;
     if (operator === 'lte') return row[field] <= value;
-    if (operator === 'is') return row[field] === value;
+    if (operator === 'is') return (row[field] ?? null) === value;
     if (operator === 'not') return row[field] !== value;
     if (operator === 'in') return value.includes(row[field]);
     return false;
@@ -636,7 +636,16 @@ test('Cloud document endpoints download only owned private objects and expose th
     vault_path: null
   });
   database.supabase.from = (table) => fakeQuery(table);
-  database.supabase.rpc = async () => ({ error: null });
+  database.supabase.rpc = async (functionName, args) => {
+    if (functionName === 'begin_document_upload') return { data: 'upload-reservation-id', error: null };
+    if (functionName === 'create_document_metadata_if_client_active') {
+      const document = { ...args.p_document };
+      tables.documents_metadata.push(document);
+      return { data: document, error: null };
+    }
+    if (functionName === 'release_document_upload') return { data: true, error: null };
+    return { data: null, error: null };
+  };
   const uploadedObjects = [];
   let bucketPublic = false;
   database.supabase.storage.getBucket = async () => ({ data: { public: bucketPublic }, error: null });
@@ -649,7 +658,8 @@ test('Cloud document endpoints download only owned private objects and expose th
     async upload(key, data, options) {
       uploadedObjects.push({ bucket, key, data, options });
       return { data: { path: key }, error: null };
-    }
+    },
+    async remove() { return { data: [], error: null }; }
   });
   process.env.SUPABASE_STORAGE_BUCKET = 'taxflow-intake';
 
@@ -691,7 +701,7 @@ test('Cloud document endpoints download only owned private objects and expose th
   const emptyMonth = (await emptyTreeResponse.json()).data.entries
     .find(entry => entry.name === '2026')
     ?.children.find(entry => entry.name === 'October');
-  assert.deepEqual(emptyMonth?.children.map(entry => entry.name), ['Raw', 'Extracted']);
+  assert.deepEqual(emptyMonth?.children.map(entry => entry.name), ['Raw', 'Extracted', 'Generated']);
   assert.equal(uploadedObjects.length, 0);
   tables.documents_metadata.push(storedDocument);
 

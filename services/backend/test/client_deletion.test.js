@@ -13,10 +13,11 @@ const clientsRouter = require('../routes/clients');
 const userId = '11752602-62fa-4252-ae1d-23c4fb3b7312';
 const clientId = '20314145-9020-45f0-85a0-68bc63eb359e';
 const documentId = '49815d77-b97f-4abf-ae4b-65cd91af0160';
+const jobId = '90f39131-c7ec-45e8-a3a1-c6b1493c64f3';
 
-function createSupabaseMock({ databaseDeleteError = null, storageDeleteError = null } = {}) {
+function createSupabaseMock({ requestError = null, invalidObject = false } = {}) {
   const tables = {
-    clients: [{ id: clientId, user_id: userId, name: 'Example Client' }],
+    clients: [{ id: clientId, user_id: userId, name: 'Example Client', deletion_requested_at: null }],
     documents_metadata: [{
       id: documentId,
       client_id: clientId,
@@ -25,62 +26,58 @@ function createSupabaseMock({ databaseDeleteError = null, storageDeleteError = n
       file_name: 'invoice.pdf',
       category: 'GST',
       storage_bucket: 'taxflow-intake',
-      storage_object_path: getStorageObjectKey({
-        userId,
-        clientId,
-        year: '2026',
-        month: 'November',
-        category: 'GST',
-        documentId,
-        fileName: 'invoice.pdf',
-      }),
+      storage_object_path: invalidObject
+        ? `${userId}/${clientId}/other/invoice.pdf`
+        : getStorageObjectKey({
+          userId,
+          clientId,
+          year: '2026',
+          month: 'November',
+          category: 'GST',
+          documentId,
+          fileName: 'invoice.pdf',
+        }),
     }],
   };
-  const removed = [];
+  const calls = [];
 
   return {
     tables,
-    removed,
+    calls,
     from(table) {
-      let operation = 'select';
       const filters = [];
-      const query = {
+      return {
         select() { return this; },
-        delete() { operation = 'delete'; return this; },
         eq(field, value) { filters.push(row => row[field] === value); return this; },
         neq(field, value) { filters.push(row => row[field] !== value); return this; },
+        is(field, value) { filters.push(row => row[field] === value); return this; },
         maybeSingle() { return this.execute(true); },
+        single() { return this.execute(true); },
         then(resolve, reject) { return this.execute(false).then(resolve, reject); },
         async execute(single) {
-          const rows = tables[table] || [];
-          const selected = rows.filter(row => filters.every(filter => filter(row)));
-          if (operation === 'delete' && databaseDeleteError) return { data: null, error: databaseDeleteError };
-          if (operation === 'delete') {
-            for (const row of selected) rows.splice(rows.indexOf(row), 1);
-          }
+          const selected = (tables[table] || []).filter(row => filters.every(filter => filter(row)));
           return { data: single ? selected[0] || null : selected, error: null };
         },
       };
-      return query;
     },
-    storage: {
-      from(bucket) {
-        return {
-          async remove(paths) {
-            removed.push({ bucket, paths });
-            return { data: null, error: storageDeleteError };
-          },
-        };
-      },
+    async rpc(name, args) {
+      calls.push({ name, args });
+      if (requestError) return { data: null, error: requestError };
+      if (name === 'request_client_deletion') {
+        const client = tables.clients.find(row => row.id === args.p_client_id);
+        client.deletion_requested_at = '2026-11-11T00:00:00.000Z';
+        return { data: jobId, error: null };
+      }
+      return { data: null, error: new Error(`Unexpected RPC ${name}`) };
     },
   };
 }
 
 async function withDeleteRequest(mock, callback) {
   const previousFrom = database.supabase.from;
-  const previousStorage = database.supabase.storage;
+  const previousRpc = database.supabase.rpc;
   database.supabase.from = mock.from;
-  database.supabase.storage = mock.storage;
+  database.supabase.rpc = mock.rpc;
   const app = express();
   app.use((req, _res, next) => {
     req.user = { id: userId };
@@ -96,39 +93,44 @@ async function withDeleteRequest(mock, callback) {
   } finally {
     await new Promise(resolve => server.close(resolve));
     database.supabase.from = previousFrom;
-    database.supabase.storage = previousStorage;
+    database.supabase.rpc = previousRpc;
   }
 }
 
-test('client delete preserves cloud files when the database deletion fails', async () => {
-  const mock = createSupabaseMock({ databaseDeleteError: new Error('Database unavailable') });
+test('client deletion queues durable cleanup without deleting metadata or Storage immediately', async () => {
+  const mock = createSupabaseMock();
 
   await withDeleteRequest(mock, async response => {
-    assert.equal(response.status, 500);
-    assert.equal(mock.tables.clients.length, 1);
-    assert.deepEqual(mock.removed, []);
+    assert.equal(response.status, 202);
+    const body = await response.json();
+    assert.equal(body.data.deletionJobId, jobId);
+    assert.equal(body.data.deletionStatus, 'pending');
+    assert.ok(mock.tables.clients[0].deletion_requested_at);
+    assert.equal(mock.tables.documents_metadata.length, 1);
+    assert.deepEqual(mock.calls, [{
+      name: 'request_client_deletion',
+      args: { p_user_id: userId, p_client_id: clientId, p_storage_bucket: 'taxflow-intake' },
+    }]);
   });
 });
 
-test('client delete reports a cleanup warning if Storage deletion fails after the database deletion', async () => {
-  const mock = createSupabaseMock({ storageDeleteError: new Error('Storage unavailable') });
+test('client deletion refuses invalid Storage references before queuing cleanup', async () => {
+  const mock = createSupabaseMock({ invalidObject: true });
 
   await withDeleteRequest(mock, async response => {
-    assert.equal(response.status, 200);
-    const body = await response.json();
-    assert.equal(mock.tables.clients.length, 0);
-    assert.equal(body.data.cleanupWarning, 'Client was deleted, but some private cloud documents could not be removed. Contact support to complete file cleanup.');
-    assert.deepEqual(mock.removed, [{
-      bucket: 'taxflow-intake',
-      paths: [getStorageObjectKey({
-        userId,
-        clientId,
-        year: '2026',
-        month: 'November',
-        category: 'GST',
-        documentId,
-        fileName: 'invoice.pdf',
-      })],
-    }]);
+    assert.equal(response.status, 500);
+    assert.equal(mock.tables.clients[0].deletion_requested_at, null);
+    assert.equal(mock.calls.length, 0);
+    assert.equal(mock.tables.documents_metadata.length, 1);
+  });
+});
+
+test('client deletion reports a failed queue request without removing client data', async () => {
+  const mock = createSupabaseMock({ requestError: new Error('Database unavailable') });
+
+  await withDeleteRequest(mock, async response => {
+    assert.equal(response.status, 500);
+    assert.equal(mock.tables.clients[0].deletion_requested_at, null);
+    assert.equal(mock.tables.documents_metadata.length, 1);
   });
 });

@@ -3,7 +3,7 @@ import { Icon } from '../components/Icon';
 import { useAppState, useDispatch } from '../state/store';
 import { allTasks, missing } from '../lib/domain';
 import { money, sum } from '../lib/format';
-import { createClient, deleteClient, fetchClientPortalAccess, inviteClientToPortal, revokeClientPortalAccess, updateClient } from '../lib/api';
+import { createClient, deleteClient, fetchClientPortalAccess, fetchStorageCleanupJob, fetchStorageCleanupJobs, inviteClientToPortal, retryStorageCleanupJob, revokeClientPortalAccess, updateClient, type StorageCleanupJob } from '../lib/api';
 import { ClientFormCard, type ClientFormValues } from '../components/ClientFormCard';
 import { FilingTypePicker } from '../components/FilingTypePicker';
 import {
@@ -38,6 +38,9 @@ export function ClientsPage() {
   const [deleteConfirm, setDeleteConfirm] = React.useState(false);
   const [deleteSaving, setDeleteSaving] = React.useState(false);
   const [deleteError, setDeleteError] = React.useState('');
+  const [cleanupJobs, setCleanupJobs] = React.useState<StorageCleanupJob[]>([]);
+  const [cleanupLoading, setCleanupLoading] = React.useState(false);
+  const [cleanupError, setCleanupError] = React.useState('');
   const [portalAccessEnabled, setPortalAccessEnabled] = React.useState(false);
   const [portalAccessLoading, setPortalAccessLoading] = React.useState(false);
   const [portalActionLoading, setPortalActionLoading] = React.useState(false);
@@ -47,6 +50,15 @@ export function ClientsPage() {
   const [editForm, setEditForm] = React.useState({ name: '', entityType: 'Individual', pan: '', gstin: '', phone: '', email: '', countryId: '', filingTypes: [] as string[] });
   const [form, setForm] = React.useState<ClientFormValues>({ name: '', entityType: 'Individual', pan: '', gstin: '', phone: '', email: '', countryId: '', filingTypes: [] });
   const update = (key: keyof ClientFormValues, value: string | string[]) => setForm(prev => ({ ...prev, [key]: value }));
+  React.useEffect(() => {
+    let disposed = false;
+    fetchStorageCleanupJobs().then(jobs => {
+      if (!disposed) setCleanupJobs(jobs);
+    }).catch(err => {
+      if (!disposed) setCleanupError(err instanceof Error ? err.message : 'Could not load cloud cleanup jobs.');
+    });
+    return () => { disposed = true; };
+  }, []);
   React.useEffect(() => {
     let disposed = false;
     if (!selectedClient) return undefined;
@@ -141,7 +153,22 @@ export function ClientsPage() {
     try {
       const deleted = await deleteClient(selectedClient.id);
       dispatch({ type: 'DELETE_CLIENT', id: selectedClient.id });
-      setPortalNotice(deleted.cleanupWarning || '');
+      const deletionJobId = deleted.deletionJobId;
+      if (deletionJobId) {
+        setCleanupJobs(previous => [{
+          id: deletionJobId,
+          target_type: 'client',
+          status: 'pending',
+          attempt_count: 0,
+          created_at: new Date().toISOString(),
+          completed_at: null,
+          message: `Deletion of ${deleted.name} and its cloud files is queued.`
+        }, ...previous.filter(job => job.id !== deletionJobId)]);
+        setPortalNotice('');
+        setCleanupError('');
+      } else {
+        setPortalNotice(`${deleted.name} was removed from demo data.`);
+      }
       setDeleteConfirm(false);
       setEditingClient(false);
       setSelectedClient(null);
@@ -149,6 +176,36 @@ export function ClientsPage() {
       setDeleteError(err.message || 'Could not delete this client. Nothing was removed.');
     } finally {
       setDeleteSaving(false);
+    }
+  }
+
+  async function refreshCleanupJob(jobId: string) {
+    if (cleanupLoading) return;
+    setCleanupLoading(true);
+    setCleanupError('');
+    try {
+      const updatedJob = await fetchStorageCleanupJob(jobId);
+      setCleanupJobs(previous => previous.map(job => job.id === jobId ? updatedJob : job));
+    } catch (err) {
+      setCleanupError(err instanceof Error ? err.message : 'Could not load cloud cleanup status.');
+    } finally {
+      setCleanupLoading(false);
+    }
+  }
+
+  async function retryCleanupJob(jobId: string) {
+    if (cleanupLoading) return;
+    setCleanupLoading(true);
+    setCleanupError('');
+    try {
+      await retryStorageCleanupJob(jobId);
+      setCleanupJobs(previous => previous.map(job => job.id === jobId
+        ? { ...job, status: 'pending', attempt_count: 0, message: 'Cloud cleanup was queued for retry.' }
+        : job));
+    } catch (err) {
+      setCleanupError(err instanceof Error ? err.message : 'Could not retry cloud cleanup.');
+    } finally {
+      setCleanupLoading(false);
     }
   }
   async function saveEdit() {
@@ -180,6 +237,17 @@ export function ClientsPage() {
     <>
       <div className="ph" data-tour="clients-intro"><div><h1>Clients</h1><p>Everyone you file for, with their services and current workload.</p></div><button className="btn pri" onClick={() => setShowAdd(true)}>+ Add client</button></div>
       {portalNotice && <div className="ob-error" role="status">{portalNotice}</div>}
+      {(cleanupJobs.length > 0 || cleanupError) && <div className="vault-lifecycle-panel card" aria-label="Client cleanup jobs">
+        <div><b>Client cloud cleanup</b><small>Deletion is queued in Supabase; it retries automatically if Storage is temporarily unavailable.</small></div>
+        {cleanupError && <span className="ob-error" role="alert">{cleanupError}</span>}
+        {cleanupJobs.map(job => <div className="vault-cleanup-row" key={job.id} role="status">
+          <span><b>{job.message}</b><small>Status: {job.status}</small></span>
+          <div className="vault-lifecycle-actions">
+            <button className="btn sm" onClick={() => void refreshCleanupJob(job.id)} disabled={cleanupLoading}>{cleanupLoading ? 'Checking…' : 'Check status'}</button>
+            {job.status === 'failed' && <button className="btn sm" onClick={() => void retryCleanupJob(job.id)} disabled={cleanupLoading}>Retry cleanup</button>}
+          </div>
+        </div>)}
+      </div>}
       {!s.clients.length ? <section className="card client-empty-state" data-tour="clients-empty" aria-labelledby="clients-empty-title">
         <div className="client-empty-visual"><div className="client-empty-orb"><Icon name="users" size={28} /></div><span className="client-empty-spark client-empty-spark-one"><Icon name="check" size={11} /></span><span className="client-empty-spark client-empty-spark-two"><Icon name="file" size={11} /></span></div>
         <div className="client-empty-copy"><span className="eyebrow"><span className="eyebrow-dot" />CLIENT WORKSPACE</span><h2 id="clients-empty-title">Your client list starts here</h2><p>Add your first client to organize filings, secure documents, deadlines, and extraction work in one place.</p><button className="btn pri" onClick={() => setShowAdd(true)}><Icon name="users" size={14} />Add your first client</button></div>

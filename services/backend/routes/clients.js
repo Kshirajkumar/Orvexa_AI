@@ -8,7 +8,7 @@ const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
 const { createClientPortalInvite, getClientPortalInvitationLink, revokeClientPortalInvites } = require('../lib/clientPortalInvites');
 const telegramRouter = require('./telegram');
-const { isExpectedDocumentObject } = require('../lib/documentStorage');
+const { getStorageBucket, isOwnedDocumentObject } = require('../lib/documentStorage');
 
 function addCloudDocumentToTree(entries, document) {
   const createdAt = new Date(document.created_at);
@@ -37,7 +37,8 @@ function addCloudDocumentToTree(entries, document) {
       type: 'file',
       documentId: document.id,
       size: Math.max(0, Math.round(Number(document.file_size_kb || 0) * 1024)),
-      modifiedAt: document.created_at
+      category: document.category,
+      modifiedAt: document.updated_at || document.created_at
     });
   }
 }
@@ -57,7 +58,7 @@ function addClientFoldersToTree(entries, createdAt) {
     monthEntry = { name: month, type: 'folder', modifiedAt: date.toISOString(), children: [] };
     yearEntry.children.push(monthEntry);
   }
-  for (const name of ['Raw', 'Extracted']) {
+  for (const name of ['Raw', 'Extracted', 'Generated']) {
     if (!monthEntry.children.some(entry => entry.type === 'folder' && entry.name === name)) {
       monthEntry.children.push({ name, type: 'folder', modifiedAt: date.toISOString(), children: [] });
     }
@@ -66,7 +67,7 @@ function addClientFoldersToTree(entries, createdAt) {
 
 async function getClientCloudDocuments(userId, clientId) {
   const { data: documents, error } = await supabase.from('documents_metadata')
-    .select('id, client_id, source, created_at, file_name, category, storage_bucket, storage_object_path, vault_path')
+    .select('id, client_id, source, created_at, updated_at, file_name, category, storage_bucket, storage_object_path, vault_path')
     .eq('client_id', clientId)
     .neq('source', 'Telegram');
   if (error) throw error;
@@ -74,15 +75,12 @@ async function getClientCloudDocuments(userId, clientId) {
   const cloudObjects = [];
   for (const document of documents || []) {
     if (document.storage_bucket && document.storage_object_path) {
-      if (!isExpectedDocumentObject({
+      if (!isOwnedDocumentObject({
         bucket: document.storage_bucket,
         objectKey: document.storage_object_path,
         userId,
         clientId,
-        documentId: document.id,
-        createdAt: document.created_at,
-        fileName: document.file_name,
-        category: document.category
+        documentId: document.id
       })) {
         throw new Error(`Document ${document.id} has an invalid cloud storage reference. No client data was deleted.`);
       }
@@ -97,19 +95,6 @@ async function getClientCloudDocuments(userId, clientId) {
   return cloudObjects;
 }
 
-async function removeClientCloudDocuments(documents) {
-  const objectsByBucket = new Map();
-  for (const document of documents) {
-    const paths = objectsByBucket.get(document.storage_bucket) || [];
-    paths.push(document.storage_object_path);
-    objectsByBucket.set(document.storage_bucket, paths);
-  }
-
-  for (const [bucket, paths] of objectsByBucket) {
-    const { error } = await supabase.storage.from(bucket).remove(paths);
-    if (error) throw new Error(`Could not remove client cloud documents from ${bucket}: ${error.message}`);
-  }
-}
 // --- In-Memory Fallback Data (used when Supabase is not connected) ---
 let fallbackClients = [
   {
@@ -175,6 +160,7 @@ router.get('/', async (req, res) => {
           .from('clients')
           .select('*, supported_countries(country_name,currency_code)')
           .eq('user_id', userId)
+          .is('deletion_requested_at', null)
           .order('created_at', { ascending: false });
         if (result.error) throw result.error;
         data = result.data;
@@ -195,7 +181,7 @@ router.get('/:id', async (req, res) => {
   try {
     if (isConnected) {
       const { data, error } = await supabase
-        .from('clients').select('*, supported_countries(country_name,currency_code)').eq('id', req.params.id).eq('user_id', req.user.id).single();
+        .from('clients').select('*, supported_countries(country_name,currency_code)').eq('id', req.params.id).eq('user_id', req.user.id).is('deletion_requested_at', null).single();
       if (error) throw error;
       return res.json({ success: true, source: 'supabase', data: { ...data, country_name: data.supported_countries?.country_name, currency_code: data.supported_countries?.currency_code } });
     }
@@ -315,6 +301,7 @@ router.patch('/:id', async (req, res) => {
         .select('email, telegram_chat_id')
         .eq('id', req.params.id)
         .eq('user_id', req.user.id)
+        .is('deletion_requested_at', null)
         .maybeSingle();
       if (currentClientError) throw currentClientError;
       if (!currentClient) return res.status(404).json({ success: false, message: 'Client not found.' });
@@ -332,7 +319,7 @@ router.patch('/:id', async (req, res) => {
         existingAccess = data;
       }
       const { data, error } = await supabase
-        .from('clients').update(updates).eq('id', req.params.id).eq('user_id', req.user.id).select('*, supported_countries(country_name,currency_code)').single();
+        .from('clients').update(updates).eq('id', req.params.id).eq('user_id', req.user.id).is('deletion_requested_at', null).select('*, supported_countries(country_name,currency_code)').single();
       if (error) throw error;
       let portalAccessWarning = '';
       let portalInviteLink = '';
@@ -471,29 +458,28 @@ router.delete('/:id', async (req, res) => {
         .select('id, name')
         .eq('id', clientId)
         .eq('user_id', req.user.id)
+        .is('deletion_requested_at', null)
         .maybeSingle();
       if (lookupError) throw lookupError;
       if (!existing) return res.status(404).json({ success: false, message: 'Client not found.' });
 
-      const cloudDocuments = await getClientCloudDocuments(req.user.id, clientId);
-      const { error: deleteError } = await supabase
-        .from('clients')
-        .delete()
-        .eq('id', clientId)
-        .eq('user_id', req.user.id);
-      if (deleteError) throw deleteError;
-      invalidateClientsCache(req.user.id);
-      let cleanupWarning;
-      try {
-        await removeClientCloudDocuments(cloudDocuments);
-      } catch (cleanupError) {
-        console.error(`[Clients] Client ${clientId} was deleted, but cloud document cleanup failed:`, cleanupError.message);
-        cleanupWarning = 'Client was deleted, but some private cloud documents could not be removed. Contact support to complete file cleanup.';
+      await getClientCloudDocuments(req.user.id, clientId);
+      const bucket = getStorageBucket();
+      if (!bucket) {
+        return res.status(503).json({ success: false, message: 'Client deletion is unavailable until private cloud storage is configured.' });
       }
-      return res.json({
+      const { data: jobId, error: requestError } = await supabase.rpc('request_client_deletion', {
+        p_user_id: req.user.id,
+        p_client_id: clientId,
+        p_storage_bucket: bucket
+      });
+      if (requestError) throw requestError;
+      invalidateClientsCache(req.user.id);
+      return res.status(202).json({
         success: true,
         source: 'supabase',
-        data: { id: clientId, name: existing.name, ...(cleanupWarning ? { cleanupWarning } : {}) }
+        message: 'Client deletion was queued. The client and its files will be removed after cloud cleanup is confirmed.',
+        data: { id: clientId, name: existing.name, deletionJobId: jobId, deletionStatus: 'pending' }
       });
     }
 
@@ -503,7 +489,8 @@ router.delete('/:id', async (req, res) => {
     return res.json({ success: true, source: 'demo', data: { id: clientId, name: deleted.name } });
   } catch (err) {
     console.error(`[Clients] Delete failed for ${clientId}:`, err);
-    return res.status(err.status || 500).json({ success: false, message: err.status === 409
+    const status = err.status || (err.code === 'P0002' ? 409 : 500);
+    return res.status(status).json({ success: false, message: status === 409
       ? err.message
       : 'Could not permanently delete this client and its connected data.' });
   }
@@ -517,6 +504,7 @@ router.get('/:id/documents/tree', async (req, res) => {
         .select('id, name, created_at')
         .eq('id', req.params.id)
         .eq('user_id', req.user.id)
+        .is('deletion_requested_at', null)
         .maybeSingle();
       if (error) throw error;
       client = data;
@@ -528,21 +516,19 @@ router.get('/:id/documents/tree', async (req, res) => {
     let documents;
     if (isConnected && supabase) {
       const { data, error } = await supabase.from('documents_metadata')
-        .select('id, client_id, source, file_name, file_size_kb, category, created_at, storage_bucket, storage_object_path')
+        .select('id, client_id, source, file_name, file_size_kb, category, created_at, updated_at, storage_bucket, storage_object_path')
         .eq('client_id', client.id)
+        .is('deletion_requested_at', null)
         .neq('source', 'Telegram')
         .order('created_at', { ascending: false });
       if (error) throw error;
       documents = (data || []).filter(document => {
-        const valid = isExpectedDocumentObject({
+        const valid = isOwnedDocumentObject({
           bucket: document.storage_bucket,
           objectKey: document.storage_object_path,
           userId: req.user.id,
           clientId: client.id,
-          documentId: document.id,
-          createdAt: document.created_at,
-          fileName: document.file_name,
-          category: document.category
+          documentId: document.id
         });
         if (!valid) console.error(`[Clients] Hiding non-cloud or invalid document ${document.id} from the file browser.`);
         return valid;

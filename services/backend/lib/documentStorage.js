@@ -18,6 +18,44 @@ function getStorageObjectKey({ userId, clientId, year, month, category, document
   return `${userId}/${clientId}/${year}/${month}/${folder}/${documentId}_${safeName}`;
 }
 
+function getVersionStorageObjectKey({ userId, clientId, documentId, versionId, fileName }) {
+  for (const [label, value] of [['user', userId], ['client', clientId], ['document', documentId], ['version', versionId]]) {
+    if (!UUID_PATTERN.test(String(value || ''))) {
+      throw new Error(`A valid ${label} UUID is required to create a private document version path.`);
+    }
+  }
+  return `${userId}/${clientId}/documents/${documentId}/${versionId}_${sanitizeStorageFileName(fileName)}`;
+}
+
+function isOwnedDocumentObject({ bucket, objectKey, userId, clientId, documentId }) {
+  if (!getStorageBucket() || bucket !== getStorageBucket()) return false;
+  for (const value of [userId, clientId, documentId]) {
+    if (!UUID_PATTERN.test(String(value || ''))) return false;
+  }
+  const parts = String(objectKey || '').split('/');
+  if (parts[0] !== userId || parts[1] !== clientId) return false;
+
+  if (
+    parts.length === 5
+    && parts[2] === 'documents'
+    && parts[3] === documentId
+    && UUID_PATTERN.test(parts[4].slice(0, 36))
+    && parts[4][36] === '_'
+    && parts[4].length > 37
+  ) return true;
+
+  const months = new Set([
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ]);
+  return parts.length === 6
+    && /^\d{4}$/.test(parts[2])
+    && months.has(parts[3])
+    && ['Raw', 'Extracted', 'Generated'].includes(parts[4])
+    && parts[5].startsWith(`${documentId}_`)
+    && parts[5].length > documentId.length + 1;
+}
+
 function isExpectedDocumentObject({ bucket, objectKey, userId, clientId, documentId, createdAt, fileName, category }) {
   try {
     const date = new Date(createdAt);
@@ -46,6 +84,18 @@ function sanitizeStorageFileName(fileName) {
   return safeName || 'document';
 }
 
+async function releaseUploadReservation(userId, reservationId) {
+  try {
+    const { error } = await supabase.rpc('release_document_upload', {
+      p_user_id: userId,
+      p_reservation_id: reservationId
+    });
+    if (error) throw error;
+  } catch (error) {
+    console.error('[Document Storage] Failed to release generated upload reservation:', error.message);
+  }
+}
+
 async function saveGeneratedDocument({ userId, clientId, clientName, fileName, category, content, mimeType, assessmentYear }) {
   if (!['Extracted', 'Generated'].includes(category)) throw new Error('Generated document category is invalid.');
   if (!Buffer.isBuffer(content) || !content.length) throw new Error('Generated document content is empty.');
@@ -61,7 +111,21 @@ async function saveGeneratedDocument({ userId, clientId, clientName, fileName, c
     documentId: id,
     fileName: safeName
   });
-  const uploaded = await uploadDocument(objectKey, content, mimeType);
+  const { data: reservationId, error: reservationError } = await supabase.rpc('begin_document_upload', {
+    p_user_id: userId,
+    p_client_id: clientId,
+    p_document_id: id,
+    p_created_by: userId
+  });
+  if (reservationError) throw reservationError;
+
+  let uploaded;
+  try {
+    uploaded = await uploadDocument(objectKey, content, mimeType);
+  } catch (error) {
+    await releaseUploadReservation(userId, reservationId);
+    throw error;
+  }
   const row = {
     id,
     client_id: clientId,
@@ -79,16 +143,21 @@ async function saveGeneratedDocument({ userId, clientId, clientName, fileName, c
     assessment_year: typeof assessmentYear === 'string' ? assessmentYear.slice(0, 10) : null,
     created_at: createdAt.toISOString()
   };
-  const { data, error } = await supabase.from('documents_metadata').insert(row).select().single();
-  if (error) {
+  const { data, error } = await supabase.rpc('create_document_metadata_if_client_active', {
+    p_user_id: userId,
+    p_reservation_id: reservationId,
+    p_document: row
+  });
+  if (error || !data) {
     try {
       await deleteDocument(uploaded.bucket, uploaded.objectKey);
     } catch (cleanupError) {
       console.error('[Document Storage] Generated document rollback failed:', cleanupError.message);
     }
-    throw error;
+    await releaseUploadReservation(userId, reservationId);
+    throw error || new Error('Generated document metadata was not saved.');
   }
-  return data;
+  return Array.isArray(data) ? data[0] : data;
 }
 
 function normalizeMimeType(value) {
@@ -149,6 +218,8 @@ module.exports = {
   downloadDocument,
   getStorageBucket,
   getStorageObjectKey,
+  getVersionStorageObjectKey,
+  isOwnedDocumentObject,
   isExpectedDocumentObject,
   normalizeMimeType,
   sanitizeStorageFileName,

@@ -18,6 +18,7 @@ function createDatabaseMock({ linked = true } = {}) {
       country_id: 'country-in',
       status: 'Active',
       telegram_chat_id: linked ? 'private-chat-1' : null,
+      deletion_requested_at: null,
     }],
     supported_country_timezones: [
       { country_id: 'country-in', timezone_name: 'Asia/Kolkata', is_default: true },
@@ -39,6 +40,7 @@ function createDatabaseMock({ linked = true } = {}) {
       insert(value) { operation = 'insert'; payload = value; return this; },
       update(value) { operation = 'update'; payload = value; return this; },
       eq(field, value) { filters.push((row) => row[field] === value); return this; },
+      is(field, value) { filters.push((row) => (row[field] ?? null) === value); return this; },
       in(field, values) { filters.push((row) => values.includes(row[field])); return this; },
       order() { return this; },
       limit() { return this; },

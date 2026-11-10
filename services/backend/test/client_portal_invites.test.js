@@ -21,7 +21,7 @@ function createDatabaseMock(rows) {
       insert(value) { operation = 'insert'; payload = value; return this; },
       update(value) { operation = 'update'; payload = value; return this; },
       eq(field, value) { filters.push((row) => row[field] === value); return this; },
-      is(field, value) { filters.push((row) => row[field] === value); return this; },
+      is(field, value) { filters.push((row) => (row[field] ?? null) === value); return this; },
       maybeSingle() { return this.execute(true); },
       single() { return this.execute(true); },
       then(resolve, reject) { return this.execute(false).then(resolve, reject); },
@@ -81,7 +81,7 @@ test('portal invitation registration checks the exact email and blocks replayed 
       consumed_at: null,
       revoked_at: null,
     }],
-    clients: [{ id: 'client-1', email: 'client@example.com', status: 'Active' }],
+    clients: [{ id: 'client-1', email: 'client@example.com', status: 'Active', deletion_requested_at: null }],
   };
   const createdUsers = [];
   const markedUsers = [];

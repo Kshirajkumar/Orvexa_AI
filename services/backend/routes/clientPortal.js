@@ -89,6 +89,7 @@ async function inspectPortalInvite(token, email) {
   const { data: client, error: clientError } = await supabase.from('clients')
     .select('id, email, status')
     .eq('id', invite.client_id)
+    .is('deletion_requested_at', null)
     .maybeSingle();
   if (clientError) throw clientError;
   if (
@@ -508,6 +509,7 @@ router.post(
     let objectKey = null;
     let bucket = null;
     let documentId = null;
+    let reservationId = null;
     try {
       const minute = await consume(`client-portal:upload:${req.portalUser.id}:minute`, 5, 60);
       if (!minute.allowed) {
@@ -562,6 +564,15 @@ router.post(
         fileName
       });
 
+      const { data: reservation, error: reservationError } = await supabase.rpc('begin_document_upload', {
+        p_user_id: req.portalClient.user_id,
+        p_client_id: req.portalClient.id,
+        p_document_id: documentId,
+        p_created_by: req.portalUser.id
+      });
+      if (reservationError) throw reservationError;
+      reservationId = reservation;
+
       const { error: uploadError } = await supabase.storage.from(bucket).upload(objectKey, req.body, {
         contentType: mimeType,
         upsert: false
@@ -584,12 +595,18 @@ router.post(
         mime_type: mimeType,
         created_at: createdAt.toISOString()
       };
-      const { data, error } = await supabase.from('documents_metadata').insert(metadata).select(
-        'id, file_name, file_type, file_size_kb, status, created_at'
-      ).single();
-      if (error) throw error;
+      const { data, error } = await supabase.rpc('create_document_metadata_if_client_active', {
+        p_user_id: req.portalClient.user_id,
+        p_reservation_id: reservationId,
+        p_document: metadata
+      });
+      if (error || !data) throw error || new Error('Document metadata was not saved.');
+      reservationId = null;
 
-      return res.status(201).json({ success: true, data });
+      return res.status(201).json({
+        success: true,
+        data: Array.isArray(data) ? data[0] : data
+      });
     } catch (error) {
       if (error instanceof RateLimiterUnavailableError) {
         return res.status(error.status).json({ success: false, message: error.message });
@@ -606,6 +623,17 @@ router.post(
         } else if (!savedDocument) {
           const { error: cleanupError } = await supabase.storage.from(bucket).remove([objectKey]);
           if (cleanupError) console.error('[Client Portal] Failed upload cleanup:', cleanupError.message);
+        }
+      }
+      if (reservationId) {
+        try {
+          const { error: releaseError } = await supabase.rpc('release_document_upload', {
+            p_user_id: req.portalClient.user_id,
+            p_reservation_id: reservationId
+          });
+          if (releaseError) throw releaseError;
+        } catch (releaseError) {
+          console.error('[Client Portal] Failed to release upload reservation:', releaseError.message);
         }
       }
       if (error.status) return res.status(error.status).json({ success: false, message: error.message });

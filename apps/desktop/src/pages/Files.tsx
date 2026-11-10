@@ -3,7 +3,21 @@ import { Icon } from '../components/Icon';
 import { FileArtifactCard } from '../components/FileArtifactCard';
 import { DocumentPreviewDialog } from '../components/DocumentPreviewDialog';
 import { useAppState, useDispatch } from '../state/store';
-import { deleteCloudDocument, fetchClientDocumentTree, fetchCloudDocumentFile, uploadDocument, type DocumentTreeEntry } from '../lib/api';
+import {
+  deleteCloudDocument,
+  fetchClientDocumentTree,
+  fetchCloudDocumentFile,
+  fetchDocumentVersions,
+  fetchStorageCleanupJob,
+  fetchStorageCleanupJobs,
+  replaceCloudDocumentVersion,
+  retryStorageCleanupJob,
+  updateCloudDocumentDetails,
+  uploadDocument,
+  type DocumentTreeEntry,
+  type DocumentVersionItem,
+  type StorageCleanupJob
+} from '../lib/api';
 import { openWithDefaultApp, supportsNativeFileOpen } from '../lib/nativeFiles';
 import { fDT } from '../lib/format';
 
@@ -134,6 +148,17 @@ export function FilesPage() {
   const [uploadMessageKind, setUploadMessageKind] = useState<'success' | 'warning' | 'error' | ''>('');
   const [pendingDelete, setPendingDelete] = useState<{ entry: DocumentTreeEntry; path: string } | null>(null);
   const [deletingFile, setDeletingFile] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState('');
+  const [detailsForm, setDetailsForm] = useState({ fileName: '', category: 'General', assessmentYear: '' });
+  const [versions, setVersions] = useState<DocumentVersionItem[]>([]);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versionsError, setVersionsError] = useState('');
+  const [cleanupJobs, setCleanupJobs] = useState<StorageCleanupJob[]>([]);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupError, setCleanupError] = useState('');
   const [openingFile, setOpeningFile] = useState(false);
   const [activeVaultPreview, setActiveVaultPreview] = useState<{ fileName: string; file: Blob } | null>(null);
   const [openingNativePreview, setOpeningNativePreview] = useState(false);
@@ -142,6 +167,7 @@ export function FilesPage() {
   const [pendingOpenFile, setPendingOpenFile] = useState<{ clientId: string; fileName: string; documentId?: string } | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
   const client = s.clients.find(item => item.id === clientId) || s.clients[0];
 
   useEffect(() => {
@@ -180,6 +206,16 @@ export function FilesPage() {
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [clientId, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchStorageCleanupJobs().then(jobs => {
+      if (!cancelled) setCleanupJobs(jobs);
+    }).catch(error => {
+      if (!cancelled) setCleanupError(error instanceof Error ? error.message : 'Cleanup status could not be loaded.');
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!pendingOpenFile || loadedClientId !== pendingOpenFile.clientId || !client) return;
@@ -300,12 +336,14 @@ export function FilesPage() {
     setDeletingFile(true);
     setDeleteError('');
     try {
-      await deleteCloudDocument(documentId);
+      const job = await deleteCloudDocument(documentId);
+      setCleanupJobs(previous => [job, ...previous.filter(existing => existing.id !== job.id)]);
+      setCleanupError('');
       setEntries(previous => removeFileAtPath(previous, pendingDelete.path));
       if (selected?.path === pendingDelete.path) setSelected(null);
       setPendingDelete(null);
-      setUploadMessageKind('success');
-      setUploadMessage(`${pendingDelete.entry.name} was permanently deleted from cloud storage.`);
+      setUploadMessageKind('warning');
+      setUploadMessage(`${pendingDelete.entry.name} was hidden and queued for secure cloud deletion.`);
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'The file could not be deleted.');
     } finally {
@@ -313,7 +351,109 @@ export function FilesPage() {
     }
   }
 
-  async function openSelectedFile() {
+  function startEditingDetails() {
+    if (!selected?.entry.documentId) return;
+    setDetailsForm({
+      fileName: selected.entry.name,
+      category: selected.entry.category || 'General',
+      assessmentYear: ''
+    });
+    setDetailsError('');
+    setEditingDetails(true);
+  }
+
+  async function saveDocumentDetails() {
+    if (!selected?.entry.documentId || savingDetails) return;
+    setSavingDetails(true);
+    setDetailsError('');
+    try {
+      await updateCloudDocumentDetails(selected.entry.documentId, {
+        fileName: detailsForm.fileName,
+        category: detailsForm.category,
+        ...(detailsForm.assessmentYear ? { assessmentYear: detailsForm.assessmentYear } : {})
+      });
+      setEditingDetails(false);
+      setUploadMessageKind('success');
+      setUploadMessage('Document details updated. The cloud file itself was not changed.');
+      setRefresh(value => value + 1);
+    } catch (error) {
+      setDetailsError(error instanceof Error ? error.message : 'Document details could not be updated.');
+    } finally {
+      setSavingDetails(false);
+    }
+  }
+
+  async function loadDocumentVersions() {
+    if (!selected?.entry.documentId || versionsLoading) return;
+    setVersionsLoading(true);
+    setVersionsError('');
+    try {
+      setVersions(await fetchDocumentVersions(selected.entry.documentId));
+      setVersionsOpen(true);
+    } catch (error) {
+      setVersionsError(error instanceof Error ? error.message : 'Version history could not be loaded.');
+    } finally {
+      setVersionsLoading(false);
+    }
+  }
+
+  async function replaceSelectedFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !selected?.entry.documentId) return;
+    const fileType = extension(file.name).toUpperCase();
+    if (!new Set(['PDF', 'PNG', 'JPG', 'JPEG', 'XLSX', 'CSV']).has(fileType)) {
+      setUploadMessageKind('error');
+      setUploadMessage('Unsupported replacement type. Use PDF, PNG/JPG, XLSX, or CSV.');
+      return;
+    }
+    setUploading(true);
+    setUploadMessage('');
+    try {
+      await replaceCloudDocumentVersion(selected.entry.documentId, file.name, fileType, await toBase64(file));
+      setUploadMessageKind('success');
+      setUploadMessage(`A new immutable version of ${selected.entry.name} was saved. Earlier versions remain available.`);
+      setRefresh(value => value + 1);
+      if (versionsOpen) setVersions(await fetchDocumentVersions(selected.entry.documentId));
+    } catch (error) {
+      setUploadMessageKind('error');
+      setUploadMessage(error instanceof Error ? error.message : 'The replacement version could not be saved.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function refreshCleanupStatus(jobId: string) {
+    if (cleanupLoading) return;
+    setCleanupLoading(true);
+    setCleanupError('');
+    try {
+      const updatedJob = await fetchStorageCleanupJob(jobId);
+      setCleanupJobs(previous => previous.map(job => job.id === jobId ? updatedJob : job));
+    } catch (error) {
+      setCleanupError(error instanceof Error ? error.message : 'Cleanup status could not be loaded.');
+    } finally {
+      setCleanupLoading(false);
+    }
+  }
+
+  async function retryCleanup(jobId: string) {
+    if (cleanupLoading) return;
+    setCleanupLoading(true);
+    setCleanupError('');
+    try {
+      await retryStorageCleanupJob(jobId);
+      setCleanupJobs(previous => previous.map(job => job.id === jobId
+        ? { ...job, status: 'pending', attempt_count: 0, message: 'Cloud deletion was queued for retry.' }
+        : job));
+    } catch (error) {
+      setCleanupError(error instanceof Error ? error.message : 'Cleanup could not be retried.');
+    } finally {
+      setCleanupLoading(false);
+    }
+  }
+
+  async function openSelectedFile(versionId?: string, versionFileName?: string) {
     if (!client || selected?.entry.type !== 'file' || openingFile) return;
     const documentId = selected.entry.documentId;
     if (!documentId) {
@@ -321,22 +461,23 @@ export function FilesPage() {
       setUploadMessage('This file has no cloud document ID and cannot be opened.');
       return;
     }
+    const fileName = versionFileName || selected.entry.name;
 
     setOpeningFile(true);
     setUploadMessage('');
     setNativePreviewError('');
     try {
-      const file = await fetchCloudDocumentFile(documentId);
+      const file = await fetchCloudDocumentFile(documentId, versionId);
       try {
-        if (await openWithDefaultApp(file, selected.entry.name)) {
+        if (await openWithDefaultApp(file, fileName)) {
           setUploadMessageKind('success');
-          setUploadMessage(`Opened ${selected.entry.name} with the default app on this computer.`);
+          setUploadMessage(`Opened ${fileName} with the default app on this computer.`);
           return;
         }
       } catch (nativeError) {
         setNativePreviewError(nativeError instanceof Error ? nativeError.message : 'A default app could not open this file. You can still preview or download it here.');
       }
-      setActiveVaultPreview({ fileName: selected.entry.name, file });
+      setActiveVaultPreview({ fileName, file });
     } catch (error) {
       setUploadMessageKind('error');
       setUploadMessage(error instanceof Error ? error.message : 'The cloud document could not be opened.');
@@ -377,6 +518,45 @@ export function FilesPage() {
       <section className="vault-tree-panel card" data-tour="files-tree"><div className="vault-panel-head"><div><span className="eyebrow">FOLDER TREE</span><h2>{client?.name || 'No client selected'}</h2></div><button className="btn ghost" onClick={() => setRefresh(value => value + 1)} disabled={loading || !clientId}><Icon name="refresh" size={14} />Refresh</button></div>{error && <div className="vault-notice"><Icon name="bell" size={15} /><span>{error}</span></div>}<div className="vault-tree-scroll">{loading ? <div className="vault-loading"><span className="spin" /><span>Loading cloud files…</span></div> : visibleEntries.length ? visibleEntries.map(entry => <TreeNode key={entry.name} entry={entry} depth={0} path={`/${entry.name}`} expanded={expanded} selectedPath={selected?.path || ''} toggle={toggle} select={(entry, path) => setSelected({ entry, path })} />) : <div className="vault-empty"><span className="vault-empty-icon"><Icon name="folder" size={22} /></span><b>{query ? 'No matching items' : 'No documents yet'}</b><span>{query ? 'Try a different search.' : 'Files will appear here when added.'}</span></div>}</div></section>
       <section className="vault-contents-panel card"><div className="vault-panel-head"><div><span className="eyebrow">SELECTED FOLDER</span><h2>{selected?.entry.name || client?.name || 'Folder contents'}</h2><small>{selected?.entry.type === 'folder' ? `${folderCount} folder${folderCount === 1 ? '' : 's'} · ${fileCount} file${fileCount === 1 ? '' : 's'}` : 'Select a folder in the tree'}</small></div><div className="vault-upload-action"><input ref={fileInputRef} type="file" className="vault-file-input" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv" onChange={uploadSelectedFile} /><button className="btn pri" onClick={() => fileInputRef.current?.click()} disabled={!canUpload} title={uploadCategory ? `Upload to ${selectedFolderName}` : 'Select the Raw or Extracted folder first'}><Icon name="upload" size={14} />{uploading ? 'Uploading…' : 'Upload file'}</button></div></div>{uploading && <div className="vault-uploading-state"><span className="vault-upload-orbit"><Icon name="upload" size={17} /></span><div><b>Uploading securely to {selectedFolderName}</b><small>Saving securely to private cloud storage and refreshing this folder…</small></div></div>}{uploadMessage && <div className={`vault-upload-message ${uploadMessageKind}`}><Icon name={uploadMessageKind === 'success' ? 'check' : uploadMessageKind === 'error' ? 'x' : 'bell'} size={14} /><span>{uploadMessage}</span></div>}{selected?.entry.type === 'file' ? <div className="vault-file-preview"><FileArtifactCard fileName={selected.entry.name} detailText={fileTypeLabel(selected.entry.name)} sizeText={formatBytes(selected.entry.size)} modifiedText={fDT(new Date(selected.entry.modifiedAt))} statusText="Stored in this client’s private cloud storage" onOpen={() => void openSelectedFile()} openLabel={supportsNativeFileOpen() ? 'Open with default app' : 'Preview file'} opening={openingFile} /><div className="vault-detail-path">{selected.path}</div><div className="kv"><span>Type</span><b>{extension(selected.entry.name).toUpperCase()} file</b><span>Size</span><b>{formatBytes(selected.entry.size)}</b><span>Modified</span><b>{fDT(new Date(selected.entry.modifiedAt))}</b></div></div> : selected ? <div className="vault-contents"><div className="vault-current-path"><Icon name="folder" size={15} /><span>{selected.path}</span></div>{selectedChildren.length ? <div className="vault-file-grid">{selectedChildren.map(item => item.type === 'folder' ? <button className="vault-folder-card" key={item.name} onClick={() => setSelected({ entry: item, path: `${selected.path}/${item.name}` })}><span className="vault-folder-card-icon"><Icon name="folder" size={22} /></span><span><b>{item.name}</b><small>{item.children?.length || 0} items</small></span><Icon name="chev" size={14} /></button> : <FileCard key={item.name} item={item} onOpen={() => setSelected({ entry: item, path: `${selected.path}/${item.name}` })} onDelete={() => { setDeleteError(''); setPendingDelete({ entry: item, path: `${selected.path}/${item.name}` }); }} />)}</div> : <div className="vault-empty"><span className="vault-empty-icon"><Icon name="folder" size={22} /></span><b>This folder is empty</b><span>Files added to this folder will appear here.</span></div>}</div> : <div className="vault-overview"><div className="vault-overview-icon"><Icon name="folder" size={28}></Icon></div><b>Select a folder</b><span>Choose a folder from the tree to view everything inside it.</span></div>}</section>
     </div>
+    {(cleanupJobs.length > 0 || cleanupError) && <div className="vault-lifecycle-panel card" aria-label="Cloud cleanup jobs">
+      <div><b>Cloud cleanup</b><small>Queued deletions finish automatically; failed jobs can be retried here.</small></div>
+      {cleanupError && <span className="ob-error" role="alert">{cleanupError}</span>}
+      {cleanupJobs.map(job => <div className="vault-cleanup-row" key={job.id} role="status">
+        <span><b>{job.message}</b><small>Status: {job.status}</small></span>
+        <div className="vault-lifecycle-actions">
+          <button className="btn sm" onClick={() => void refreshCleanupStatus(job.id)} disabled={cleanupLoading}>{cleanupLoading ? 'Checking…' : 'Check status'}</button>
+          {job.status === 'failed' && <button className="btn sm" onClick={() => void retryCleanup(job.id)} disabled={cleanupLoading}>Retry cleanup</button>}
+        </div>
+      </div>)}
+    </div>}
+    {selected?.entry.type === 'file' && <section className="vault-lifecycle-panel card" aria-label="Document management">
+      <div><b>Document management</b><small>Opening downloads a copy. Local edits are not synced; use “Replace version” to upload a new immutable version.</small></div>
+      <div className="vault-lifecycle-actions">
+        <button className="btn sm" onClick={startEditingDetails} disabled={!selected.entry.documentId}>Rename / categorize</button>
+        <input ref={replaceInputRef} type="file" className="vault-file-input" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv" onChange={replaceSelectedFile} />
+        <button className="btn sm" onClick={() => replaceInputRef.current?.click()} disabled={!selected.entry.documentId || uploading}>{uploading ? 'Uploading…' : 'Replace version'}</button>
+        <button className="btn sm" onClick={() => void loadDocumentVersions()} disabled={!selected.entry.documentId || versionsLoading}>{versionsLoading ? 'Loading…' : 'Version history'}</button>
+        <button className="btn sm danger" onClick={() => { setDeleteError(''); setPendingDelete({ entry: selected.entry, path: selected.path }); }} disabled={!selected.entry.documentId}>Delete</button>
+      </div>
+      {editingDetails && <div className="vault-lifecycle-form">
+        <label>File name<input className="modal-input" value={detailsForm.fileName} onChange={event => setDetailsForm(previous => ({ ...previous, fileName: event.target.value }))} /></label>
+        <label>Category<select className="modal-input" value={detailsForm.category} onChange={event => setDetailsForm(previous => ({ ...previous, category: event.target.value }))}>
+          {['GST', 'IncomeTax', 'Form16', 'BankStatement', 'Notice', 'TDS', 'Audit', 'General', 'Extracted', 'Generated'].map(category => <option key={category} value={category}>{category}</option>)}
+        </select></label>
+        <label>Assessment year (optional)<input className="modal-input" value={detailsForm.assessmentYear} placeholder="YYYY or YYYY-YY" onChange={event => setDetailsForm(previous => ({ ...previous, assessmentYear: event.target.value }))} /></label>
+        {detailsError && <span className="ob-error" role="alert">{detailsError}</span>}
+        <button className="btn pri" onClick={() => void saveDocumentDetails()} disabled={savingDetails}>{savingDetails ? 'Saving…' : 'Save details'}</button>
+        <button className="btn gh" onClick={() => setEditingDetails(false)} disabled={savingDetails}>Cancel</button>
+      </div>}
+      {versionsError && <span className="ob-error" role="alert">{versionsError}</span>}
+      {versionsOpen && <div className="vault-version-list">
+        <b>Immutable versions</b>
+        {!versions.length ? <small>No version history is available.</small> : versions.map(version => <div className="vault-version-row" key={version.id}>
+          <span><b>Version {version.version_number}</b><small>{version.file_name} · {fDT(new Date(version.created_at))}</small></span>
+          <button className="btn sm" onClick={() => void openSelectedFile(version.id, version.file_name)} disabled={openingFile}>Open</button>
+        </div>)}
+      </div>}
+    </section>}
     {activeVaultPreview && (
       <DocumentPreviewDialog
         file={activeVaultPreview.file}

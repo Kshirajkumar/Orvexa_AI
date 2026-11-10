@@ -596,7 +596,7 @@ export async function updateClient(clientId: string, clientData: Partial<Client>
   return json.data;
 }
 
-export async function deleteClient(clientId: string): Promise<{ id: string; name: string; cleanupWarning?: string }> {
+export async function deleteClient(clientId: string): Promise<{ id: string; name: string; deletionJobId?: string; deletionStatus?: string }> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE_URL}/clients/${encodeURIComponent(clientId)}`, {
@@ -610,6 +610,10 @@ export async function deleteClient(clientId: string): Promise<{ id: string; name
   try { json = await res.json(); } catch { throw new Error(`The backend returned an invalid response (HTTP ${res.status}).`); }
   if (!res.ok || !json.success) throw new Error(json.message || `Could not delete the client (HTTP ${res.status}).`);
 
+  if (!json.data?.id || !json.data?.name) throw new Error('The client deletion endpoint returned an incomplete response.');
+  if (json.source === 'supabase' && typeof json.data.deletionJobId !== 'string') {
+    throw new Error('The client was marked for deletion, but its cloud cleanup job was not returned.');
+  }
   return json.data;
 }
 
@@ -617,9 +621,31 @@ export interface DocumentTreeEntry {
   name: string;
   type: 'folder' | 'file';
   documentId?: string;
+  category?: string;
+  versionCount?: number;
   size?: number;
   modifiedAt: string;
   children?: DocumentTreeEntry[];
+}
+
+export interface DocumentVersionItem {
+  id: string;
+  version_number: number;
+  file_name: string;
+  file_type: string;
+  file_size_kb: number | null;
+  mime_type: string | null;
+  created_at: string;
+}
+
+export interface StorageCleanupJob {
+  id: string;
+  target_type: 'client' | 'document';
+  status: 'pending' | 'processing' | 'retrying' | 'failed' | 'completed';
+  attempt_count: number;
+  created_at: string;
+  completed_at: string | null;
+  message: string;
 }
 
 export interface DocumentTreeResponse {
@@ -663,10 +689,13 @@ export async function searchTelegramMessages(query: string, signal?: AbortSignal
   return Array.isArray(json.data) ? json.data : [];
 }
 
-export async function fetchCloudDocumentFile(documentId: string): Promise<Blob> {
+export async function fetchCloudDocumentFile(documentId: string, versionId?: string): Promise<Blob> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/file`, {
+    const fileRoute = versionId
+      ? `/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}/file`
+      : `/documents/${encodeURIComponent(documentId)}/file`;
+    res = await fetch(`${API_BASE_URL}${fileRoute}`, {
       headers: authHeaders(),
     });
   } catch {
@@ -692,7 +721,70 @@ export async function fetchClientDocumentTree(clientId: string): Promise<Documen
   return json.data;
 }
 
-export async function deleteCloudDocument(documentId: string): Promise<void> {
+export async function fetchDocumentVersions(documentId: string): Promise<DocumentVersionItem[]> {
+  const res = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/versions`, { headers: authHeaders() });
+  let json: any;
+  try { json = await res.json(); } catch { throw new Error(`Document versions returned an invalid response (HTTP ${res.status}).`); }
+  if (!res.ok || !json.success || !Array.isArray(json.data)) {
+    throw new Error(json.message || `Could not load document versions (HTTP ${res.status}).`);
+  }
+  return json.data;
+}
+
+export async function replaceCloudDocumentVersion(documentId: string, fileName: string, fileType: string, fileBase64: string): Promise<DocumentVersionItem> {
+  const res = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/versions`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ fileName, fileType, fileBase64 }),
+  });
+  let json: any;
+  try { json = await res.json(); } catch { throw new Error(`Replacement upload returned an invalid response (HTTP ${res.status}).`); }
+  if (!res.ok || !json.success || !json.data) {
+    throw new Error(json.message || `Could not upload a new document version (HTTP ${res.status}).`);
+  }
+  return json.data;
+}
+
+export async function updateCloudDocumentDetails(documentId: string, details: { fileName: string; category: string; assessmentYear?: string }): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify(details),
+  });
+  let json: any;
+  try { json = await res.json(); } catch { throw new Error(`Document details returned an invalid response (HTTP ${res.status}).`); }
+  if (!res.ok || !json.success) throw new Error(json.message || `Could not update document details (HTTP ${res.status}).`);
+}
+
+export async function fetchStorageCleanupJob(jobId: string): Promise<StorageCleanupJob> {
+  const res = await fetch(`${API_BASE_URL}/storage-cleanup/${encodeURIComponent(jobId)}`, { headers: authHeaders() });
+  let json: any;
+  try { json = await res.json(); } catch { throw new Error(`Cleanup status returned an invalid response (HTTP ${res.status}).`); }
+  if (!res.ok || !json.success || !json.data) throw new Error(json.message || `Could not load cleanup status (HTTP ${res.status}).`);
+  return json.data;
+}
+
+export async function fetchStorageCleanupJobs(): Promise<StorageCleanupJob[]> {
+  const res = await fetch(`${API_BASE_URL}/storage-cleanup`, { headers: authHeaders() });
+  let json: any;
+  try { json = await res.json(); } catch { throw new Error(`Cleanup jobs returned an invalid response (HTTP ${res.status}).`); }
+  if (!res.ok || !json.success || !Array.isArray(json.data)) {
+    throw new Error(json.message || `Could not load cleanup jobs (HTTP ${res.status}).`);
+  }
+  return json.data;
+}
+
+export async function retryStorageCleanupJob(jobId: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/storage-cleanup/${encodeURIComponent(jobId)}/retry`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  let json: any;
+  try { json = await res.json(); } catch { throw new Error(`Cleanup retry returned an invalid response (HTTP ${res.status}).`); }
+  if (!res.ok || !json.success) throw new Error(json.message || `Could not retry cleanup (HTTP ${res.status}).`);
+}
+
+export async function deleteCloudDocument(documentId: string): Promise<StorageCleanupJob> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}`, {
@@ -705,7 +797,19 @@ export async function deleteCloudDocument(documentId: string): Promise<void> {
 
   let json: any;
   try { json = await res.json(); } catch { throw new Error(`The cloud document endpoint returned an invalid response (HTTP ${res.status}).`); }
-  if (!res.ok || !json.success) throw new Error(json.message || `The file could not be deleted (HTTP ${res.status}).`);
+  if (!res.ok || !json.success || !json.data) throw new Error(json.message || `The file could not be deleted (HTTP ${res.status}).`);
+  if (typeof json.data.deletionJobId !== 'string') {
+    throw new Error('The document was marked for deletion, but its cloud cleanup job was not returned.');
+  }
+  return {
+    id: json.data.deletionJobId,
+    target_type: 'document',
+    status: json.data.deletionStatus || 'pending',
+    attempt_count: 0,
+    created_at: new Date().toISOString(),
+    completed_at: null,
+    message: json.message || 'Document deletion was queued.',
+  };
 }
 
 // ─── Documents API ─────────────────────────────────────────────

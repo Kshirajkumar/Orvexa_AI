@@ -19,7 +19,7 @@ const { getGeminiConfig } = require('../lib/aiProvider');
 const { getExtractionPrompt, validateExtractionData } = require('../lib/extractionSchema');
 const { TAXFLOW_SYSTEM_PROMPT } = require('../lib/systemPrompt');
 const { getOwnedClientIds } = require('../lib/ownership');
-const { downloadDocument, isExpectedDocumentObject } = require('../lib/documentStorage');
+const { downloadDocument, isOwnedDocumentObject } = require('../lib/documentStorage');
 
 /**
  * POST /api/v1/extraction/process
@@ -40,7 +40,8 @@ router.post('/process', async (req, res) => {
     if (isConnected) {
       const ownedClientIds = await getOwnedClientIds(req.user.id);
       const { data, error } = await supabase
-        .from('documents_metadata').select('*').eq('id', documentId).in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000']).single();
+        .from('documents_metadata').select('*').eq('id', documentId).is('deletion_requested_at', null)
+        .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000']).single();
       if (error) throw new Error(`Document not found in database: ${error.message}`);
       doc = data;
     } else {
@@ -54,16 +55,13 @@ router.post('/process', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Telegram files are not available for extraction. Use the secure client portal for document uploads.' });
     }
 
-    // Step 2: Read only from the expected private Storage object.
-    if (!doc.storage_bucket || !doc.storage_object_path || !isExpectedDocumentObject({
+    // Step 2: Read only from this user's private object namespace.
+    if (!doc.storage_bucket || !doc.storage_object_path || !isOwnedDocumentObject({
         bucket: doc.storage_bucket,
         objectKey: doc.storage_object_path,
         userId: req.user.id,
         clientId: doc.client_id,
-        documentId: doc.id,
-        createdAt: doc.created_at,
-        fileName: doc.file_name,
-        category: doc.category
+        documentId: doc.id
       })) {
       console.error(`[Extraction] Refusing unexpected cloud storage reference for document ${doc.id}.`);
       return res.status(409).json({ success: false, message: 'This document has not been migrated to private cloud storage.' });

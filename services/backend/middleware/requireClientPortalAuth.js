@@ -47,6 +47,7 @@ async function requireClientPortalAuth(req, res, next) {
       .select('id, name, email, user_id, status')
       .eq('id', access.client_id)
       .eq('status', 'Active')
+      .is('deletion_requested_at', null)
       .maybeSingle();
     if (clientError) throw clientError;
     if (!client) {

@@ -12,7 +12,8 @@ const {
   downloadDocument,
   getStorageBucket,
   getStorageObjectKey,
-  isExpectedDocumentObject,
+  getVersionStorageObjectKey,
+  isOwnedDocumentObject,
   normalizeMimeType,
   sanitizeStorageFileName,
   sha256,
@@ -74,15 +75,12 @@ let fallbackDocuments = [
 
 function getCloudObject(document, userId) {
   if (!document.storage_bucket || !document.storage_object_path) return null;
-  return isExpectedDocumentObject({
+  return isOwnedDocumentObject({
     bucket: document.storage_bucket,
     objectKey: document.storage_object_path,
     userId,
     clientId: document.client_id,
-    documentId: document.id,
-    createdAt: document.created_at,
-    fileName: document.file_name,
-    category: document.category
+    documentId: document.id
   }) ? {
     bucket: document.storage_bucket,
     objectKey: document.storage_object_path,
@@ -105,6 +103,7 @@ router.get('/search', async (req, res) => {
     const { data, error } = await supabase.from('documents_metadata')
       .select('id, client_id, client_name, file_name, file_size_kb, created_at')
       .in('client_id', ownedClientIds)
+      .is('deletion_requested_at', null)
       .neq('source', 'Telegram')
       .ilike('file_name', `%${queryText.replace(/[%_]/g, '\\$&')}%`)
       .order('created_at', { ascending: false })
@@ -136,6 +135,7 @@ router.get('/', async (req, res) => {
       const ownedClientIds = await getOwnedClientIds(req.user.id);
       let query = supabase.from('documents_metadata').select('*')
         .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000'])
+        .is('deletion_requested_at', null)
         .neq('source', 'Telegram')
         .order('created_at', { ascending: false });
       if (req.query.clientId) query = query.eq('client_id', req.query.clientId);
@@ -160,6 +160,7 @@ router.get('/:id', async (req, res) => {
       const ownedClientIds = await getOwnedClientIds(req.user.id);
       const { data, error } = await supabase
         .from('documents_metadata').select('*').eq('id', req.params.id)
+        .is('deletion_requested_at', null)
         .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000']).single();
       if (error) throw error;
       if (data.source === 'Telegram') return res.status(404).json({ success: false, message: 'Document not found' });
@@ -180,6 +181,7 @@ router.get('/:id', async (req, res) => {
  */
 router.post('/', async (req, res) => {
   let uploadedObject = null;
+  let reservationId = null;
   try {
     if (!isConnected || !supabase) {
       return res.status(503).json({ success: false, message: 'Cloud document storage is unavailable. Check the Supabase backend configuration and try again.' });
@@ -257,6 +259,14 @@ router.post('/', async (req, res) => {
       documentId,
       fileName: normalizedFileName
     });
+    const { data: reservation, error: reservationError } = await supabase.rpc('begin_document_upload', {
+      p_user_id: req.user.id,
+      p_client_id: clientId,
+      p_document_id: documentId,
+      p_created_by: req.user.id
+    });
+    if (reservationError) throw reservationError;
+    reservationId = reservation;
     uploadedObject = await uploadDocument(objectKey, buffer, mimeType);
     const docMeta = {
       id: documentId,
@@ -275,20 +285,38 @@ router.post('/', async (req, res) => {
       assessment_year: typeof assessmentYear === 'string' ? assessmentYear.slice(0, 10) : '2026-27',
       created_at: createdAt.toISOString()
     };
-    const { data, error } = await supabase.from('documents_metadata').insert(docMeta).select().single();
-    if (error) throw error;
+    const { data, error } = await supabase.rpc('create_document_metadata_if_client_active', {
+      p_user_id: req.user.id,
+      p_reservation_id: reservationId,
+      p_document: docMeta
+    });
+    if (error || !data) throw error || new Error('Document metadata was not saved.');
+    reservationId = null;
     try {
       const { error: rpcError } = await supabase.rpc('increment_client_docs', { cid: clientId });
       if (rpcError) throw rpcError;
     } catch (rpcError) {
       console.warn('[Documents] Could not increment client document count:', rpcError.message);
     }
-    return res.status(201).json({ success: true, source: 'supabase', message: 'File uploaded securely to private cloud storage.', data });
+    return res.status(201).json({ success: true, source: 'supabase', message: 'File uploaded securely to private cloud storage.', data: Array.isArray(data) ? data[0] : data });
   } catch (err) {
     if (uploadedObject && supabase) {
-      const { error: cleanupError } = await supabase.storage.from(uploadedObject.bucket).remove([uploadedObject.objectKey]);
-      if (cleanupError) {
+      try {
+        const { error: cleanupError } = await supabase.storage.from(uploadedObject.bucket).remove([uploadedObject.objectKey]);
+        if (cleanupError) throw cleanupError;
+      } catch (cleanupError) {
         console.error('[Documents] Upload rollback failed; an unindexed cloud object may remain:', cleanupError.message);
+      }
+    }
+    if (reservationId) {
+      try {
+        const { error: releaseError } = await supabase.rpc('release_document_upload', {
+          p_user_id: req.user.id,
+          p_reservation_id: reservationId
+        });
+        if (releaseError) throw releaseError;
+      } catch (releaseError) {
+        console.error('[Documents] Failed to release upload reservation:', releaseError.message);
       }
     }
     console.error('[Documents] Cloud upload error:', err.message);
@@ -304,6 +332,244 @@ router.post('/', async (req, res) => {
  * GET /api/v1/documents/:id/file
  * Stream a document from private Supabase Storage.
  */
+router.get('/:id/versions', async (req, res) => {
+  try {
+    if (!isConnected || !supabase) {
+      return res.status(503).json({ success: false, message: 'Cloud document storage is unavailable.' });
+    }
+    const ownedClientIds = await getOwnedClientIds(req.user.id);
+    const { data: document, error: documentError } = await supabase.from('documents_metadata')
+      .select('id, client_id, source')
+      .eq('id', req.params.id)
+      .is('deletion_requested_at', null)
+      .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000'])
+      .maybeSingle();
+    if (documentError) throw documentError;
+    if (!document || document.source === 'Telegram') return res.status(404).json({ success: false, message: 'Document not found.' });
+
+    const { data: versions, error } = await supabase.from('document_versions')
+      .select('id, version_number, storage_bucket, storage_object_path, file_name, file_type, file_size_kb, mime_type, created_at')
+      .eq('document_id', document.id)
+      .order('version_number', { ascending: false });
+    if (error) throw error;
+    const safeVersions = (versions || []).filter(version => {
+      const valid = isOwnedDocumentObject({
+        bucket: version.storage_bucket,
+        objectKey: version.storage_object_path,
+        userId: req.user.id,
+        clientId: document.client_id,
+        documentId: document.id
+      });
+      if (!valid) console.error(`[Documents] Hiding invalid version ${version.id} for document ${document.id}.`);
+      return valid;
+    }).map(({ storage_bucket, storage_object_path, ...version }) => version);
+    return res.json({ success: true, source: 'supabase', data: safeVersions });
+  } catch (error) {
+    console.error(`[Documents] Version history failed for ${req.params.id}:`, error.message);
+    return res.status(500).json({ success: false, message: 'Document versions could not be loaded.' });
+  }
+});
+
+router.post('/:id/versions', async (req, res) => {
+  let uploadedObject = null;
+  let reservationId = null;
+  try {
+    if (!isConnected || !supabase) {
+      return res.status(503).json({ success: false, message: 'Cloud document storage is unavailable.' });
+    }
+    const ownedClientIds = await getOwnedClientIds(req.user.id);
+    const { data: document, error: lookupError } = await supabase.from('documents_metadata')
+      .select('id, client_id, category, source, storage_bucket, storage_object_path, file_name, file_type, vault_path, created_at, deletion_requested_at')
+      .eq('id', req.params.id)
+      .is('deletion_requested_at', null)
+      .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000'])
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!document || document.source === 'Telegram') return res.status(404).json({ success: false, message: 'Document not found.' });
+    if (document.vault_path) return res.status(409).json({ success: false, message: 'Migrate this document to private cloud storage before replacing it.' });
+    const currentObject = getCloudObject(document, req.user.id);
+    if (!currentObject) return res.status(409).json({ success: false, message: 'This document does not have a valid private cloud file.' });
+
+    const { fileName, fileType, fileBase64 } = req.body || {};
+    if (typeof fileName !== 'string' || !fileName.trim() || typeof fileBase64 !== 'string' || !fileBase64.trim()) {
+      return res.status(400).json({ success: false, message: 'A replacement file and file name are required.' });
+    }
+    const encodedContent = fileBase64.replace(/^data:[^;,]+;base64,/i, '').trim();
+    const maxDocumentBytes = 20 * 1024 * 1024;
+    if (encodedContent.length > Math.ceil(maxDocumentBytes / 3) * 4) {
+      return res.status(413).json({ success: false, message: 'Files must be 20 MB or smaller.' });
+    }
+    if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encodedContent)) {
+      return res.status(400).json({ success: false, message: 'The replacement file is not valid base64 data.' });
+    }
+    const buffer = Buffer.from(encodedContent, 'base64');
+    if (!buffer.length || buffer.toString('base64') !== encodedContent) {
+      return res.status(400).json({ success: false, message: 'The replacement file is empty or invalid.' });
+    }
+    if (buffer.length > maxDocumentBytes) return res.status(413).json({ success: false, message: 'Files must be 20 MB or smaller.' });
+
+    const normalizedFileName = sanitizeStorageFileName(fileName);
+    const normalizedFileType = normalizeFileType(fileType, normalizedFileName);
+    if (!normalizedFileType || !matchesFileSignature(normalizedFileType, buffer)) {
+      return res.status(400).json({ success: false, message: 'The replacement file content does not match its supported file type.' });
+    }
+    const mimeTypes = {
+      PDF: 'application/pdf', PNG: 'image/png', JPG: 'image/jpeg', JPEG: 'image/jpeg',
+      WEBP: 'image/webp', CSV: 'text/csv', XLSX: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      XLS: 'application/vnd.ms-excel', DOC: 'application/msword',
+      DOCX: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', OTHER: 'text/plain'
+    };
+    const mimeType = normalizeMimeType(mimeTypes[normalizedFileType]);
+    const versionId = crypto.randomUUID();
+    const objectKey = getVersionStorageObjectKey({
+      userId: req.user.id,
+      clientId: document.client_id,
+      documentId: document.id,
+      versionId,
+      fileName: normalizedFileName
+    });
+    const { data: reservation, error: reservationError } = await supabase.rpc('begin_document_upload', {
+      p_user_id: req.user.id,
+      p_client_id: document.client_id,
+      p_document_id: document.id,
+      p_created_by: req.user.id
+    });
+    if (reservationError) throw reservationError;
+    reservationId = reservation;
+    uploadedObject = await uploadDocument(objectKey, buffer, mimeType);
+    const { data: version, error: versionError } = await supabase.rpc('register_document_version', {
+      p_user_id: req.user.id,
+      p_reservation_id: reservationId,
+      p_document_id: document.id,
+      p_storage_bucket: uploadedObject.bucket,
+      p_storage_object_path: uploadedObject.objectKey,
+      p_file_name: normalizedFileName,
+      p_file_type: normalizedFileType,
+      p_file_size_kb: Number((buffer.length / 1024).toFixed(2)),
+      p_file_sha256: sha256(buffer),
+      p_mime_type: mimeType
+    });
+    if (versionError || !version) throw versionError || new Error('The replacement version was not saved.');
+    reservationId = null;
+    return res.status(201).json({ success: true, source: 'supabase', data: Array.isArray(version) ? version[0] : version });
+  } catch (error) {
+    if (uploadedObject) {
+      try {
+        await deleteDocument(uploadedObject.bucket, uploadedObject.objectKey);
+      } catch (cleanupError) {
+        console.error(`[Documents] Replacement upload rollback failed for ${req.params.id}:`, cleanupError.message);
+      }
+    }
+    if (reservationId) {
+      try {
+        const { error: releaseError } = await supabase.rpc('release_document_upload', {
+          p_user_id: req.user.id,
+          p_reservation_id: reservationId
+        });
+        if (releaseError) throw releaseError;
+      } catch (releaseError) {
+        console.error(`[Documents] Failed to release replacement reservation:`, releaseError.message);
+      }
+    }
+    console.error(`[Documents] Replacement upload failed for ${req.params.id}:`, error.message);
+    return res.status(error.code === 'P0002' ? 409 : error.status || 500).json({
+      success: false,
+      message: error.code === 'P0002' ? 'This document or client is being deleted. The replacement was not saved.' : 'The replacement file could not be saved securely.'
+    });
+  }
+});
+
+router.patch('/:id', async (req, res) => {
+  try {
+    if (!isConnected || !supabase) return res.status(503).json({ success: false, message: 'Cloud document storage is unavailable.' });
+    const { fileName, category, assessmentYear } = req.body || {};
+    const allowedCategories = new Set(['GST', 'IncomeTax', 'Form16', 'BankStatement', 'Notice', 'TDS', 'Audit', 'General', 'Extracted', 'Generated']);
+    if (fileName !== undefined && (typeof fileName !== 'string' || !fileName.trim())) {
+      return res.status(400).json({ success: false, message: 'A valid file name is required.' });
+    }
+    if (category !== undefined && !allowedCategories.has(category)) {
+      return res.status(400).json({ success: false, message: 'Document category is invalid.' });
+    }
+    if (assessmentYear !== undefined && (typeof assessmentYear !== 'string' || !/^\d{4}(?:-\d{2})?$/.test(assessmentYear))) {
+      return res.status(400).json({ success: false, message: 'Assessment year must use YYYY or YYYY-YY format.' });
+    }
+    const ownedClientIds = await getOwnedClientIds(req.user.id);
+    const { data: document, error: lookupError } = await supabase.from('documents_metadata')
+      .select('id, client_id, source, storage_bucket, storage_object_path, file_type, vault_path')
+      .eq('id', req.params.id)
+      .is('deletion_requested_at', null)
+      .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000'])
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!document || document.source === 'Telegram') return res.status(404).json({ success: false, message: 'Document not found.' });
+    if (document.vault_path || !getCloudObject(document, req.user.id)) return res.status(409).json({ success: false, message: 'Migrate this document to private cloud storage before editing its details.' });
+
+    const updates = { updated_at: new Date().toISOString() };
+    if (fileName !== undefined) {
+      const normalizedFileName = sanitizeStorageFileName(fileName);
+      if (normalizeFileType(document.file_type, normalizedFileName) !== document.file_type) {
+        return res.status(400).json({ success: false, message: 'Keep the original file extension when changing its name.' });
+      }
+      updates.file_name = normalizedFileName;
+    }
+    if (category !== undefined) updates.category = category;
+    if (assessmentYear !== undefined) updates.assessment_year = assessmentYear;
+    const { data, error } = await supabase.from('documents_metadata').update(updates)
+      .eq('id', document.id)
+      .eq('client_id', document.client_id)
+      .is('deletion_requested_at', null)
+      .select('id, file_name, file_type, file_size_kb, category, assessment_year, created_at, updated_at')
+      .single();
+    if (error) throw error;
+    return res.json({ success: true, source: 'supabase', data });
+  } catch (error) {
+    console.error(`[Documents] Metadata update failed for ${req.params.id}:`, error.message);
+    return res.status(error.code === 'P0002' ? 409 : 500).json({
+      success: false,
+      message: error.code === 'P0002' ? 'This document is being deleted and can no longer be edited.' : 'Document details could not be updated.'
+    });
+  }
+});
+
+router.get('/:id/versions/:versionId/file', async (req, res) => {
+  try {
+    if (!isConnected || !supabase) return res.status(503).json({ success: false, message: 'Cloud document storage is unavailable.' });
+    const ownedClientIds = await getOwnedClientIds(req.user.id);
+    const { data: document, error: documentError } = await supabase.from('documents_metadata')
+      .select('id, client_id, source')
+      .eq('id', req.params.id)
+      .is('deletion_requested_at', null)
+      .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000'])
+      .maybeSingle();
+    if (documentError) throw documentError;
+    if (!document || document.source === 'Telegram') return res.status(404).json({ success: false, message: 'Document version not found.' });
+
+    const { data: version, error: versionError } = await supabase.from('document_versions')
+      .select('id, document_id, storage_bucket, storage_object_path, mime_type')
+      .eq('id', req.params.versionId)
+      .eq('document_id', document.id)
+      .maybeSingle();
+    if (versionError) throw versionError;
+    if (!version || !isOwnedDocumentObject({
+      bucket: version.storage_bucket,
+      objectKey: version.storage_object_path,
+      userId: req.user.id,
+      clientId: document.client_id,
+      documentId: document.id
+    })) return res.status(404).json({ success: false, message: 'Document version not found.' });
+
+    const buffer = await downloadDocument(version.storage_bucket, version.storage_object_path);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Type', normalizeMimeType(version.mime_type));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', 'attachment');
+    return res.send(buffer);
+  } catch (error) {
+    console.error(`[Documents] Version download failed for ${req.params.id}:`, error.message);
+    return res.status(500).json({ success: false, message: 'The document version could not be downloaded.' });
+  }
+});
+
 router.get('/:id/file', async (req, res) => {
   try {
     if (!isConnected || !supabase) {
@@ -314,6 +580,7 @@ router.get('/:id/file', async (req, res) => {
         .from('documents_metadata')
         .select('id, client_id, source, created_at, file_name, category, storage_bucket, storage_object_path, mime_type')
         .eq('id', req.params.id)
+        .is('deletion_requested_at', null)
         .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000'])
         .single();
     if (error) {
@@ -346,34 +613,60 @@ router.delete('/:id', async (req, res) => {
     }
     const ownedClientIds = await getOwnedClientIds(req.user.id);
     const { data: document, error: lookupError } = await supabase.from('documents_metadata')
-      .select('id, client_id, source, created_at, file_name, category, storage_bucket, storage_object_path, vault_path')
+      .select('id, client_id, source, storage_bucket, storage_object_path, vault_path, deletion_requested_at')
       .eq('id', req.params.id)
+      .is('deletion_requested_at', null)
       .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000'])
-      .single();
+      .maybeSingle();
     if (lookupError) {
       if (lookupError.code === 'PGRST116') return res.status(404).json({ success: false, message: 'Document not found.' });
       throw lookupError;
     }
-    if (document.source === 'Telegram') {
+    if (!document || document.source === 'Telegram') {
       return res.status(404).json({ success: false, message: 'Document not found.' });
     }
-    if (document.storage_bucket && document.storage_object_path) {
-      const storageObject = getCloudObject(document, req.user.id);
-      if (!storageObject) {
-        return res.status(404).json({ success: false, message: 'The cloud document reference is invalid.' });
-      }
-      await deleteDocument(storageObject.bucket, storageObject.objectKey);
-    } else if (document.vault_path) {
+    if (document.vault_path) {
       return res.status(409).json({ success: false, message: 'This legacy document must be migrated to cloud storage before it can be deleted.' });
     }
-    const { error: deleteError } = await supabase.from('documents_metadata').delete()
-      .eq('id', document.id)
-      .eq('client_id', document.client_id);
-    if (deleteError) throw deleteError;
-    return res.json({ success: true, source: 'supabase', data: { id: document.id } });
+    if (document.storage_bucket && document.storage_object_path && !getCloudObject(document, req.user.id)) {
+      return res.status(409).json({ success: false, message: 'The cloud document reference is invalid. No document was deleted.' });
+    }
+    const { data: versions, error: versionsError } = await supabase.from('document_versions')
+      .select('storage_bucket, storage_object_path')
+      .eq('document_id', document.id);
+    if (versionsError) throw versionsError;
+    for (const version of versions || []) {
+      if (!isOwnedDocumentObject({
+        bucket: version.storage_bucket,
+        objectKey: version.storage_object_path,
+        userId: req.user.id,
+        clientId: document.client_id,
+        documentId: document.id
+      })) {
+        return res.status(409).json({ success: false, message: 'A document version has an invalid cloud reference. No document was deleted.' });
+      }
+    }
+
+    const bucket = getStorageBucket();
+    if (!bucket) return res.status(503).json({ success: false, message: 'Cloud document storage is not configured.' });
+    const { data: jobId, error: requestError } = await supabase.rpc('request_document_deletion', {
+      p_user_id: req.user.id,
+      p_document_id: document.id,
+      p_storage_bucket: bucket
+    });
+    if (requestError) throw requestError;
+    return res.status(202).json({
+      success: true,
+      source: 'supabase',
+      message: 'Document deletion was queued. The file and its versions will be removed after cloud cleanup is confirmed.',
+      data: { id: document.id, deletionJobId: jobId, deletionStatus: 'pending' }
+    });
   } catch (error) {
     console.error(`[Documents] Cloud deletion failed for ${req.params.id}:`, error.message);
-    return res.status(500).json({ success: false, message: 'The document could not be deleted securely. Please retry.' });
+    return res.status(error.code === 'P0002' ? 409 : 500).json({
+      success: false,
+      message: error.code === 'P0002' ? 'This document or client is already being deleted.' : 'The document could not be queued for secure deletion.'
+    });
   }
 });
 

@@ -28,7 +28,7 @@ function createDatabaseMock(initialRows = {}) {
       update(value) { operation = 'update'; payload = value; return this; },
       delete() { operation = 'delete'; return this; },
       eq(field, value) { filters.push((row) => row[field] === value); return this; },
-      is(field, value) { filters.push((row) => row[field] === value); return this; },
+      is(field, value) { filters.push((row) => (row[field] ?? null) === value); return this; },
       not(field, _operator, value) { filters.push((row) => row[field] !== value); return this; },
       or() { filters.push((row) => row.user_id === null || row.user_id === 'staff-1'); return this; },
       limit() { return this; },
@@ -87,6 +87,7 @@ test('portal auth requires a prior invitation claim and rejects other accounts',
       name: 'Client One',
       email: 'client@example.com',
       status: 'Active',
+      deletion_requested_at: null,
     }],
   });
   database.supabase.from = mock.from;

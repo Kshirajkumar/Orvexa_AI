@@ -55,6 +55,7 @@ app.use('/api/v1/templates', templatesRouter);
 app.use('/api/v1/schedules', requireAuth, schedulesRouter);
 app.use('/api/v1/metadata', requireAuth, metadataRouter);
 app.use('/api/v1/clients', requireAuth, clientsRouter);
+app.use('/api/v1/storage-cleanup', requireAuth, require('./routes/storageCleanup'));
 app.use('/api/v1/notifications', requireAuth, require('./routes/notifications'));
 app.use('/api/v1/documents', requireAuth, documentsRouter);
 app.use('/api/v1/extraction', requireAuth, extractionRouter);
@@ -108,9 +109,15 @@ app.get('/api/v1/health', async (req, res) => {
       'POST /api/v1/clients',
       'GET  /api/v1/clients/:id',
       'DELETE /api/v1/clients/:id',
+      'GET  /api/v1/storage-cleanup',
+      'GET  /api/v1/storage-cleanup/:id',
+      'POST /api/v1/storage-cleanup/:id/retry',
       'GET  /api/v1/documents',
       'POST /api/v1/documents',
       'GET  /api/v1/documents/:id/file',
+      'PATCH /api/v1/documents/:id',
+      'GET  /api/v1/documents/:id/versions',
+      'POST /api/v1/documents/:id/versions',
       'POST /api/v1/documents/:id/verify',
       'POST /api/v1/extraction/process',
       'GET  /api/v1/extraction/pending',
@@ -178,4 +185,5 @@ app.listen(PORT, () => {
     console.error(`[Telegram] Webhook auto-configuration failed: ${error.message}`);
   });
   require('./lib/telegramScheduleWorker').startTelegramScheduleWorker();
+  require('./lib/storageCleanupWorker').startStorageCleanupWorker();
 });
