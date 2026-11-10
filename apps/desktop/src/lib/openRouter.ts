@@ -387,12 +387,17 @@ function fileDataUrl(file: File): Promise<string> {
 
 const STRING_VALUE = '';
 const NUMBER_VALUE = 0;
+const GST_LINE_ITEM_SCHEMA: Record<string, unknown> = {
+  description: STRING_VALUE, hsn_code: STRING_VALUE, quantity: NUMBER_VALUE, unit: STRING_VALUE, unit_price: NUMBER_VALUE,
+  taxable_value: NUMBER_VALUE, gst_rate: NUMBER_VALUE, cgst_amount: NUMBER_VALUE, sgst_amount: NUMBER_VALUE,
+  igst_amount: NUMBER_VALUE, total_amount: NUMBER_VALUE,
+};
 const EXTRACTION_SCHEMAS: Record<string, Record<string, unknown>> = {
   GST: {
     invoice_number: STRING_VALUE, invoice_date: STRING_VALUE, vendor_name: STRING_VALUE, vendor_gstin: STRING_VALUE, buyer_gstin: STRING_VALUE,
     taxable_value: NUMBER_VALUE, cgst_rate: NUMBER_VALUE, cgst_amount: NUMBER_VALUE, sgst_rate: NUMBER_VALUE, sgst_amount: NUMBER_VALUE,
     igst_rate: NUMBER_VALUE, igst_amount: NUMBER_VALUE, total_gst: NUMBER_VALUE, grand_total: NUMBER_VALUE, place_of_supply: STRING_VALUE,
-    hsn_codes: [], line_items: [],
+    hsn_codes: [STRING_VALUE], line_items: [GST_LINE_ITEM_SCHEMA],
   },
   IncomeTax: {
     document_type: STRING_VALUE, assessment_year: STRING_VALUE, pan: STRING_VALUE, taxpayer_name: STRING_VALUE,
@@ -428,22 +433,49 @@ function validateExtractionData(data: Record<string, unknown>, category: string)
     throw new Error('The extracted result must include exactly the requested fields.');
   }
   for (const key of keys) {
-    const value = data[key];
-    const expected = schema[key];
-    const valid = value === null
-      ? typeof expected === 'string' || typeof expected === 'number'
-      : Array.isArray(expected)
-        ? Array.isArray(value)
-        : typeof expected === 'object'
-          ? typeof value === 'object' && value !== null && !Array.isArray(value)
-          : typeof value === typeof expected && (typeof value !== 'number' || Number.isFinite(value));
-    if (!valid) throw new Error(`The extracted field "${key}" has the wrong value type.`);
+    if (!matchesExtractionValue(data[key], schema[key])) {
+      throw new Error(`The extracted field "${key}" has the wrong value type.`);
+    }
   }
+}
+
+function matchesExtractionValue(value: unknown, schema: unknown): boolean {
+  if (value === null) return typeof schema === 'string' || typeof schema === 'number';
+  if (Array.isArray(schema)) {
+    return Array.isArray(value) && (
+      schema.length === 0 || value.every(item => matchesExtractionValue(item, schema[0]))
+    );
+  }
+  if (schema && typeof schema === 'object') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const expected = Object.keys(schema);
+    const actual = Object.keys(value);
+    return expected.length === 0 || (
+      actual.length === expected.length
+      && expected.every(key => Object.prototype.hasOwnProperty.call(value, key)
+        && matchesExtractionValue((value as Record<string, unknown>)[key], (schema as Record<string, unknown>)[key]))
+    );
+  }
+  return typeof value === typeof schema && (typeof value !== 'number' || Number.isFinite(value));
+}
+
+function promptExtractionShape(schema: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(schema).map(([key, value]) => [key, promptValueShape(value)]));
+}
+
+function promptValueShape(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.length && value[0] && typeof value[0] === 'object'
+      ? [promptExtractionShape(value[0] as Record<string, unknown>)]
+      : [];
+  }
+  if (value && typeof value === 'object') return promptExtractionShape(value as Record<string, unknown>);
+  return null;
 }
 
 function extractionPrompt(category: string): string {
   const schema = EXTRACTION_SCHEMAS[category] || EXTRACTION_SCHEMAS.General;
-  return `Extract visible information from this document and return exactly one JSON object with exactly these keys and value types:\n${JSON.stringify(schema, null, 2)}\n\nRules: preserve names, identifiers, dates, and amounts as shown; do not calculate, infer, normalize, or invent missing values. Use null for unreadable or absent scalar values and empty arrays/objects when no entries are present. Use JSON numbers for amounts and counts without separators; keep identifiers such as PAN, GSTIN, IFSC, invoice numbers, and HSN codes as strings to preserve leading zeroes. Use YYYY-MM-DD dates only when the full date is unambiguous; otherwise preserve the visible date text. Put each line item in line_items with its visible description and values. Return no markdown, commentary, confidence score, or extra keys.`;
+  return `Extract visible information from this document and return exactly one JSON object with exactly these keys and value types:\n${JSON.stringify(promptExtractionShape(schema), null, 2)}\n\nRules: preserve names, identifiers, dates, and amounts as shown; do not calculate, infer, normalize, or invent missing values. Use null for unreadable or absent scalar values and empty arrays/objects when no entries are present. Use JSON numbers for amounts and counts without separators; keep identifiers such as PAN, GSTIN, IFSC, invoice numbers, and HSN codes as strings to preserve leading zeroes. Use YYYY-MM-DD dates only when the full date is unambiguous; otherwise preserve the visible date text. Put each line item in line_items with its visible description and values. Return no markdown, commentary, confidence score, or extra keys.`;
 }
 
 export async function extractWithOpenRouter(

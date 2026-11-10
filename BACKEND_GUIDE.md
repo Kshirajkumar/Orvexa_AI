@@ -64,7 +64,7 @@ To ensure the frontend can handle responses predictably, all routes **must** ret
 
 ### 3.1 Supabase (Metadata)
 - **Service Role**: Use the `service_role` key for administrative backend operations.
-- **Demo Mode**: Every route must check `isConnected` from `db/supabase.js`. If false, provide a fallback to in-memory demo data to ensure the app remains runnable locally.
+- **Unavailable Supabase**: Routes with a defined read-only demo experience may return demo data when `isConnected` is false. Authenticated mutations and cloud-backed document, extraction, invoice-review, and portal operations must fail explicitly when their database or private Storage dependency is unavailable; never return fabricated success or demo data for those operations.
 - **Client List Cache**: The authenticated client-list route may cache results in memory per user. Invalidate that cache after successful client creation, update, or deletion. The desktop may show its last-known per-user client list while refreshing in the background; a backend restart clears the server cache. Changes made outside the app are reflected after that cache is cleared or the backend restarts.
 
 ### 3.2 Private Supabase Storage
@@ -111,7 +111,16 @@ Before enabling account deletion on an existing Supabase project, apply `service
 - **Extraction output**: Validate extracted fields against the category schema before saving. Keep the structured result in Supabase document metadata. Do not invent confidence scores or return sample extraction data as a successful AI result.
 - **Logging**: Every AI request must be logged in the `ai_usage_log` table in Supabase for auditing and cost tracking.
 
-### 4.2 WhatsApp Business API
+### 4.2 Invoice extraction, review, and export
+
+- **Extraction categories**: `GST`, `IncomeTax`, `Form16`, `BankStatement`, `Notice`, and `General`. `lib/extractionSchema.js` validates the exact keys and value types before results are saved; do not silently coerce invalid provider output into a successful extraction.
+- **Provider paths**: `/api/v1/extraction/process` reads the user's private cloud original and calls the configured backend Gemini provider. The optional local OpenRouter-key flow sends its result to `/api/v1/extraction/save`, where the same category schema is checked.
+- **Human review**: `/api/v1/extraction/review` accepts reviewed GST invoice data only. It checks for an already-approved source file and matching supplier/invoice number before creating or updating an invoice. A matching invoice requires an explicit update choice; never bypass the duplicate response.
+- **Durable approval**: The database records invoice data and review versions. The backend writes a versioned JSON snapshot to the client's private `Extracted` folder, verifies its checksum, and only then finalizes the review. An incomplete save remains pending and can be retried; do not report approval when export or finalization fails.
+- **Migrations**: After the core schema and document lifecycle migrations are installed, apply `db/invoice_review_workflow.sql` followed by `db/invoice_review_source_idx.sql` to the same Supabase project. Do not expose the review tables to `anon` or `authenticated`; their RPCs are backend/service-role operations.
+- **Scope**: This JSON snapshot is an approved invoice record, not a validated GSTR/ITR filing artifact and not a government submission.
+
+### 4.3 WhatsApp Business API
 - **Webhook Handling**: Incoming messages must be processed asynchronously and stored in `whatsapp_msgs`.
 - **Outgoing**: Use a standardized template system to ensure consistent client communication.
 

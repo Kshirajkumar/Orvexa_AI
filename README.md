@@ -2,26 +2,23 @@
 
 **AI-powered practice automation for Chartered Accountants and accounting firms.**
 
-Taxflow.AI is an enterprise desktop application that eliminates repetitive administrative work from a CA practice: collecting client documents over secure channels (Telegram & WhatsApp), extracting invoice/bill data with AI, tracking multi-country compliance deadlines, managing private cloud documents, and generating filing-ready outputs.
+TaxFlow.AI is a Tauri desktop app backed by an Express API and Supabase. It supports client and document management, secure client-portal uploads, AI-assisted extraction with accountant review, Telegram messaging and reminders, compliance tracking, and document versioning. TaxFlow is not yet a certified tax-filing or government-submission system; see the [PRD](docs/PRD.md) for the longer-term product vision.
 
 Client tax files, uploads, and generated documents are stored in the private Supabase Storage bucket (`taxflow-intake`). Supabase Database stores metadata and extracted results.
 
 ---
 
-## 🚀 Build & Production Readiness Status
+## Current application capabilities
 
-| Subsystem / Module | Readiness Status | Capabilities & Production Details |
+| Subsystem / Module | State | Current capability |
 |---|:---:|---|
-| **Desktop Application** (Tauri v2 + React 18 + TS) | **✅ Production-Grade** | Native Windows desktop app, custom frameless titlebar, real-time reactive state, zero-flicker UI, light/dark themes, offline capability. |
-| **Backend API Service** (Node.js + Express 5) | **✅ Production-Grade** | Modular domain routing, robust JWT session auth (`requireAuth`), comprehensive input validation, dual-endpoint trailing-slash normalization, demo-mode fallback. |
-| **Database & Row Level Security (RLS)** | **✅ Production-Grade** | Strict Supabase PostgreSQL schema, RLS policies separating shared assets (`user_id IS NULL`) from private CA assets (`user_id = auth.uid()`), indexed foreign keys. |
-| **Client Intake & Secure Portal** | **✅ Production-Grade** | Private tokenized portal invitations, cryptographic token hashing (`sha256`), AES authenticated encryption for token reuse, direct-to-cloud upload to private bucket. |
-| **Cloud Document Storage** | **Production-Grade** | Private Supabase Storage bucket, account-scoped object paths, upload validation, checksum metadata, and cloud-backed document browsing. |
-| **Message Templates Management** | **✅ Production-Grade** | 100% database-driven with zero hardcoded fallbacks, shared defaults + private CA templates, dynamic `{name}`, `{portalLink}` placeholders, live preview, mid-sized modal editor. |
-| **Telegram Messaging & Scheduling** | **✅ Production-Grade** | Webhook relay integration, deduplicated update processing, server-side scheduled reminders (one-time & daily), country time zone conversion, 15-second worker loop. |
-| **AI Document Extraction (Gemini / OpenRouter)** | **Operational** | Original files are read from private cloud storage; structured extracted values are saved in Supabase metadata and require human review. |
-| **Multi-Country Compliance & Timezones** | **⚡ Operational** | Built-in support for India (IN - Asia/Kolkata), United States (US - America/New_York, Chicago, Denver, Phoenix, LA, Anchorage, Honolulu), UAE (AE - Asia/Dubai), Singapore (SG - Asia/Singapore), United Kingdom (GB - Europe/London). |
-| **WhatsApp Cloud API** | **🔧 Config-Ready** | Official Meta WhatsApp Cloud API integration with webhook verification and manual messaging (requires Meta app credentials in `.env`). |
+| **Desktop application** (Tauri v2, React 18, TypeScript) | Available | Client, files, extraction/review, deadlines, messaging, generation, onboarding, profile, and subscription screens. |
+| **Backend API** (Node.js, Express 5) | Available | Authenticated domain APIs; cloud features require backend and Supabase configuration. |
+| **Client portal and document storage** | Configuration required | Portal invitations and uploads use private Supabase Storage; apply the documented database migrations before enabling them. |
+| **AI extraction and review** | Configuration required | Gemini runs through the backend. The optional Windows OpenRouter-key mode stores its key in Windows Credential Manager and sends extraction images directly from the desktop to OpenRouter. Extraction values are schema-checked and require human review. |
+| **Invoice review** | Configuration required | GST invoice review detects duplicate originals/matches, records approved versions, and saves a versioned JSON export in the private `Extracted` folder. Requires the invoice-review SQL migrations. |
+| **Telegram** | Configuration required | Text messaging, client linking, and scheduled reminders. Telegram is not a document-transfer channel; clients upload through the secure portal. |
+| **WhatsApp** | Configuration required | Backend integration; enablement depends on valid Meta credentials and webhook configuration. |
 
 ---
 
@@ -50,12 +47,14 @@ Client tax files, uploads, and generated documents are stored in the private Sup
 ### Storage & Security Principles
 1. **Never store raw PDFs or sensitive files directly in database rows**: Store originals and generated documents in the private Supabase Storage bucket; keep structured metadata and extraction results in Supabase Database.
 2. **Account-scoped cloud objects**: Store objects under `{user_id}/{client_id}/{year}/{month}/{document_id}_{filename}` and validate ownership before every download or deletion. Extracted fields remain attached to the document metadata.
-3. **No Telegram document leaks**: Sensitive tax documents are never accepted over unencrypted chat; Telegram updates automatically reply with a privacy warning and a single-use private client portal invitation link.
-4. **Row Level Security (RLS)**: Enforces that practice data is strictly isolated to the authenticated CA account while default compliance templates remain accessible practice-wide.
+3. **Telegram is not document storage**: Telegram media from linked active clients is not downloaded or stored. The bot responds with a privacy notice and the client's portal invitation or sign-in link; documents must be uploaded through the secure client portal.
+4. **Row Level Security (RLS)**: Database policies are defined to isolate account-owned practice data while allowing shared default templates. Apply the migrations and verify policies on the target Supabase project before deployment.
+
+The optional local OpenRouter mode sends document images directly from the Windows desktop to OpenRouter. Use it only when that transfer is acceptable for the document and account; otherwise use the backend-configured provider.
 
 ---
 
-## 🗄️ Database Setup & Migrations
+## Database setup & migrations
 
 To set up or refresh your Supabase database:
 
@@ -66,6 +65,9 @@ To set up or refresh your Supabase database:
    - Telegram message schedules table with one-time & daily cron constraints
    - Schedule worker stored procedures (`claim_due_telegram_message_schedules`, `finish_telegram_message_schedule`)
    - Auto-healing queries for clients missing country association.
+3. **Document lifecycle**: Apply [`services/backend/db/document_lifecycle.sql`](services/backend/db/document_lifecycle.sql) and then [`services/backend/db/document_lifecycle_fk_indexes.sql`](services/backend/db/document_lifecycle_fk_indexes.sql) before using document versioning and durable storage cleanup.
+4. **Invoice review and export**: Apply [`services/backend/db/invoice_review_workflow.sql`](services/backend/db/invoice_review_workflow.sql), then [`services/backend/db/invoice_review_source_idx.sql`](services/backend/db/invoice_review_source_idx.sql). These add duplicate-aware invoice review, review/version history, and the database functions used to save approved JSON exports. They require the core schema and document lifecycle migrations.
+5. **Telegram and client portal**: From `services/backend`, run `npm run migrate:telegram` with `DATABASE_URL` set for the same project. Follow the [Telegram integration guide](docs/telegram-integration.md) for portal, bucket, and relay setup.
 
 ---
 
@@ -73,20 +75,21 @@ To set up or refresh your Supabase database:
 
 Before deploying the cloud-only document routes, apply `services/backend/db/migrate_cloud_document_storage.sql` to the same Supabase project. Configure `SUPABASE_STORAGE_BUCKET=taxflow-intake`, and run `npm run migrate:storage` from `services/backend` with valid `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `VAULT_PATH`. The migration script uploads metadata-linked local files, verifies each cloud copy by SHA-256, and records the private object path. It does not delete local source files. Review each result and verify all files before removing any legacy copies. Files outside the configured legacy vault or larger than the bucket's 20 MiB limit are reported and left untouched.
 
-## 💻 Getting Started
+## Getting started
 
 ### Prerequisites
 - **Node.js**: v18.0.0 or higher
 - **Rust & Cargo**: stable toolchain via [rustup.rs](https://rustup.rs)
 - **Windows**: Microsoft C++ Build Tools & WebView2
 
-### 1. Configure the Backend
+### 1. Configure the backend
 
 ```bash
 cd services/backend
 npm install
-copy .env.example .env
 ```
+
+Create `services/backend/.env` from `.env.example` (for example, in PowerShell run `Copy-Item .env.example .env`).
 
 Edit `services/backend/.env` with your credentials:
 
@@ -104,7 +107,7 @@ TELEGRAM_BOT_USERNAME=@YourPracticeBot
 TELEGRAM_WEBHOOK_SECRET=your-secure-webhook-secret
 ```
 
-### 2. Run the Development Server
+### 2. Run development
 
 You can run both backend and desktop UI concurrently using the built-in runner:
 
@@ -124,7 +127,7 @@ cd apps/desktop
 npm run tauri dev
 ```
 
-### 3. Build a Production Windows Installer (.msi / .exe)
+### 3. Build a Windows installer (.msi / .exe)
 
 ```bash
 cd apps/desktop
@@ -134,26 +137,24 @@ The compiled release installer will be generated in `apps/desktop/src-tauri/targ
 
 ---
 
-## 📋 Comprehensive API Reference
+## API overview
 
 Base URL: `http://localhost:5000/api/v1`
 
-| Endpoint | Method | Description |
+| Endpoint | Methods | Description |
 |---|---|---|
-| `/health` | `GET` | Health check & connection status for DB, cloud document storage, AI, and WhatsApp |
-| `/auth/login` | `POST` | Authenticate CA firm user and return JWT session |
-| `/auth/register` | `POST` | Register a new CA firm account |
-| `/clients` | `GET, POST` | List practice clients and add a new client |
-| `/clients/:id` | `GET, PATCH, DELETE` | Retrieve client details, update metadata, archive client |
-| `/templates` | `GET, POST` | List database templates (defaults + private) and create private templates |
-| `/templates/:id` | `PATCH, DELETE` | Modify or delete user-owned private template |
-| `/schedules` | `GET, POST` | List and create scheduled Telegram reminders (one-time or daily) |
-| `/schedules/:id` | `DELETE` | Cancel an active scheduled reminder |
-| `/schedules/:id/retry` | `POST` | Retry a failed reminder |
-| `/schedules/timezones` | `GET` | Retrieve supported countries and country time zones |
-| `/documents` | `GET, POST` | Upload to private cloud storage and inspect document metadata |
-| `/extraction` | `POST` | Run Google Gemini AI extraction on uploaded documents |
-| `/deadlines` | `GET, POST` | Track compliance tasks, upcoming statutory deadlines, and filing progress |
+| `/health` | `GET` | Backend and integration status |
+| `/auth/*`, `/client-portal/*` | Multiple | Staff authentication and client portal workflows |
+| `/clients/*`, `/documents/*` | Multiple | Client and private document management, downloads, versions, and review status |
+| `/extraction/process` | `POST` | Run configured backend AI extraction on a stored document |
+| `/extraction/save` | `POST` | Validate and save extraction results created with the local OpenRouter-key mode |
+| `/extraction/review` | `POST` | Save reviewed GST invoice data, detect duplicates, and complete the versioned export workflow |
+| `/extraction/pending`, `/extraction/ai-usage` | `GET` | Review queue and AI usage |
+| `/deadlines/*`, `/generate/*` | Multiple | Compliance deadlines and generated outputs |
+| `/schedules/*`, `/templates/*`, `/telegram/*`, `/whatsapp/*` | Multiple | Messaging, templates, scheduled reminders, and webhooks |
+| `/storage-cleanup/*`, `/notifications/*`, `/metadata/*`, `/chat/*` | Multiple | Cleanup operations, notifications, metadata, and assistant APIs |
+
+This is a feature overview, not a complete request/response contract. Route behavior and permissions are implemented in `services/backend/routes/`.
 
 ---
 
@@ -164,9 +165,10 @@ Base URL: `http://localhost:5000/api/v1`
 - [x] Mid-sized floating modal dialog for template creation and editing
 - [x] Server-side Telegram scheduled reminders with multi-country timezone support
 - [x] Auto-healing country and timezone assignment for practice clients
-- [ ] Automated end-to-end integration test suite (`npm test`)
+- [ ] Automated end-to-end integration test suite (the backend currently has Node.js unit tests; `npm test` runs them)
 - [ ] Multi-staff role permissions (Partner, Senior Associate, Article Trainee)
-- [ ] Exportable GSTR-1, GSTR-3B, and ITR computation JSON/Excel outputs
+- [x] Reviewed GST invoice records with private, versioned JSON exports (requires the invoice-review migrations)
+- [ ] Official-schema GSTR-1, GSTR-3B, and ITR filing outputs and government submission
 
 ---
 

@@ -1,24 +1,25 @@
-# Intake-to-output delivery phases
+# Implementation status
 
-This plan divides the 11 outstanding items from the production review into two phases.
+This replaces the earlier two-phase checklist, which assumed Telegram document intake. The current product deliberately does not transfer documents through Telegram; clients upload through the secure portal. The requirements and longer-term product vision remain in [PRD.md](PRD.md).
 
-## Phase 1 — secure intake foundation
+## Implemented in the repository
 
-1. Confirm the migration against the live Supabase project and verify RLS with authenticated firm/client access.
-2. Replace shared-token assumptions with authenticated user/session identity and server-side authorization.
-3. Make Telegram client and period routing deterministic; unresolved data stays quarantined.
-4. Persist every routed inbound document into the canonical `Raw` folder before extraction.
-5. Keep Raw originals immutable, hash-addressed, and retained after approval.
-6. Make extraction orchestration server-owned and record the document state transition.
+These features are present in code and require the appropriate backend configuration and database migrations:
 
-Phase 1 exit criteria: a test Telegram document is signature-verified, de-duplicated, routed to exactly one client and period, saved in `Raw`, extracted from the server-side original, and visible in the review queue without losing the original.
+- Authenticated desktop/API workflows and a client portal with invitation-based enrollment and private cloud uploads.
+- Private Supabase document storage, metadata checksums, version history, and queued storage cleanup.
+- Telegram client linking, text messaging, templates, and scheduled reminders; Telegram media is not downloaded or stored.
+- AI extraction with category-specific field/type validation and a human review screen.
+- GST invoice duplicate detection, explicit update of an existing invoice, recorded review versions, and a private versioned JSON export.
+- Backend unit tests using Node's built-in test runner (`npm test`).
 
-## Phase 2 — approved outputs and production operations
+The invoice review workflow requires the core schema and document lifecycle migrations, followed by `db/invoice_review_workflow.sql` and `db/invoice_review_source_idx.sql`. See [BACKEND_GUIDE.md](../BACKEND_GUIDE.md) for storage, permissions, and migration details.
 
-7. Build versioned deterministic filing/extraction output engines.
-8. Validate every generated file against its official schema and retain run, engine, period, and source-document metadata.
-9. Add transactional approvals, maker-checker permissions, immutable approved revisions, and complete exportable audit events.
-10. Build persistent scheduled outbound messaging with consent, approval, retries, opt-out, and delivery status.
-11. Execute live end-to-end certification with Telegram, Supabase RLS, the canonical vault, AI extraction, review, approval, and artifact verification.
+## Still release gates or roadmap work
 
-Phase 2 exit criteria: no output is marked approved unless the server can verify the exact generated artifact, the approval identity and version are recorded, and the complete run passes live ownership, schema, and regression tests.
+- Apply the required SQL to the target Supabase project and verify account isolation/RLS against that live project. Repository contents alone do not prove a live deployment is configured correctly.
+- Add and run end-to-end integration tests for portal upload, extraction, invoice review, export, storage cleanup, and messaging.
+- Build and validate official filing schemas/exports for forms such as GSTR and ITR. The current invoice JSON export is not a filing-ready return.
+- Implement broader agent-run orchestration, maker-checker permissions, and any government submission only through an authorized channel and after explicit human approval.
+
+Do not treat this status page as a production certification report. Consult the current [README](../README.md) for development setup and the [PRD](PRD.md) for planned requirements.

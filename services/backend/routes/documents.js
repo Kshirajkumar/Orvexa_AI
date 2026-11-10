@@ -7,6 +7,7 @@ const router = express.Router();
 const crypto = require('node:crypto');
 const { supabase, isConnected } = require('../db/supabase');
 const { getOwnedClientIds, assertOwnedClient } = require('../lib/ownership');
+const { validateExtractionData } = require('../lib/extractionSchema');
 const {
   deleteDocument,
   downloadDocument,
@@ -678,16 +679,40 @@ router.post('/:id/verify', async (req, res) => {
   try {
     const { verifiedBy, correctedData } = req.body;
 
-    if (isConnected) {
+    if (isConnected && supabase) {
+      const ownedClientIds = await getOwnedClientIds(req.user.id);
+      const { data: document, error: documentError } = await supabase.from('documents_metadata')
+        .select('id, client_id, category, source')
+        .eq('id', req.params.id)
+        .is('deletion_requested_at', null)
+        .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000'])
+        .maybeSingle();
+      if (documentError) throw documentError;
+      if (!document || document.source === 'Telegram') {
+        return res.status(404).json({ success: false, message: 'Document not found.' });
+      }
+      if (document.category === 'GST') {
+        return res.status(409).json({
+          success: false,
+          message: 'GST invoices must be approved through the invoice review workflow.'
+        });
+      }
+      if (correctedData !== undefined) {
+        try {
+          validateExtractionData(correctedData, document.category);
+        } catch (validationError) {
+          return res.status(400).json({ success: false, message: validationError.message });
+        }
+      }
       const updatePayload = {
         status: 'Verified',
-        verified_by: verifiedBy || 'CA Admin',
+        verified_by: req.user.email || req.user.id || verifiedBy || 'CA Admin',
         verified_at: new Date().toISOString()
       };
       if (correctedData) updatePayload.extracted_data = correctedData;
 
       const { data, error } = await supabase
-        .from('documents_metadata').update(updatePayload).eq('id', req.params.id).in('client_id', (await getOwnedClientIds(req.user.id)).length ? await getOwnedClientIds(req.user.id) : ['00000000-0000-0000-0000-000000000000']).select().single();
+        .from('documents_metadata').update(updatePayload).eq('id', document.id).eq('client_id', document.client_id).select().single();
       if (error) throw error;
       return res.json({ success: true, source: 'supabase', data });
     }

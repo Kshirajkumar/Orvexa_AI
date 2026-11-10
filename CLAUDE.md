@@ -1,48 +1,43 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+TaxFlow.AI is a Tauri desktop application with a React/TypeScript frontend and an Express/Supabase backend. The product currently supports practice management, private document storage, human-reviewed extraction, compliance tracking, and messaging. It does not yet provide certified tax filing or government submission.
 
 ## Development Commands
 
-### Frontend (React + TypeScript)
-All commands should be run from `apps/desktop`.
-- **Install dependencies**: `npm install`
-- **Start development server**: `npm run dev`
-- **Build for production**: `npm run build`
-- **Preview production build**: `npm run preview`
+### Desktop (React + TypeScript + Vite + Tauri)
+Run from `apps/desktop`: `npm install`, `npm run dev`, `npm run build`, `npm run preview`, or `npm run tauri dev`.
+`npm run dev:full` starts the Vite UI and backend together.
 
 ### Backend (Node.js + Express)
-All commands should be run from `services/backend`.
-- **Install dependencies**: `npm install`
-- **Start server**: `node index.js` (or `npm start` if configured)
+Run from `services/backend`: `npm install`, `npm run dev`, or `npm start`.
+Run backend tests with `npm test` (`node --test test/*.test.js`).
 
 ## Architecture & Structure
 
 TaxFlow.AI is a full-stack practice suite for tax professionals, consisting of a React frontend and a Node.js backend.
 
 ### High-Level Architecture
-- **Frontend**: A React application that provides a unified dashboard for client management, document extraction, and compliance tracking.
-  - **State Management**: Centralized in `apps/desktop/src/state/store.tsx` using React Context + `useReducer`.
-  - **Design System**: Defined in `apps/desktop/src/styles.css`.
-  - **Business Logic**: Domain-specific logic (tax calculations, auditing) in `apps/desktop/src/lib/domain.ts`.
-- **Backend**: An Express API server (`services/backend/index.js`) that orchestrates data and AI services.
-  - **Database**: Uses **Supabase (Postgres)** for metadata (clients, documents, logs, compliance tasks).
-  - **File Storage**: Private Supabase Storage for client uploads, staff uploads, and generated documents; Supabase Postgres stores metadata and extracted fields.
-  - **AI Integration**: Integrates **Google Gemini** for OCR/extraction and report generation.
-  - **Communications**: Integrates **WhatsApp Business API** for client reminders and messaging.
+- **Frontend**: Pages live in `apps/desktop/src/pages/`; shared state uses React Context and `useReducer` in `src/state/store.tsx`. Styles are in `src/styles.css`. `src/lib/api.ts` calls the backend; `src/lib/openRouter.ts` implements the optional local OpenRouter extraction mode.
+- **Backend**: `services/backend/index.js` mounts Express routes. Supabase Postgres stores metadata, extraction results, invoice review history, and messaging state. Document bytes use private Supabase Storage through `lib/documentStorage.js`.
+- **AI**: Backend extraction uses the configured Gemini provider; local OpenRouter-key extraction results are validated and saved through the backend. Extracted data is reviewed before approval.
+- **Intake and messaging**: Client documents are uploaded through the secure client portal. Telegram supports messaging, client linking, and reminders only; it does not transfer documents. WhatsApp support requires provider configuration.
 
 ### Project Layout
 
 #### Frontend (`apps/desktop/src/`)
 - `App.tsx`: Main layout shell (Titlebar, Sidebar, Page Router, Chat).
-- `pages/`: Feature views (Dashboard, Extract, WhatsApp, Files, Deadlines, Generate, Other).
+- `pages/`: Dashboard, clients, extraction queue/review, files, deadlines, generation, WhatsApp, onboarding, profile, subscriptions, and authentication.
 - `components/`: Shared UI elements (Icon, Sidebar, Titlebar, Chat).
-- `lib/`: Utilities (`format.ts`) and domain logic (`domain.ts`).
+- `lib/`: API client, local AI integration, utilities (`format.ts`), and domain logic (`domain.ts`).
 - `state/`: Global store and action definitions.
 - `data/`: Seed data for demo mode.
 
 #### Backend (`services/backend/`)
 - `index.js`: Entry point; mounts all API routes.
-- `routes/`: Modular route handlers for `auth`, `clients`, `documents`, `extraction`, `whatsapp`, `deadlines`, and `generate`.
+- `routes/`: Modular handlers for auth, client portal, clients, documents, extraction, messaging, deadlines, generation, templates, notifications, and storage cleanup.
 - `db/`: Supabase client configuration and connection logic.
-- `lib/documentStorage.js`: Private cloud document upload, download, and deletion helpers.
+- `lib/documentStorage.js`: Private cloud document upload, download, checksum, and deletion helpers.
+- `lib/extractionSchema.js`: Strict field/type validation for supported extraction categories.
+- `lib/invoiceExport.js`: Private, versioned JSON exports for approved GST invoice reviews.
+
+Invoice approval requires the core schema, document-lifecycle migrations, and `db/invoice_review_workflow.sql` plus `db/invoice_review_source_idx.sql`. See the root README and `BACKEND_GUIDE.md` for migration order and security requirements.

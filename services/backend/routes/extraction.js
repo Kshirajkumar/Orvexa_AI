@@ -13,6 +13,7 @@
  */
 
 const express = require('express');
+const { isDeepStrictEqual } = require('node:util');
 const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
 const { getGeminiConfig } = require('../lib/aiProvider');
@@ -20,6 +21,7 @@ const { getExtractionPrompt, validateExtractionData } = require('../lib/extracti
 const { TAXFLOW_SYSTEM_PROMPT } = require('../lib/systemPrompt');
 const { getOwnedClientIds } = require('../lib/ownership');
 const { downloadDocument, isOwnedDocumentObject } = require('../lib/documentStorage');
+const { saveInvoiceExport } = require('../lib/invoiceExport');
 
 /**
  * POST /api/v1/extraction/process
@@ -279,6 +281,127 @@ router.post('/save', async (req, res) => {
   } catch (error) {
     console.error('[Extraction] Could not save local-key results:', error.message);
     return res.status(500).json({ success: false, message: 'Could not save extraction results. Try again.' });
+  }
+});
+
+router.post('/review', async (req, res) => {
+  const { documentId, correctedData, existingInvoiceId } = req.body || {};
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (typeof documentId !== 'string' || !uuidPattern.test(documentId)) {
+    return res.status(400).json({ success: false, message: 'A valid source document ID is required.' });
+  }
+  if (existingInvoiceId !== undefined && (typeof existingInvoiceId !== 'string' || !uuidPattern.test(existingInvoiceId))) {
+    return res.status(400).json({ success: false, message: 'The selected existing invoice is invalid.' });
+  }
+  try {
+    validateExtractionData(correctedData, 'GST');
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+
+  const serializedData = JSON.stringify(correctedData);
+  if (serializedData.length > 200_000) {
+    return res.status(413).json({ success: false, message: 'Reviewed invoice data is too large to save.' });
+  }
+  if (!isConnected || !supabase) {
+    return res.status(503).json({ success: false, message: 'Invoice approval requires the cloud database and private document storage.' });
+  }
+
+  try {
+    const { data: review, error: reviewError } = await supabase.rpc('begin_invoice_review', {
+      p_user_id: req.user.id,
+      p_document_id: documentId,
+      p_reviewed_data: correctedData,
+      p_existing_invoice_id: existingInvoiceId || null,
+      p_reviewed_by: req.user.email || req.user.id
+    });
+    if (reviewError) {
+      if (reviewError.code === 'P0002') return res.status(404).json({ success: false, message: reviewError.message });
+      if (reviewError.code === '22023') return res.status(409).json({ success: false, message: reviewError.message });
+      throw reviewError;
+    }
+
+    if (review?.status === 'duplicate_exact' || review?.status === 'duplicate_match') {
+      return res.status(409).json({
+        success: false,
+        code: review.status === 'duplicate_exact' ? 'DUPLICATE_EXACT' : 'DUPLICATE_MATCH',
+        message: review.status === 'duplicate_exact'
+          ? 'This original file is already part of an approved invoice. No invoice or export was changed.'
+          : 'An approved invoice with this supplier and invoice number already exists. Review the existing values before choosing whether to update it.',
+        data: review
+      });
+    }
+    if (review?.status === 'review_in_progress') {
+      return res.status(409).json({
+        success: false,
+        code: 'REVIEW_IN_PROGRESS',
+        message: 'This invoice is already being saved. Wait briefly, then retry this review.'
+      });
+    }
+    if (!review || !['pending_export', 'completed'].includes(review.status)) {
+      throw new Error('The invoice review could not be started.');
+    }
+    if (review.status === 'completed') {
+      return res.json({ success: true, source: 'supabase', message: 'This invoice was already saved successfully.', data: review });
+    }
+    if (!isDeepStrictEqual(correctedData, review.reviewedData)) {
+      return res.status(409).json({
+        success: false,
+        code: 'PENDING_REVIEW_DATA',
+        message: 'A previous save attempt has a saved review snapshot. We restored it below; verify it and retry.',
+        data: { reviewedData: review.reviewedData }
+      });
+    }
+
+    const [{ data: client, error: clientError }, { data: sourceDocument, error: sourceError }, { data: invoice, error: invoiceError }] = await Promise.all([
+      supabase.from('clients').select('id, name').eq('id', review.clientId).eq('user_id', req.user.id).maybeSingle(),
+      supabase.from('documents_metadata').select('id, assessment_year, created_at').eq('id', documentId).eq('client_id', review.clientId).maybeSingle(),
+      supabase.from('invoice_records').select('current_version').eq('id', review.invoiceRecordId).eq('client_id', review.clientId).maybeSingle()
+    ]);
+    if (clientError) throw clientError;
+    if (sourceError) throw sourceError;
+    if (invoiceError) throw invoiceError;
+    if (!client || !sourceDocument || !invoice) {
+      throw new Error('The client, source document, or pending invoice record is no longer available.');
+    }
+
+    const invoiceVersion = Number(invoice.current_version || 0) + 1;
+    const exportSha256 = await saveInvoiceExport({
+      request: {
+        ...review,
+        clientId: review.clientId,
+        createdAt: review.createdAt || sourceDocument.created_at,
+        reviewedBy: review.reviewedBy || req.user.email || req.user.id
+      },
+      userId: req.user.id,
+      client,
+      sourceDocument,
+      invoiceVersion
+    });
+
+    const { data: completed, error: completionError } = await supabase.rpc('complete_invoice_review', {
+      p_user_id: req.user.id,
+      p_document_id: documentId,
+      p_export_sha256: exportSha256
+    });
+    if (completionError) throw completionError;
+    if (completed?.status !== 'completed') throw new Error('The invoice export was saved, but approval could not be finalized.');
+
+    return res.json({
+      success: true,
+      source: 'supabase',
+      message: review.action === 'update'
+        ? 'The existing invoice was updated. Its previous version remains in history.'
+        : 'The invoice, review history, and private Extracted-folder export were saved.',
+      data: completed
+    });
+  } catch (error) {
+    console.error(`[Extraction] Invoice review could not be finalized for ${documentId}:`, error.message);
+    return res.status(Number.isInteger(error.status) ? error.status : 503).json({
+      success: false,
+      code: 'INVOICE_REVIEW_PENDING',
+      message: 'The invoice is not marked approved yet. Keep this review open and retry the save.'
+    });
   }
 });
 

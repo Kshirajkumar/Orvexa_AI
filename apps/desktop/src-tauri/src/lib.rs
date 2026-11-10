@@ -280,6 +280,11 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            #[cfg(windows)]
+            app.get_webview_window("main")
+                .expect("main window is missing")
+                .set_icon(tauri::image::Image::from_app_icon_resource(128)?)?;
+
             #[cfg(any(windows, target_os = "linux"))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;

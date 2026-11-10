@@ -131,6 +131,34 @@ function TreeNode({ entry, depth, path, expanded, selectedPath, toggle, select }
   </div>;
 }
 
+function FolderTreeSkeleton() {
+  const rows = [
+    { depth: 0, folder: true },
+    { depth: 1, folder: true },
+    { depth: 2, folder: false },
+    { depth: 1, folder: true },
+    { depth: 2, folder: false },
+    { depth: 2, folder: false },
+    { depth: 1, folder: true },
+    { depth: 2, folder: false },
+  ];
+
+  return <div className="vault-tree-skeleton" role="status" aria-label="Loading client folders">
+    <div className="vault-tree-skeleton-message">
+      <span className="vault-tree-skeleton-pulse" aria-hidden="true" />
+      <span><b>Syncing folder tree</b><small>Fetching secure files from the cloud</small></span>
+    </div>
+    <div className="vault-tree-skeleton-rows" aria-hidden="true">
+      {rows.map((row, index) => <div className="vault-tree-skeleton-row" key={index} style={{ paddingLeft: 8 + row.depth * 14 }}>
+        <span className="vault-tree-skeleton-caret" />
+        <span className={`vault-tree-skeleton-icon${row.folder ? ' is-folder' : ''}`} />
+        <span className="vault-tree-skeleton-name" />
+        {row.folder && <span className="vault-tree-skeleton-count"><i /><i /></span>}
+      </div>)}
+    </div>
+  </div>;
+}
+
 export function FilesPage() {
   const s = useAppState();
   const dispatch = useDispatch();
@@ -169,6 +197,7 @@ export function FilesPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const client = s.clients.find(item => item.id === clientId) || s.clients[0];
+  const treeLoading = Boolean(clientId) && (loading || loadedClientId !== clientId);
 
   useEffect(() => {
     const onOpenFile = (event: Event) => {
@@ -515,7 +544,7 @@ export function FilesPage() {
     <div className="vault-toolbar" data-tour="files-controls"><div className={`vault-client-select ${clientMenuOpen ? 'menu-open' : ''}`} title="Select client" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setClientMenuOpen(false); }}><button className="vault-client-name" onClick={() => s.clients.length && setClientMenuOpen(value => !value)} disabled={!s.clients.length} aria-haspopup="listbox" aria-expanded={clientMenuOpen}>{client?.name || 'No clients'}</button><span className="vault-client-arrow" aria-hidden="true" />{clientMenuOpen && s.clients.length > 0 && <div className="vault-client-menu" role="listbox">{s.clients.map(item => <button key={item.id} className={`vault-client-option ${item.id === client?.id ? 'active' : ''}`} role="option" aria-selected={item.id === client?.id} onClick={() => { setClientId(item.id); setSelected(null); setUploadMessage(''); setClientMenuOpen(false); }}>{item.name}{item.id === client?.id && <Icon name="check" size={13} />}</button>)}</div>}</div><div className="vault-path-label"><Icon name="folder" size={15} /><span>{pathLabel}</span></div><label className="vault-search"><Icon name="search" size={15} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search this vault" aria-label="Search this vault" />{query && <button onClick={() => setQuery('')} aria-label="Clear search"><Icon name="x" size={13} /></button>}</label></div>
     {selected?.entry.type === 'file' && <div className="vault-global-open"><span className="mut">Selected file: <b>{selected.entry.name}</b></span><button className="btn pri" onClick={() => void openSelectedFile()} disabled={openingFile}><Icon name="open" size={14} />{openingFile ? 'Opening…' : supportsNativeFileOpen() ? 'Open with default app' : 'Preview file'}</button></div>}
     <div className="vault-two-pane">
-      <section className="vault-tree-panel card" data-tour="files-tree"><div className="vault-panel-head"><div><span className="eyebrow">FOLDER TREE</span><h2>{client?.name || 'No client selected'}</h2></div><button className="btn ghost" onClick={() => setRefresh(value => value + 1)} disabled={loading || !clientId}><Icon name="refresh" size={14} />Refresh</button></div>{error && <div className="vault-notice"><Icon name="bell" size={15} /><span>{error}</span></div>}<div className="vault-tree-scroll">{loading ? <div className="vault-loading"><span className="spin" /><span>Loading cloud files…</span></div> : visibleEntries.length ? visibleEntries.map(entry => <TreeNode key={entry.name} entry={entry} depth={0} path={`/${entry.name}`} expanded={expanded} selectedPath={selected?.path || ''} toggle={toggle} select={(entry, path) => setSelected({ entry, path })} />) : <div className="vault-empty"><span className="vault-empty-icon"><Icon name="folder" size={22} /></span><b>{query ? 'No matching items' : 'No documents yet'}</b><span>{query ? 'Try a different search.' : 'Files will appear here when added.'}</span></div>}</div></section>
+      <section className="vault-tree-panel card" data-tour="files-tree"><div className="vault-panel-head"><div><span className="eyebrow">FOLDER TREE</span><h2>{client?.name || 'No client selected'}</h2></div><button className="btn ghost" onClick={() => setRefresh(value => value + 1)} disabled={treeLoading || !clientId}><Icon name="refresh" size={14} />Refresh</button></div>{error && <div className="vault-notice"><Icon name="bell" size={15} /><span>{error}</span></div>}<div className="vault-tree-scroll" aria-busy={treeLoading}>{treeLoading ? <FolderTreeSkeleton /> : visibleEntries.length ? visibleEntries.map(entry => <TreeNode key={entry.name} entry={entry} depth={0} path={`/${entry.name}`} expanded={expanded} selectedPath={selected?.path || ''} toggle={toggle} select={(entry, path) => setSelected({ entry, path })} />) : <div className="vault-empty"><span className="vault-empty-icon"><Icon name="folder" size={22} /></span><b>{query ? 'No matching items' : 'No documents yet'}</b><span>{query ? 'Try a different search.' : 'Files will appear here when added.'}</span></div>}</div></section>
       <section className="vault-contents-panel card"><div className="vault-panel-head"><div><span className="eyebrow">SELECTED FOLDER</span><h2>{selected?.entry.name || client?.name || 'Folder contents'}</h2><small>{selected?.entry.type === 'folder' ? `${folderCount} folder${folderCount === 1 ? '' : 's'} · ${fileCount} file${fileCount === 1 ? '' : 's'}` : 'Select a folder in the tree'}</small></div><div className="vault-upload-action"><input ref={fileInputRef} type="file" className="vault-file-input" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv" onChange={uploadSelectedFile} /><button className="btn pri" onClick={() => fileInputRef.current?.click()} disabled={!canUpload} title={uploadCategory ? `Upload to ${selectedFolderName}` : 'Select the Raw or Extracted folder first'}><Icon name="upload" size={14} />{uploading ? 'Uploading…' : 'Upload file'}</button></div></div>{uploading && <div className="vault-uploading-state"><span className="vault-upload-orbit"><Icon name="upload" size={17} /></span><div><b>Uploading securely to {selectedFolderName}</b><small>Saving securely to private cloud storage and refreshing this folder…</small></div></div>}{uploadMessage && <div className={`vault-upload-message ${uploadMessageKind}`}><Icon name={uploadMessageKind === 'success' ? 'check' : uploadMessageKind === 'error' ? 'x' : 'bell'} size={14} /><span>{uploadMessage}</span></div>}{selected?.entry.type === 'file' ? <div className="vault-file-preview"><FileArtifactCard fileName={selected.entry.name} detailText={fileTypeLabel(selected.entry.name)} sizeText={formatBytes(selected.entry.size)} modifiedText={fDT(new Date(selected.entry.modifiedAt))} statusText="Stored in this client’s private cloud storage" onOpen={() => void openSelectedFile()} openLabel={supportsNativeFileOpen() ? 'Open with default app' : 'Preview file'} opening={openingFile} /><div className="vault-detail-path">{selected.path}</div><div className="kv"><span>Type</span><b>{extension(selected.entry.name).toUpperCase()} file</b><span>Size</span><b>{formatBytes(selected.entry.size)}</b><span>Modified</span><b>{fDT(new Date(selected.entry.modifiedAt))}</b></div></div> : selected ? <div className="vault-contents"><div className="vault-current-path"><Icon name="folder" size={15} /><span>{selected.path}</span></div>{selectedChildren.length ? <div className="vault-file-grid">{selectedChildren.map(item => item.type === 'folder' ? <button className="vault-folder-card" key={item.name} onClick={() => setSelected({ entry: item, path: `${selected.path}/${item.name}` })}><span className="vault-folder-card-icon"><Icon name="folder" size={22} /></span><span><b>{item.name}</b><small>{item.children?.length || 0} items</small></span><Icon name="chev" size={14} /></button> : <FileCard key={item.name} item={item} onOpen={() => setSelected({ entry: item, path: `${selected.path}/${item.name}` })} onDelete={() => { setDeleteError(''); setPendingDelete({ entry: item, path: `${selected.path}/${item.name}` }); }} />)}</div> : <div className="vault-empty"><span className="vault-empty-icon"><Icon name="folder" size={22} /></span><b>This folder is empty</b><span>Files added to this folder will appear here.</span></div>}</div> : <div className="vault-overview"><div className="vault-overview-icon"><Icon name="folder" size={28}></Icon></div><b>Select a folder</b><span>Choose a folder from the tree to view everything inside it.</span></div>}</section>
     </div>
     {(cleanupJobs.length > 0 || cleanupError) && <div className="vault-lifecycle-panel card" aria-label="Cloud cleanup jobs">

@@ -917,6 +917,69 @@ export async function verifyDocumentExtraction(documentId: string, verifiedBy = 
   }
 }
 
+export interface InvoiceDuplicate {
+  id: string;
+  invoiceNumber: string | null;
+  vendorName: string | null;
+  vendorGstin: string | null;
+  data: Record<string, unknown>;
+}
+
+export interface InvoiceReviewResult {
+  success: boolean;
+  code?: 'DUPLICATE_EXACT' | 'DUPLICATE_MATCH' | 'REVIEW_IN_PROGRESS' | 'INVOICE_REVIEW_PENDING' | 'PENDING_REVIEW_DATA';
+  message: string;
+  data?: {
+    status?: string;
+    invoice?: InvoiceDuplicate;
+    invoiceRecordId?: string;
+    invoiceVersion?: number;
+    reviewedData?: Record<string, unknown>;
+  };
+}
+
+export class InvoiceReviewError extends Error {
+  constructor(message: string, readonly retryable: boolean) {
+    super(message);
+    this.name = 'InvoiceReviewError';
+  }
+}
+
+export async function approveInvoiceReview(
+  documentId: string,
+  correctedData: Record<string, unknown>,
+  existingInvoiceId?: string,
+): Promise<InvoiceReviewResult> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/extraction/review`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ documentId, correctedData, existingInvoiceId })
+    });
+  } catch {
+    throw new InvoiceReviewError('The save result could not be confirmed. Retry without leaving this review.', true);
+  }
+
+  let result: InvoiceReviewResult;
+  try {
+    result = await response.json() as InvoiceReviewResult;
+  } catch {
+    throw new InvoiceReviewError(
+      `The backend returned an invalid approval response (HTTP ${response.status}). Retry this review.`,
+      response.status >= 500,
+    );
+  }
+  if (result.code === 'DUPLICATE_EXACT' || result.code === 'DUPLICATE_MATCH' || result.code === 'PENDING_REVIEW_DATA') return result;
+  if (!response.ok || !result.success) {
+    throw new InvoiceReviewError(
+      result.message || `The invoice could not be saved (HTTP ${response.status}).`,
+      response.status >= 500 || response.status === 408 || response.status === 429,
+    );
+  }
+  return result;
+}
+
 export async function processDocumentExtraction(
   documentId: string,
   category = 'General',

@@ -4652,3 +4652,28 @@ html[data-theme="dark"] .brand-logo-dark{opacity:1;transform:scale(1)}
 .auth-brand-logo{width:126px}
 .onboarding-brand-logo{width:142px}
 @media(prefers-reduced-motion:reduce){.brand-logo img{transition:none}}
+
+.vault-tree-skeleton{padding:4px 5px 16px}
+.vault-tree-skeleton-message{display:flex;align-items:center;gap:10px;margin:4px 4px 15px;padding:11px 12px;border:1px solid color-mix(in srgb,var(--blue) 24%,var(--line));border-radius:11px;background:linear-gradient(110deg,color-mix(in srgb,var(--blue) 8%,var(--panel)),var(--panel) 72%)}
+.vault-tree-skeleton-pulse{width:8px;height:8px;flex:none;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 4px color-mix(in srgb,var(--cyan) 13%,transparent);animation:vaultTreePulse 1.6s ease-in-out infinite}
+.vault-tree-skeleton-message b,.vault-tree-skeleton-message small{display:block}
+.vault-tree-skeleton-message b{color:var(--tx2);font-size:11.5px;font-weight:700}
+.vault-tree-skeleton-message small{margin-top:2px;color:var(--tx3);font-size:10px}
+.vault-tree-skeleton-row{display:flex;align-items:center;gap:7px;min-height:34px;padding-right:8px;border-radius:8px}
+.vault-tree-skeleton-caret,.vault-tree-skeleton-icon,.vault-tree-skeleton-name,.vault-tree-skeleton-count{background:linear-gradient(100deg,color-mix(in srgb,var(--card2) 85%,var(--line)) 20%,color-mix(in srgb,var(--blue) 17%,var(--card2)) 48%,color-mix(in srgb,var(--card2) 85%,var(--line)) 76%);background-size:220% 100%;animation:vaultTreeShimmer 1.8s ease-in-out infinite}
+.vault-tree-skeleton-caret{width:7px;height:7px;flex:none;border-radius:2px}
+.vault-tree-skeleton-icon{width:13px;height:13px;flex:none;border-radius:4px}
+.vault-tree-skeleton-icon.is-folder{width:14px;height:10px;border-radius:2px;clip-path:polygon(0 20%,40% 20%,51% 38%,100% 38%,100% 100%,0 100%)}
+.vault-tree-skeleton-name{height:8px;border-radius:99px}
+.vault-tree-skeleton-row:nth-child(1) .vault-tree-skeleton-name{width:48%}
+.vault-tree-skeleton-row:nth-child(2) .vault-tree-skeleton-name{width:38%}
+.vault-tree-skeleton-row:nth-child(3) .vault-tree-skeleton-name{width:55%}
+.vault-tree-skeleton-row:nth-child(4) .vault-tree-skeleton-name{width:32%}
+.vault-tree-skeleton-row:nth-child(5) .vault-tree-skeleton-name{width:46%}
+.vault-tree-skeleton-row:nth-child(6) .vault-tree-skeleton-name{width:40%}
+.vault-tree-skeleton-row:nth-child(7) .vault-tree-skeleton-name{width:35%}
+.vault-tree-skeleton-row:nth-child(8) .vault-tree-skeleton-name{width:51%}
+.vault-tree-skeleton-count{display:flex;align-items:center;gap:4px;width:38px;height:15px;margin-left:auto;padding:0 5px;border-radius:99px}
+.vault-tree-skeleton-count i{width:9px;height:4px;border-radius:99px;background:color-mix(in srgb,var(--tx3) 30%,transparent)}
+@keyframes vaultTreeShimmer{to{background-position:-220% 0}}
+@keyframes vaultTreePulse{50%{opacity:.55;box-shadow:0 0 0 6px color-mix(in srgb,var(--cyan) 7%,transparent)}}

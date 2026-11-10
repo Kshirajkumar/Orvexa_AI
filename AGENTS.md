@@ -5,7 +5,7 @@
 TaxFlow.AI is a small full-stack monorepo:
 
 - `apps/desktop/` contains the React + TypeScript + Vite UI and Tauri wrapper. Put screens in `src/pages/`, reusable UI in `src/components/`, shared state in `src/state/`, and domain helpers in `src/lib/`.
-- `services/backend/` contains the Node.js + Express API. Add domain routes under `routes/`, Supabase integration under `db/`, and physical document handling through `vault/vaultManager.js`.
+- `services/backend/` contains the Node.js + Express API. Add domain routes under `routes/`, Supabase integration under `db/`, and private document handling through `lib/documentStorage.js`.
 - `docs/` contains product and architecture references; `DESIGN_GUIDE.md` documents the visual system.
 
 ## Skills and Guide Usage
@@ -33,7 +33,7 @@ cd services/backend && npm install
 cd services/backend && npm run dev   # Start the Express server on PORT or 5000
 ```
 
-There is no automated test suite or linter configured yet. The backend `npm test` script is currently a placeholder; at minimum, run the desktop production build and manually exercise changed API paths.
+The backend uses Node's built-in test runner (`npm test`, currently `node --test test/*.test.js`). The desktop has no separate test or lint script; run `npm run build` for TypeScript checking and a production Vite build. For backend changes, also manually exercise affected API paths when configuration permits.
 
 ## Coding Style and Naming
 
@@ -41,11 +41,11 @@ Use two-space indentation, semicolons, and the existing TypeScript/JavaScript co
 
 ## Testing Guidelines
 
-Until tests are introduced, validate UI changes with `npm run build` and a local `npm run dev` session. For backend changes, verify success, validation, and failure responses, including demo-mode behavior when Supabase is unavailable.
+For UI changes, validate with `npm run build` and a local `npm run dev` session. For backend changes, run `npm test` and verify success, validation, and failure responses, including explicitly documented demo-mode behavior when Supabase is unavailable.
 
 ## Security and Configuration
 
-Keep secrets in `services/backend/.env` and never commit them. Use `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and relevant Gemini/WhatsApp variables only on the server. Sanitize vault inputs and use `vaultManager.js`; do not hardcode filesystem paths or call external AI services directly from the frontend.
+Keep backend secrets in `services/backend/.env` and never commit them. Use `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and server-side Gemini/WhatsApp credentials only on the server. The optional OpenRouter key is stored in Windows Credential Manager; its local mode sends extraction images directly from the desktop to OpenRouter. Keep client files in private Supabase Storage through `lib/documentStorage.js`; never expose service-role credentials or public document URLs to the desktop.
 
 ## Commits and Pull Requests
 

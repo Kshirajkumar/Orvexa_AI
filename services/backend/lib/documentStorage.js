@@ -167,7 +167,7 @@ function normalizeMimeType(value) {
     : 'application/octet-stream';
 }
 
-async function uploadDocument(objectKey, buffer, contentType) {
+async function uploadDocument(objectKey, buffer, contentType, upsert = false) {
   const bucket = getStorageBucket();
   if (!supabase || !bucket) {
     const error = new Error('Supabase Storage is not configured.');
@@ -190,7 +190,7 @@ async function uploadDocument(objectKey, buffer, contentType) {
 
   const { error } = await supabase.storage.from(bucket).upload(objectKey, buffer, {
     contentType: normalizeMimeType(contentType),
-    upsert: false
+    upsert
   });
   if (error) throw error;
   return { bucket, objectKey };
@@ -222,6 +222,7 @@ module.exports = {
   isOwnedDocumentObject,
   isExpectedDocumentObject,
   normalizeMimeType,
+  releaseUploadReservation,
   sanitizeStorageFileName,
   saveGeneratedDocument,
   sha256,
