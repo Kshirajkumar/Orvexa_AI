@@ -117,11 +117,11 @@ Before enabling account deletion on an existing Supabase project, apply `service
 - **Provider paths**: `/api/v1/extraction/process` reads the user's private cloud original and calls the configured backend Gemini provider. The optional local OpenRouter-key flow sends its result to `/api/v1/extraction/save`, where the same category schema is checked.
 - **Human review**: `/api/v1/extraction/review` accepts reviewed GST invoice data only. It checks for an already-approved source file and matching supplier/invoice number before creating or updating an invoice. A matching invoice requires an explicit update choice; never bypass the duplicate response.
 - **Durable approval**: The database records invoice data and review versions. The backend writes a versioned JSON snapshot to the client's private `Extracted` folder, verifies its checksum, and only then finalizes the review. An incomplete save remains pending and can be retried; do not report approval when export or finalization fails.
-- **Migrations**: After the core schema and document lifecycle migrations are installed, apply `db/invoice_review_workflow.sql` followed by `db/invoice_review_source_idx.sql` to the same Supabase project. Do not expose the review tables to `anon` or `authenticated`; their RPCs are backend/service-role operations.
+- **Migrations**: After the core schema and document lifecycle migrations are installed, apply `db/invoice_review_workflow.sql` followed by `db/invoice_review_source_idx.sql` to the same Supabase project. Reapply `db/invoice_review_workflow.sql` to existing installations to update the export-version category check. Do not expose the review tables to `anon` or `authenticated`; their RPCs are backend/service-role operations.
 - **Scope**: This JSON snapshot is an approved invoice record, not a validated GSTR/ITR filing artifact and not a government submission.
 
 ### 4.3 WhatsApp Business API
-- **Webhook Handling**: Incoming messages must be processed asynchronously and stored in `whatsapp_msgs`.
+- **Webhook Handling**: Configure both `WHATSAPP_VERIFY_TOKEN` (Meta's GET handshake) and `WHATSAPP_APP_SECRET` (POST signature verification) in the backend environment. Incoming POST requests without a valid Meta `X-Hub-Signature-256` signature are rejected; never use a default verification token.
 - **Outgoing**: Use a standardized template system to ensure consistent client communication.
 
 ---

@@ -424,7 +424,7 @@ BEGIN
     AND c.user_id = p_user_id
     AND c.deletion_requested_at IS NULL
     AND d.deletion_requested_at IS NULL
-    AND d.category = 'GST'
+    AND d.category = 'Extracted'
     AND d.source <> 'Telegram'
     AND d.status IN ('Extracted', 'Verified')
     AND r.expires_at > now()

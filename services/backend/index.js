@@ -33,13 +33,14 @@ const chatRouter = require('./routes/chat');
 const { requireAuth } = require('./middleware/requireAuth');
 
 const { supabase, isConnected } = require('./db/supabase');
+const { captureWhatsAppWebhookBody } = require('./lib/whatsappWebhookSecurity');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ─── Middleware ────────────────────────────────────────────────
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization', 'X-File-Name', 'X-File-Mime-Type'] }));
-app.use(express.json({ limit: '100mb' }));
+app.use(express.json({ limit: '100mb', verify: captureWhatsAppWebhookBody }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Request logger

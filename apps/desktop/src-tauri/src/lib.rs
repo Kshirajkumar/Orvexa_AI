@@ -233,7 +233,6 @@ fn safe_file_name(value: &str) -> Result<String, String> {
     Ok(name)
 }
 
-#[tauri::command]
 #[cfg(test)]
 mod tests {
     use super::{safe_file_name, validate_openrouter_key};

@@ -29,6 +29,33 @@ function isResendConfigured() {
   return Boolean(currentKey && currentKey.startsWith('re_') && currentKey !== 'your_resend_api_key_here');
 }
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character]);
+}
+
+function safeEmailActionUrl(value) {
+  if (!value) return '';
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('Email action link must be a valid HTTPS URL.');
+  }
+  const isLocalDevelopmentUrl = process.env.NODE_ENV !== 'production'
+    && url.protocol === 'http:'
+    && ['localhost', '127.0.0.1'].includes(url.hostname);
+  if ((url.protocol !== 'https:' && !isLocalDevelopmentUrl) || url.username || url.password) {
+    throw new Error('Email action link must use HTTPS and cannot contain credentials.');
+  }
+  return escapeHtml(url.toString());
+}
+
 /**
  * Send a generic transactional email via Resend.
  */
@@ -39,9 +66,11 @@ async function sendEmail({ to, subject, html, text, from = defaultFrom, replyTo 
   if (!recipient.length) {
     throw new Error('At least one recipient email address ("to") is required.');
   }
+  const safeSubject = String(subject || '').replace(/[\r\n\x00-\x1f\x7f]/g, ' ').trim().slice(0, 200);
+  if (!safeSubject) throw new Error('A valid email subject is required.');
 
   if (!client) {
-    console.warn(`[Resend] ⚠️ Resend is not configured (RESEND_API_KEY missing). Simulating email to: ${recipient.join(', ')} — Subject: "${subject}"`);
+    console.warn(`[Resend] ⚠️ Resend is not configured (RESEND_API_KEY missing). Simulating email to: ${recipient.join(', ')} — Subject: "${safeSubject}"`);
     return {
       success: true,
       source: 'simulated',
@@ -54,7 +83,7 @@ async function sendEmail({ to, subject, html, text, from = defaultFrom, replyTo 
     const payload = {
       from,
       to: recipient,
-      subject,
+      subject: safeSubject,
       html,
       ...(text ? { text } : {}),
       ...(replyTo ? { reply_to: replyTo } : {}),
@@ -97,7 +126,7 @@ function wrapHtmlEmail({ title, preheader = '', contentHtml, actionUrl, actionTe
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
+  <title>${escapeHtml(title)}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0B0E14; color: #E2E8F0; margin: 0; padding: 0; }
     .wrapper { max-width: 600px; margin: 24px auto; background-color: #121824; border: 1px solid #1E293B; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
@@ -114,22 +143,22 @@ function wrapHtmlEmail({ title, preheader = '', contentHtml, actionUrl, actionTe
 </head>
 <body>
   <div style="display:none;font-size:1px;color:#333;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">
-    ${preheader || title}
+    ${escapeHtml(preheader || title)}
   </div>
   <div class="wrapper">
     <div class="header">
       <div class="logo">TaxFlow<span class="logo-accent">.AI</span></div>
-      <h1 class="title">${title}</h1>
+      <h1 class="title">${escapeHtml(title)}</h1>
     </div>
     <div class="content">
       ${contentHtml}
       ${actionUrl && actionText ? `
       <div class="btn-container">
-        <a href="${actionUrl}" class="btn" target="_blank" rel="noopener noreferrer">${actionText}</a>
+        <a href="${safeEmailActionUrl(actionUrl)}" class="btn" target="_blank" rel="noopener noreferrer">${escapeHtml(actionText)}</a>
       </div>` : ''}
     </div>
     <div class="footer">
-      <p style="margin: 0 0 6px 0;">${footerNote || 'Secure communications powered by TaxFlow.AI Practice Suite.'}</p>
+      <p style="margin: 0 0 6px 0;">${escapeHtml(footerNote || 'Secure communications powered by TaxFlow.AI Practice Suite.')}</p>
       <p style="margin: 0;">This email was sent to you regarding your tax compliance registry.</p>
     </div>
   </div>
@@ -141,6 +170,9 @@ function wrapHtmlEmail({ title, preheader = '', contentHtml, actionUrl, actionTe
  * Send Client Portal Invitation Email
  */
 async function sendPortalInviteEmail({ to, clientName, inviteLink, practiceName = 'Your Chartered Accountant' }) {
+  const safeClientName = escapeHtml(clientName);
+  const safePracticeName = escapeHtml(practiceName);
+  const safeInviteLink = safeEmailActionUrl(inviteLink);
   const title = `Secure Document Portal Invitation`;
   const html = wrapHtmlEmail({
     title,
@@ -148,8 +180,8 @@ async function sendPortalInviteEmail({ to, clientName, inviteLink, practiceName 
     actionUrl: inviteLink,
     actionText: 'Access Client Portal',
     contentHtml: `
-      <p>Hello <strong>${clientName}</strong>,</p>
-      <p><strong>${practiceName}</strong> has invited you to access your dedicated <strong>TaxFlow Client Portal</strong>.</p>
+      <p>Hello <strong>${safeClientName}</strong>,</p>
+      <p><strong>${safePracticeName}</strong> has invited you to access your dedicated <strong>TaxFlow Client Portal</strong>.</p>
       <div class="card">
         <p style="margin: 0 0 8px 0; color: #94A3B8; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Portal Features:</p>
         <ul style="margin: 0; padding-left: 20px; color: #E2E8F0;">
@@ -159,7 +191,7 @@ async function sendPortalInviteEmail({ to, clientName, inviteLink, practiceName 
         </ul>
       </div>
       <p>Click the secure button below to set up your account and upload your requested files:</p>
-      <p style="font-size: 12px; color: #94A3B8; word-break: break-all;">Link: <a href="${inviteLink}" style="color: #38BDF8;">${inviteLink}</a></p>
+      <p style="font-size: 12px; color: #94A3B8; word-break: break-all;">Link: <a href="${safeInviteLink}" style="color: #38BDF8;">${safeInviteLink}</a></p>
     `,
     footerNote: 'This is a private single-use invitation. Do not share or forward this link.'
   });
@@ -176,17 +208,21 @@ async function sendPortalInviteEmail({ to, clientName, inviteLink, practiceName 
  * Send Document Upload Confirmation Email
  */
 async function sendDocumentUploadNotificationEmail({ to, clientName, fileName, category, uploadedAt = new Date().toLocaleString() }) {
+  const safeClientName = escapeHtml(clientName);
+  const safeFileName = escapeHtml(fileName);
+  const safeCategory = escapeHtml(category || 'General');
+  const safeUploadedAt = escapeHtml(uploadedAt);
   const title = `Document Upload Received`;
   const html = wrapHtmlEmail({
     title,
     preheader: `We received ${fileName} for ${clientName}`,
     contentHtml: `
-      <p>Hello <strong>${clientName}</strong>,</p>
+      <p>Hello <strong>${safeClientName}</strong>,</p>
       <p>Your document has been securely received by your accounting team and logged into the verification queue.</p>
       <div class="card">
-        <p style="margin: 0 0 6px 0;"><strong>File Name:</strong> ${fileName}</p>
-        <p style="margin: 0 0 6px 0;"><strong>Category:</strong> ${category || 'General'}</p>
-        <p style="margin: 0;"><strong>Timestamp:</strong> ${uploadedAt}</p>
+        <p style="margin: 0 0 6px 0;"><strong>File Name:</strong> ${safeFileName}</p>
+        <p style="margin: 0 0 6px 0;"><strong>Category:</strong> ${safeCategory}</p>
+        <p style="margin: 0;"><strong>Timestamp:</strong> ${safeUploadedAt}</p>
       </div>
       <p>Our automated intake system is reviewing the file. Your tax professional will be notified immediately if any further details are required.</p>
     `
@@ -204,6 +240,9 @@ async function sendDocumentUploadNotificationEmail({ to, clientName, fileName, c
  * Send Tax & Compliance Deadline Reminder Email
  */
 async function sendDeadlineReminderEmail({ to, clientName, taskTitle, dueDate, portalLink }) {
+  const safeClientName = escapeHtml(clientName);
+  const safeTaskTitle = escapeHtml(taskTitle);
+  const safeDueDate = escapeHtml(dueDate);
   const title = `Upcoming Compliance Deadline`;
   const html = wrapHtmlEmail({
     title,
@@ -211,11 +250,11 @@ async function sendDeadlineReminderEmail({ to, clientName, taskTitle, dueDate, p
     actionUrl: portalLink,
     actionText: portalLink ? 'Upload Pending Documents' : undefined,
     contentHtml: `
-      <p>Dear <strong>${clientName}</strong>,</p>
+      <p>Dear <strong>${safeClientName}</strong>,</p>
       <p>This is a priority reminder regarding an upcoming statutory tax compliance deadline:</p>
       <div class="card" style="border-left: 4px solid #F59E0B;">
-        <h3 style="margin: 0 0 8px 0; color: #F8FAFC;">${taskTitle}</h3>
-        <p style="margin: 0; color: #F59E0B; font-weight: 600;">Due Date: ${dueDate}</p>
+        <h3 style="margin: 0 0 8px 0; color: #F8FAFC;">${safeTaskTitle}</h3>
+        <p style="margin: 0; color: #F59E0B; font-weight: 600;">Due Date: ${safeDueDate}</p>
       </div>
       <p>Please ensure all necessary invoices, vouchers, and statements are submitted to prevent late fees or penalty interest.</p>
     `
@@ -278,4 +317,3 @@ module.exports = {
   sendDeadlineReminderEmail,
   testResendConnection
 };
-

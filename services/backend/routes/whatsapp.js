@@ -15,11 +15,13 @@ const express = require('express');
 const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
 const { requireAuth } = require('../middleware/requireAuth');
-const { getOwnedClientIds, assertOwnedClient } = require('../lib/ownership');
+const { getOwnedClientIds } = require('../lib/ownership');
+const { verifyWhatsAppWebhookSignature } = require('../lib/whatsappWebhookSecurity');
 
 const WA_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const WA_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
-const WA_VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || 'taxflow_webhook_verify_secret';
+const WA_VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
+const WA_APP_SECRET = process.env.WHATSAPP_APP_SECRET;
 
 // --- In-Memory Fallback ---
 let fallbackMessages = [
@@ -105,6 +107,9 @@ router.get('/messages', requireAuth, async (req, res) => {
  * Meta calls this when you first register your webhook URL
  */
 router.get('/webhook', (req, res) => {
+  if (!WA_VERIFY_TOKEN) {
+    return res.status(503).json({ success: false, message: 'WhatsApp webhook verification is not configured.' });
+  }
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
@@ -122,6 +127,13 @@ router.get('/webhook', (req, res) => {
  * This is the main entry point for all client messages
  */
 router.post('/webhook', async (req, res) => {
+  if (!WA_APP_SECRET) {
+    return res.status(503).json({ success: false, message: 'WhatsApp webhook signature verification is not configured.' });
+  }
+  if (!verifyWhatsAppWebhookSignature(req.rawBody, req.get('X-Hub-Signature-256'), WA_APP_SECRET)) {
+    return res.status(401).json({ success: false, message: 'WhatsApp webhook signature is invalid.' });
+  }
+
   // Always acknowledge immediately (WhatsApp requires < 5 second response)
   res.status(200).json({ status: 'received' });
 
@@ -146,14 +158,15 @@ router.post('/webhook', async (req, res) => {
       if (msg.type === 'document') { mediaType = 'document'; bodyText = msg.document?.filename || 'Document'; }
       if (msg.type === 'image') { mediaType = 'image'; bodyText = msg.image?.caption || 'Image'; }
 
-      console.log(`[WhatsApp] 📩 Incoming from ${senderPhone}: [${msgType}] "${bodyText.substring(0, 80)}"`);
+      console.log(`[WhatsApp] Processing inbound message ${msg.id || '(no id)'}.`);
 
       // Find client by phone number in Supabase
       let clientId = null, clientName = null;
       if (isConnected) {
         const cleanPhone = senderPhone.replace(/\D/g, '');
-        const { data: clientData } = await supabase
+        const { data: clientData, error: clientError } = await supabase
           .from('clients').select('id, name').ilike('phone', `%${cleanPhone}%`).single();
+        if (clientError && clientError.code !== 'PGRST116') throw clientError;
         if (clientData) { clientId = clientData.id; clientName = clientData.name; }
       }
 
@@ -163,7 +176,10 @@ router.post('/webhook', async (req, res) => {
         direction: 'inbound', message_type: mediaType, body: bodyText,
         wa_message_id: msg.id, status: 'received'
       };
-      if (isConnected) await supabase.from('whatsapp_messages').insert([inboundLog]);
+      if (isConnected) {
+        const { error: logError } = await supabase.from('whatsapp_messages').insert([inboundLog]);
+        if (logError) throw logError;
+      }
 
       // Compose smart auto-reply
       const replyText = buildAutoReply(msgType, bodyText, clientName);
@@ -171,14 +187,15 @@ router.post('/webhook', async (req, res) => {
 
       // Save outbound reply to Supabase
       if (isConnected) {
-        await supabase.from('whatsapp_messages').insert([{
+        const { error: replyLogError } = await supabase.from('whatsapp_messages').insert([{
           client_id: clientId, sender_phone: 'TaxFlow Bot', sender_name: 'TaxFlow AI Assistant',
           direction: 'outbound', message_type: 'text', body: replyText, status: 'sent'
         }]);
+        if (replyLogError) throw replyLogError;
       }
     }
   } catch (err) {
-    console.error('[WhatsApp] Webhook processing error:', err.message);
+    console.error('[WhatsApp] Webhook processing failed:', err.message);
   }
 });
 
@@ -187,9 +204,13 @@ router.post('/webhook', async (req, res) => {
  */
 router.post('/send', requireAuth, async (req, res) => {
   try {
-    const { toPhone, message, clientId } = req.body;
-    if (!toPhone || !message) {
-      return res.status(400).json({ success: false, message: 'toPhone and message are required' });
+    const { toPhone, message, clientId } = req.body || {};
+    const normalizedPhone = normalizeWhatsAppPhone(toPhone);
+    if (!normalizedPhone || typeof message !== 'string' || !message.trim() || message.length > 4096) {
+      return res.status(400).json({ success: false, message: 'A valid recipient phone number and a message of 1–4,096 characters are required.' });
+    }
+    if (!clientId) {
+      return res.status(400).json({ success: false, message: 'clientId is required to send a message to an owned client.' });
     }
 
     const configured = Boolean(WA_ACCESS_TOKEN && WA_PHONE_NUMBER_ID && !WA_ACCESS_TOKEN.includes('your_'));
@@ -200,26 +221,54 @@ router.post('/send', requireAuth, async (req, res) => {
       });
     }
 
-    if (isConnected && clientId && !(await assertOwnedClient(req.user.id, clientId))) {
+    if (!isConnected || !supabase) {
+      return res.status(503).json({ success: false, message: 'Client ownership could not be verified because the database is unavailable.' });
+    }
+    const { data: client, error: clientError } = await supabase.from('clients')
+      .select('id, phone')
+      .eq('id', clientId)
+      .eq('user_id', req.user.id)
+      .is('deletion_requested_at', null)
+      .maybeSingle();
+    if (clientError) throw clientError;
+    if (!client) {
       return res.status(404).json({ success: false, message: 'Client not found.' });
     }
+    if (normalizeWhatsAppPhone(client.phone) !== normalizedPhone) {
+      return res.status(400).json({ success: false, message: 'The recipient phone number must match the selected client record.' });
+    }
 
-    await sendWhatsAppMessage(toPhone, message);
+    await sendWhatsAppMessage(normalizedPhone, message.trim());
 
-    if (isConnected) {
-      await supabase.from('whatsapp_messages').insert([{
-        client_id: clientId || null, sender_phone: 'CA Manual',
-        direction: 'outbound', message_type: 'text', body: message, status: 'sent'
+    try {
+      const { error: logError } = await supabase.from('whatsapp_messages').insert([{
+        client_id: clientId, sender_phone: 'CA Manual',
+        direction: 'outbound', message_type: 'text', body: message.trim(), status: 'sent'
       }]);
+      if (logError) throw logError;
+    } catch (logError) {
+      console.error('[WhatsApp] Message sent, but its activity record could not be saved:', logError.message);
+      return res.status(202).json({
+        success: true,
+        message: 'Message was sent, but its activity record could not be saved.'
+      });
     }
 
     res.json({ success: true, message: 'Message sent successfully' });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 600 ? err.status : 502;
+    console.error('[WhatsApp] Manual send failed:', err.message);
+    res.status(status).json({ success: false, message: status === 502 ? 'The WhatsApp message could not be sent.' : err.message });
   }
 });
 
 // --- Helpers ---
+
+function normalizeWhatsAppPhone(phone) {
+  if (typeof phone !== 'string' || !/^[+()\d.\-\s]+$/.test(phone)) return '';
+  const digits = String(phone || '').replace(/\D/g, '');
+  return /^[1-9]\d{7,14}$/.test(digits) ? digits : '';
+}
 
 function buildAutoReply(msgType, bodyText, clientName) {
   const greeting = clientName ? `Hello ${clientName}! ` : 'Hello! ';
@@ -241,17 +290,24 @@ function buildAutoReply(msgType, bodyText, clientName) {
 
 async function sendWhatsAppMessage(toPhone, text) {
   if (!WA_ACCESS_TOKEN || !WA_PHONE_NUMBER_ID || WA_ACCESS_TOKEN.includes('your_')) {
-    console.log(`[WhatsApp] DEMO — Would send to ${toPhone}: "${text.substring(0, 80)}"`);
-    return;
+    const error = new Error('WhatsApp Business API is not configured.');
+    error.status = 503;
+    throw error;
   }
   try {
-    await fetch(`https://graph.facebook.com/v18.0/${WA_PHONE_NUMBER_ID}/messages`, {
+    const response = await fetch(`https://graph.facebook.com/v18.0/${encodeURIComponent(WA_PHONE_NUMBER_ID)}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${WA_ACCESS_TOKEN}` },
       body: JSON.stringify({ messaging_product: 'whatsapp', to: toPhone, type: 'text', text: { body: text } })
     });
+    if (!response.ok) {
+      const error = new Error(`WhatsApp rejected the message (HTTP ${response.status}).`);
+      error.status = 502;
+      throw error;
+    }
   } catch (err) {
-    console.error('[WhatsApp] Send error:', err.message);
+    if (!err.status) err.status = 502;
+    throw err;
   }
 }
 

@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
 const { getOwnedClientIds, assertOwnedClient } = require('../lib/ownership');
+const { validateTaskPatch } = require('../lib/deadlinePatch');
 
 // --- In-Memory Fallback ---
 let fallbackTasks = [
@@ -125,16 +126,23 @@ router.post('/', async (req, res) => {
 // PATCH /api/v1/deadlines/:id — Update progress/status of a task
 router.patch('/:id', async (req, res) => {
   try {
+    let updates;
+    try {
+      updates = validateTaskPatch(req.body);
+    } catch (validationError) {
+      return res.status(400).json({ success: false, message: validationError.message });
+    }
+
     if (isConnected) {
       const ownedClientIds = await getOwnedClientIds(req.user.id);
       const { data, error } = await supabase
-        .from('compliance_tasks').update(req.body).eq('id', req.params.id).in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000']).select().single();
+        .from('compliance_tasks').update(updates).eq('id', req.params.id).in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000']).select().single();
       if (error) throw error;
       return res.json({ success: true, source: 'supabase', data });
     }
     const idx = fallbackTasks.findIndex(t => t.id === req.params.id);
     if (idx === -1) return res.status(404).json({ success: false, message: 'Task not found' });
-    fallbackTasks[idx] = { ...fallbackTasks[idx], ...req.body };
+    fallbackTasks[idx] = { ...fallbackTasks[idx], ...updates };
     res.json({ success: true, source: 'demo', data: fallbackTasks[idx] });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

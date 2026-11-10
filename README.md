@@ -66,7 +66,7 @@ To set up or refresh your Supabase database:
    - Schedule worker stored procedures (`claim_due_telegram_message_schedules`, `finish_telegram_message_schedule`)
    - Auto-healing queries for clients missing country association.
 3. **Document lifecycle**: Apply [`services/backend/db/document_lifecycle.sql`](services/backend/db/document_lifecycle.sql) and then [`services/backend/db/document_lifecycle_fk_indexes.sql`](services/backend/db/document_lifecycle_fk_indexes.sql) before using document versioning and durable storage cleanup.
-4. **Invoice review and export**: Apply [`services/backend/db/invoice_review_workflow.sql`](services/backend/db/invoice_review_workflow.sql), then [`services/backend/db/invoice_review_source_idx.sql`](services/backend/db/invoice_review_source_idx.sql). These add duplicate-aware invoice review, review/version history, and the database functions used to save approved JSON exports. They require the core schema and document lifecycle migrations.
+4. **Invoice review and export**: Apply [`services/backend/db/invoice_review_workflow.sql`](services/backend/db/invoice_review_workflow.sql), then [`services/backend/db/invoice_review_source_idx.sql`](services/backend/db/invoice_review_source_idx.sql). These add duplicate-aware invoice review, review/version history, and the database functions used to save approved JSON exports. They require the core schema and document lifecycle migrations. If the workflow script was previously installed, reapply it to update the export-version category check.
 5. **Telegram and client portal**: From `services/backend`, run `npm run migrate:telegram` with `DATABASE_URL` set for the same project. Follow the [Telegram integration guide](docs/telegram-integration.md) for portal, bucket, and relay setup.
 
 ---
@@ -99,12 +99,16 @@ SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
 SUPABASE_ANON_KEY=your-supabase-anon-key
 SUPABASE_STORAGE_BUCKET=taxflow-intake
-CLIENT_PORTAL_URL=https://taxflowaiwebsite.vercel.app/portal
+CLIENT_PORTAL_URL=https://taxflowaiwebsite.vercel.app
 GEMINI_API_KEY=your-google-gemini-api-key
 GEMINI_MODEL=gemini-2.5-flash
 TELEGRAM_BOT_TOKEN=your-telegram-bot-token
 TELEGRAM_BOT_USERNAME=@YourPracticeBot
 TELEGRAM_WEBHOOK_SECRET=your-secure-webhook-secret
+WHATSAPP_PHONE_NUMBER_ID=your-phone-number-id
+WHATSAPP_ACCESS_TOKEN=your-whatsapp-access-token
+WHATSAPP_VERIFY_TOKEN=your-long-random-webhook-verification-token
+WHATSAPP_APP_SECRET=your-meta-app-secret
 ```
 
 ### 2. Run development

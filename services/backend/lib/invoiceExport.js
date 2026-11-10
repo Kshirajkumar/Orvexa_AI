@@ -5,11 +5,21 @@ const {
   isOwnedDocumentObject,
   releaseUploadReservation,
   sha256,
+  deleteDocument,
   uploadDocument
 } = require('./documentStorage');
 const { supabase } = require('../db/supabase');
 
 const JSON_MIME_TYPE = 'application/json';
+
+async function removeOrphanedExport(bucket, objectKey, originalError) {
+  try {
+    await deleteDocument(bucket, objectKey);
+  } catch (cleanupError) {
+    console.error('[Invoice Export] Could not remove an unregistered export object:', cleanupError.message);
+    originalError.message = `${originalError.message} The uploaded export could not be removed automatically; contact support with the invoice review details.`;
+  }
+}
 
 function getStorageDate(value) {
   const date = new Date(value);
@@ -49,16 +59,10 @@ async function findExportDocument(request) {
 
 async function saveNewExport({ request, userId, client, sourceDocument, fileName, content, contentHash }) {
   const { year, month } = getStorageDate(request.createdAt);
-  const objectKey = getStorageObjectKey({
-    userId,
-    clientId: request.clientId,
-    year,
-    month,
-    category: 'Extracted',
-    documentId: request.exportDocumentId,
-    fileName
-  });
+  let objectKey;
   let reservationId = null;
+  let uploaded = false;
+  let registered = false;
   try {
     const { data: reservation, error: reservationError } = await supabase.rpc('begin_document_upload', {
       p_user_id: userId,
@@ -67,8 +71,19 @@ async function saveNewExport({ request, userId, client, sourceDocument, fileName
       p_created_by: userId
     });
     if (reservationError) throw reservationError;
+    if (!reservation) throw new Error('The invoice export upload reservation was not created.');
     reservationId = reservation;
+    objectKey = getStorageObjectKey({
+      userId,
+      clientId: request.clientId,
+      year,
+      month,
+      category: 'Extracted',
+      documentId: request.exportDocumentId,
+      fileName: `${fileName}.${reservationId}`
+    });
     await uploadDocument(objectKey, content, JSON_MIME_TYPE, true);
+    uploaded = true;
 
     const { error: saveError } = await supabase.rpc('create_document_metadata_if_client_active', {
       p_user_id: userId,
@@ -92,11 +107,35 @@ async function saveNewExport({ request, userId, client, sourceDocument, fileName
       }
     });
     if (saveError) {
-      const existing = await findExportDocument(request);
-      if (!existing || existing.file_sha256 !== contentHash) throw saveError;
+      let existing;
+      try {
+        existing = await findExportDocument(request);
+      } catch (lookupError) {
+        registered = true;
+        throw lookupError;
+      }
+      if (!existing) {
+        await removeOrphanedExport(getStorageBucket(), objectKey, saveError);
+        uploaded = false;
+        throw saveError;
+      }
+      if (existing.storage_object_path !== objectKey) {
+        await removeOrphanedExport(getStorageBucket(), objectKey, saveError);
+        uploaded = false;
+      }
+      if (existing.file_sha256 !== contentHash) {
+        registered = existing.storage_object_path === objectKey;
+        throw saveError;
+      }
+      registered = true;
       await releaseUploadReservation(userId, reservationId);
+      reservationId = null;
     }
+    registered = true;
     reservationId = null;
+  } catch (error) {
+    if (uploaded && !registered) await removeOrphanedExport(getStorageBucket(), objectKey, error);
+    throw error;
   } finally {
     if (reservationId) await releaseUploadReservation(userId, reservationId);
   }
@@ -120,14 +159,10 @@ async function saveExportVersion({ request, userId, fileName, content, contentHa
     return;
   }
 
-  const objectKey = getVersionStorageObjectKey({
-    userId,
-    clientId: request.clientId,
-    documentId: request.exportDocumentId,
-    versionId: request.exportFileVersionId,
-    fileName
-  });
+  let objectKey;
   let reservationId = null;
+  let uploaded = false;
+  let registered = false;
   try {
     const { data: reservation, error: reservationError } = await supabase.rpc('begin_document_upload', {
       p_user_id: userId,
@@ -136,8 +171,17 @@ async function saveExportVersion({ request, userId, fileName, content, contentHa
       p_created_by: userId
     });
     if (reservationError) throw reservationError;
+    if (!reservation) throw new Error('The invoice export version reservation was not created.');
     reservationId = reservation;
+    objectKey = getVersionStorageObjectKey({
+      userId,
+      clientId: request.clientId,
+      documentId: request.exportDocumentId,
+      versionId: request.exportFileVersionId,
+      fileName: `${fileName}.${reservationId}`
+    });
     await uploadDocument(objectKey, content, JSON_MIME_TYPE, true);
+    uploaded = true;
 
     const { error: registerError } = await supabase.rpc('register_invoice_export_version', {
       p_user_id: userId,
@@ -152,16 +196,41 @@ async function saveExportVersion({ request, userId, fileName, content, contentHa
       p_mime_type: JSON_MIME_TYPE
     });
     if (registerError) {
-      const { data: savedVersion, error: lookupError } = await supabase.from('document_versions')
-        .select('id, file_sha256')
-        .eq('id', request.exportFileVersionId)
-        .eq('document_id', request.exportDocumentId)
-        .maybeSingle();
-      if (lookupError) throw lookupError;
-      if (!savedVersion || savedVersion.file_sha256 !== contentHash) throw registerError;
+      let savedVersion;
+      try {
+        const { data, error: lookupError } = await supabase.from('document_versions')
+          .select('id, file_sha256, storage_object_path')
+          .eq('id', request.exportFileVersionId)
+          .eq('document_id', request.exportDocumentId)
+          .maybeSingle();
+        if (lookupError) throw lookupError;
+        savedVersion = data;
+      } catch (lookupError) {
+        registered = true;
+        throw lookupError;
+      }
+      if (!savedVersion) {
+        await removeOrphanedExport(getStorageBucket(), objectKey, registerError);
+        uploaded = false;
+        throw registerError;
+      }
+      if (savedVersion.storage_object_path !== objectKey) {
+        await removeOrphanedExport(getStorageBucket(), objectKey, registerError);
+        uploaded = false;
+      }
+      if (savedVersion.file_sha256 !== contentHash) {
+        registered = savedVersion.storage_object_path === objectKey;
+        throw registerError;
+      }
+      registered = true;
       await releaseUploadReservation(userId, reservationId);
+      reservationId = null;
     }
+    registered = true;
     reservationId = null;
+  } catch (error) {
+    if (uploaded && !registered) await removeOrphanedExport(getStorageBucket(), objectKey, error);
+    throw error;
   } finally {
     if (reservationId) await releaseUploadReservation(userId, reservationId);
   }

@@ -734,20 +734,44 @@ router.post('/:id/verify', async (req, res) => {
  */
 router.post('/:id/reject', async (req, res) => {
   try {
-    const { reason } = req.body;
-    if (isConnected) {
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+    if (reason.length > 1000) {
+      return res.status(400).json({ success: false, message: 'Rejection reason must be 1,000 characters or fewer.' });
+    }
+    if (isConnected && supabase) {
+      const ownedClientIds = await getOwnedClientIds(req.user.id);
+      const { data: document, error: documentError } = await supabase
+        .from('documents_metadata')
+        .select('id, client_id, source')
+        .eq('id', req.params.id)
+        .is('deletion_requested_at', null)
+        .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000'])
+        .maybeSingle();
+      if (documentError) throw documentError;
+      if (!document || document.source === 'Telegram') {
+        return res.status(404).json({ success: false, message: 'Document not found.' });
+      }
+
       const { data, error } = await supabase
         .from('documents_metadata')
         .update({ status: 'Rejected', verified_by: reason || 'Quality check failed' })
-        .eq('id', req.params.id).select().single();
+        .eq('id', document.id)
+        .eq('client_id', document.client_id)
+        .is('deletion_requested_at', null)
+        .select().maybeSingle();
       if (error) throw error;
+      if (!data) return res.status(404).json({ success: false, message: 'Document not found.' });
       return res.json({ success: true, source: 'supabase', data });
     }
     const doc = fallbackDocuments.find(d => d.id === req.params.id);
-    if (doc) { doc.status = 'Rejected'; doc.reject_reason = reason; }
-    res.json({ success: true, source: 'demo', data: doc || null });
+    if (!doc) return res.status(404).json({ success: false, message: 'Document not found.' });
+    doc.status = 'Rejected';
+    doc.verified_by = reason || 'Quality check failed';
+    doc.reject_reason = reason || 'Quality check failed';
+    return res.json({ success: true, source: 'demo', data: doc });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error(`[Documents] Reject failed for ${req.params.id}:`, err.message);
+    res.status(500).json({ success: false, message: 'Could not reject this document. Please try again.' });
   }
 });
 
