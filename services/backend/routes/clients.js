@@ -64,7 +64,7 @@ function addClientFoldersToTree(entries, createdAt) {
   }
 }
 
-async function removeClientCloudDocuments(userId, clientId) {
+async function getClientCloudDocuments(userId, clientId) {
   const { data: documents, error } = await supabase.from('documents_metadata')
     .select('id, client_id, source, created_at, file_name, category, storage_bucket, storage_object_path, vault_path')
     .eq('client_id', clientId)
@@ -94,11 +94,20 @@ async function removeClientCloudDocuments(userId, clientId) {
     }
   }
 
-  for (const document of cloudObjects) {
-    const { error: storageError } = await supabase.storage
-      .from(document.storage_bucket)
-      .remove([document.storage_object_path]);
-    if (storageError) throw new Error(`Could not remove cloud document ${document.id}: ${storageError.message}`);
+  return cloudObjects;
+}
+
+async function removeClientCloudDocuments(documents) {
+  const objectsByBucket = new Map();
+  for (const document of documents) {
+    const paths = objectsByBucket.get(document.storage_bucket) || [];
+    paths.push(document.storage_object_path);
+    objectsByBucket.set(document.storage_bucket, paths);
+  }
+
+  for (const [bucket, paths] of objectsByBucket) {
+    const { error } = await supabase.storage.from(bucket).remove(paths);
+    if (error) throw new Error(`Could not remove client cloud documents from ${bucket}: ${error.message}`);
   }
 }
 // --- In-Memory Fallback Data (used when Supabase is not connected) ---
@@ -466,7 +475,7 @@ router.delete('/:id', async (req, res) => {
       if (lookupError) throw lookupError;
       if (!existing) return res.status(404).json({ success: false, message: 'Client not found.' });
 
-      await removeClientCloudDocuments(req.user.id, clientId);
+      const cloudDocuments = await getClientCloudDocuments(req.user.id, clientId);
       const { error: deleteError } = await supabase
         .from('clients')
         .delete()
@@ -474,7 +483,18 @@ router.delete('/:id', async (req, res) => {
         .eq('user_id', req.user.id);
       if (deleteError) throw deleteError;
       invalidateClientsCache(req.user.id);
-      return res.json({ success: true, source: 'supabase', data: { id: clientId, name: existing.name } });
+      let cleanupWarning;
+      try {
+        await removeClientCloudDocuments(cloudDocuments);
+      } catch (cleanupError) {
+        console.error(`[Clients] Client ${clientId} was deleted, but cloud document cleanup failed:`, cleanupError.message);
+        cleanupWarning = 'Client was deleted, but some private cloud documents could not be removed. Contact support to complete file cleanup.';
+      }
+      return res.json({
+        success: true,
+        source: 'supabase',
+        data: { id: clientId, name: existing.name, ...(cleanupWarning ? { cleanupWarning } : {}) }
+      });
     }
 
     const index = fallbackClients.findIndex(client => client.id === clientId);

@@ -451,21 +451,7 @@ export async function extractWithOpenRouter(
   category: string,
   onFallback?: OpenRouterFallbackCallback,
 ): Promise<OpenRouterResult & { extractedData: Record<string, unknown> }> {
-  if (file.size > 20 * 1024 * 1024) {
-    throw new Error('Files larger than 20 MB cannot be sent to OpenRouter. Choose a smaller image or PDF.');
-  }
-  const extension = file.name.split('.').pop()?.toLowerCase();
-  const mimeType = file.type || ({
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    png: 'image/png',
-    webp: 'image/webp',
-    gif: 'image/gif',
-    pdf: 'application/pdf',
-  } as Record<string, string>)[extension || ''] || '';
-  if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(mimeType)) {
-    throw new Error('Local OpenRouter vision mode accepts JPG, PNG, WEBP, or GIF images only. Turn off the local key setting to use the standard extraction service for this file type.');
-  }
+  validateOpenRouterExtractionFile(file);
 
   const prompt = extractionPrompt(category);
   const dataUrl = await fileDataUrl(file);
@@ -490,4 +476,22 @@ export async function extractWithOpenRouter(
   }
   validateExtractionData(extractedData as Record<string, unknown>, category);
   return { ...result, extractedData: extractedData as Record<string, unknown> };
+}
+
+export function validateOpenRouterExtractionFile(file: File): void {
+  if (file.size > 20 * 1024 * 1024) {
+    throw new Error('Files larger than 20 MB cannot be sent to OpenRouter. Choose a smaller image.');
+  }
+  const extension = file.name.split('.').pop()?.toLowerCase();
+  const mimeType = file.type || ({
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+    gif: 'image/gif',
+    pdf: 'application/pdf',
+  } as Record<string, string>)[extension || ''] || '';
+  if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(mimeType)) {
+    throw new Error('Local OpenRouter vision mode accepts JPG, PNG, WEBP, or GIF images only. Turn off the local key setting to use the standard extraction service for this file type.');
+  }
 }

@@ -139,8 +139,9 @@ export function ClientsPage() {
     setDeleteSaving(true);
     setDeleteError('');
     try {
-      await deleteClient(selectedClient.id);
+      const deleted = await deleteClient(selectedClient.id);
       dispatch({ type: 'DELETE_CLIENT', id: selectedClient.id });
+      setPortalNotice(deleted.cleanupWarning || '');
       setDeleteConfirm(false);
       setEditingClient(false);
       setSelectedClient(null);

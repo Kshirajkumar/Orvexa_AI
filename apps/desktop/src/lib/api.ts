@@ -6,6 +6,7 @@ import {
   type OpenRouterFallbackCallback,
   isUsingLocalOpenRouterKey,
   sendOpenRouterChat,
+  validateOpenRouterExtractionFile,
 } from './openRouter';
 import { hasOpenRouterApiKey } from './secureCredentials';
 
@@ -595,7 +596,7 @@ export async function updateClient(clientId: string, clientData: Partial<Client>
   return json.data;
 }
 
-export async function deleteClient(clientId: string): Promise<{ id: string; name: string }> {
+export async function deleteClient(clientId: string): Promise<{ id: string; name: string; cleanupWarning?: string }> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE_URL}/clients/${encodeURIComponent(clientId)}`, {
@@ -820,11 +821,13 @@ export async function processDocumentExtraction(
   clientName?: string,
   createdAt?: string,
   clientId?: string,
+  useLocalKey = isUsingLocalOpenRouterKey(),
 ) {
-  if (isUsingLocalOpenRouterKey()) {
+  if (useLocalKey) {
     if (!file) {
-      throw new Error('The local OpenRouter key needs the original image or PDF. Choose the file again and retry.');
+      throw new Error('The local OpenRouter key needs the original image. Choose a JPG, PNG, WEBP, or GIF image and retry.');
     }
+    validateOpenRouterExtractionFile(file);
     const extraction = await extractWithOpenRouter(file, category, onFallback);
     const saved = await authRequest<{
       success: boolean;

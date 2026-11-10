@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { useAppState, useDispatch } from '../state/store';
 import { fetchClientDocuments, processDocumentExtraction, uploadDocument, type DocumentItem } from '../lib/api';
-import type { OpenRouterFallbackProgress } from '../lib/openRouter';
+import { isUsingLocalOpenRouterKey, validateOpenRouterExtractionFile, type OpenRouterFallbackProgress } from '../lib/openRouter';
 
 type RunStep = 'idle' | 'uploading' | 'extracting' | 'saving' | 'done' | 'error';
 const CATEGORIES = [['GST', 'GST invoice'], ['Form16', 'Form 16'], ['IncomeTax', 'Income tax'], ['BankStatement', 'Bank statement'], ['Notice', 'Tax notice'], ['General', 'Other document']];
@@ -73,12 +73,14 @@ export function ExtractPage() {
     setMessage(''); setExtracted(null); setApproved(false);
     setFallbackProgress(null);
     try {
+      const useLocalOpenRouter = isUsingLocalOpenRouterKey();
+      if (useLocalOpenRouter) validateOpenRouterExtractionFile(file);
       setStep('uploading');
       const upload = await uploadDocument({ clientId: client.id, fileName: file.name, fileType: normalizedFileType(file), category, fileBase64: await fileToBase64(file), source: 'Upload' });
       const id = upload.data?.id;
       if (!id) throw new Error('The file was saved, but no document ID was returned for extraction.');
       setDocumentId(id); setStep('extracting');
-      const result = await processDocumentExtraction(id, category, file, setFallbackProgress, client.name, upload.data?.created_at, client.id);
+      const result = await processDocumentExtraction(id, category, file, setFallbackProgress, client.name, upload.data?.created_at, client.id, useLocalOpenRouter);
       setStep('saving');
       await new Promise((resolve) => window.setTimeout(resolve, 450));
       setExtracted(result.data?.extracted_data || { summary: result.message || 'Extraction completed.' });

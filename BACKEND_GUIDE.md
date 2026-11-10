@@ -69,6 +69,8 @@ To ensure the frontend can handle responses predictably, all routes **must** ret
 
 ### 3.2 Private Supabase Storage
 
+Client deletion validates document references before deleting the client and its cascaded metadata, then removes the corresponding Storage objects. If post-delete Storage cleanup fails, the API reports a cleanup warning because the database records cannot be restored.
+
 All document uploads and generated files must use `lib/documentStorage.js`. The helper validates the configured bucket is private, limits content to 20 MiB, and uses account/client/document-scoped object keys. Keep the service-role key on the backend only; never expose bucket credentials or public URLs to the desktop app. Validate client ownership and the expected object key before every read or delete. Record the bucket, object path, MIME type, and SHA-256 in `documents_metadata` only after a successful upload. On metadata failure, remove the uploaded object and report cleanup failures explicitly. Existing local files must be migrated and checksum-verified before their source copies are removed.
 
 Cloud objects use `{user_id}/{client_id}/{year}/{month}/{Raw|Extracted|Generated}/{document_id}_{file_name}` keys. Client creation initializes virtual `Raw` and `Extracted` folders for the creation month in the Files page; no empty placeholder objects are uploaded. Portal and staff source uploads use `Raw`, while documents explicitly categorized as `Extracted` or `Generated` use their matching folders. AI-extracted fields remain in `documents_metadata` and related records; they are not separate files unless an export is generated.
