@@ -88,6 +88,13 @@ function getPortalAuthFailure(error) {
       message: 'Too many account attempts were made. Please wait a few minutes before trying again.',
     };
   }
+  if (error?.status === 401 || error?.status === 403 || /invalid api key|invalid jwt|unauthori[sz]ed|forbidden/i.test(message)) {
+    return {
+      status: 503,
+      code: 'portal_auth_configuration',
+      message: 'Client portal enrollment is not configured correctly on the practice server. Please contact your practice administrator.',
+    };
+  }
   return {
     status: 503,
     code: 'portal_auth_unavailable',
@@ -375,7 +382,12 @@ router.post('/invitations/register', async (req, res) => {
         }
         created = updated;
       } else {
-        console.error('[Client Portal] Could not create the invited client account:', createError?.message || 'Supabase returned no user.');
+        console.error('[Client Portal] Could not create the invited client account:', {
+          status: createError?.status || null,
+          code: createError?.code || null,
+          name: createError?.name || null,
+          message: createError?.message || 'Supabase returned no user.',
+        });
         const failure = getPortalAuthFailure(createError);
         return res.status(failure.status).json({ success: false, code: failure.code, message: failure.message });
       }

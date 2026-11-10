@@ -90,6 +90,7 @@ test('portal invitation registration checks the exact email and blocks replayed 
   let existingAccountMode = false;
   let existingStaffAccountMode = false;
   let passwordPolicyMode = false;
+  let authConfigurationMode = false;
   database.supabase.from = createDatabaseMock(rows);
   database.supabase.rpc = async (functionName, args) => {
     rpcCalls.push({ functionName, args });
@@ -108,6 +109,9 @@ test('portal invitation registration checks the exact email and blocks replayed 
     createdUsers.push(attributes);
     if (passwordPolicyMode) {
       return { data: { user: null }, error: { status: 422, code: 'weak_password', message: 'Password should be stronger.' } };
+    }
+    if (authConfigurationMode) {
+      return { data: { user: null }, error: { status: 401, code: 'invalid_api_key', message: 'Invalid API key.' } };
     }
     if (existingAccountMode) {
       return { data: { user: null }, error: { status: 422, code: 'email_exists', message: 'Email already exists.' } };
@@ -303,6 +307,26 @@ test('portal invitation registration checks the exact email and blocks replayed 
       });
       assert.equal(passwordPolicyRegistration.status, 400);
       assert.equal((await passwordPolicyRegistration.json()).code, 'password_policy');
+
+      const configurationToken = crypto.randomBytes(32).toString('base64url');
+      rows.client_portal_invites.push({
+        id: 'invite-auth-configuration',
+        client_id: 'client-1',
+        invited_email: 'client@example.com',
+        token_hash: hashInviteToken(configurationToken),
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+        consumed_at: null,
+        revoked_at: null,
+      });
+      passwordPolicyMode = false;
+      authConfigurationMode = true;
+      const configurationRegistration = await fetch(`${origin}/api/v1/client-portal/invitations/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: configurationToken, email: 'client@example.com', password: 'long-enough-password-456' }),
+      });
+      assert.equal(configurationRegistration.status, 503);
+      assert.equal((await configurationRegistration.json()).code, 'portal_auth_configuration');
 
       rows.clients[0].email = 'new-client@example.com';
       const changedEmailStatus = await fetch(`${origin}/api/v1/client-portal/invitations/status`, {
