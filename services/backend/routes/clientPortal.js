@@ -56,6 +56,45 @@ function isValidPortalEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
 }
 
+function isAuthEmailAlreadyRegisteredError(error) {
+  const code = String(error?.code || '').toLowerCase();
+  const message = String(error?.message || '').toLowerCase();
+  return code === 'email_exists'
+    || code === 'user_already_exists'
+    || /already registered|already exists|email.*already.*use|user.*already.*use/.test(message);
+}
+
+function getPortalAuthFailure(error) {
+  const code = String(error?.code || '').toLowerCase();
+  const message = String(error?.message || '');
+  if (code === 'email_address_invalid' || /email address.*invalid|invalid.*email/i.test(message)) {
+    return {
+      status: 400,
+      code: 'invalid_email',
+      message: 'This email address was rejected. Check it for typing errors and confirm it matches the email your CA has on file.',
+    };
+  }
+  if (code === 'weak_password' || /password.*(weak|short|at least|characters)/i.test(message)) {
+    return {
+      status: 400,
+      code: 'password_policy',
+      message: 'Choose a stronger password that meets the portal password requirements, then try again.',
+    };
+  }
+  if (error?.status === 429) {
+    return {
+      status: 429,
+      code: 'portal_auth_rate_limited',
+      message: 'Too many account attempts were made. Please wait a few minutes before trying again.',
+    };
+  }
+  return {
+    status: 503,
+    code: 'portal_auth_unavailable',
+    message: 'The portal account service is temporarily unavailable. Please try again shortly. If the problem continues, contact your CA.',
+  };
+}
+
 async function consumeInvitationRateLimit(req, res, purpose) {
   try {
     const result = await consume(`client-portal:${purpose}:${req.ip || 'unknown'}`, 12, 60 * 60);
@@ -301,9 +340,10 @@ router.post('/invitations/register', async (req, res) => {
       email,
       password,
       email_confirm: true,
+      app_metadata: { taxflow_client_portal: true },
     });
     if (createError || !created?.user?.id) {
-      if (createError?.status === 422 || createError?.code === 'email_exists' || createError?.code === 'user_already_exists') {
+      if (isAuthEmailAlreadyRegisteredError(createError)) {
         const { data: existingUserId, error: lookupError } = await supabase.rpc('find_client_portal_auth_user', {
           p_email: email,
         });
@@ -336,43 +376,12 @@ router.post('/invitations/register', async (req, res) => {
         created = updated;
       } else {
         console.error('[Client Portal] Could not create the invited client account:', createError?.message || 'Supabase returned no user.');
-        if (
-          createError?.code === 'email_address_invalid'
-          || /email address.*invalid|invalid.*email/i.test(String(createError?.message || ''))
-        ) {
-          return res.status(400).json({
-            success: false,
-            code: 'invalid_email',
-            message: 'This email address was rejected. Check it for typing errors and confirm it matches the email your CA has on file.',
-          });
-        }
-        if (createError?.status === 429) {
-          return res.status(429).json({
-            success: false,
-            code: 'portal_auth_rate_limited',
-            message: 'Too many account attempts were made. Please wait a few minutes before trying again.',
-          });
-        }
-        return res.status(502).json({
-          success: false,
-          code: 'portal_account_creation_failed',
-          message: 'The portal could not finish creating your account. If this email is already used for a CA or staff TaxFlow login, ask your CA to use a different client email. Otherwise, try again shortly or contact your CA.',
-        });
+        const failure = getPortalAuthFailure(createError);
+        return res.status(failure.status).json({ success: false, code: failure.code, message: failure.message });
       }
     } else {
       createdNewUser = true;
       createdUserId = created.user.id;
-      const { data: marked, error: metadataError } = await supabase.auth.admin.updateUserById(createdUserId, {
-        app_metadata: { ...created.user.app_metadata, taxflow_client_portal: true },
-      });
-      if (metadataError || !marked?.user?.id) {
-        console.error('[Client Portal] Could not mark the new account as a portal identity:', metadataError?.message || 'Supabase returned no user.');
-        const { error: cleanupError } = await supabase.auth.admin.deleteUser(createdUserId);
-        if (cleanupError) console.error('[Client Portal] Failed to clean up an unmarked account:', cleanupError.message);
-        createdUserId = null;
-        return res.status(502).json({ success: false, message: 'Your account could not be secured. Please try again or contact your CA.' });
-      }
-      created = marked;
     }
 
     createdUserId = created.user.id;

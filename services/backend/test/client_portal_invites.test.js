@@ -89,6 +89,7 @@ test('portal invitation registration checks the exact email and blocks replayed 
   const rpcCalls = [];
   let existingAccountMode = false;
   let existingStaffAccountMode = false;
+  let passwordPolicyMode = false;
   database.supabase.from = createDatabaseMock(rows);
   database.supabase.rpc = async (functionName, args) => {
     rpcCalls.push({ functionName, args });
@@ -105,6 +106,9 @@ test('portal invitation registration checks the exact email and blocks replayed 
   };
   database.supabase.auth.admin.createUser = async (attributes) => {
     createdUsers.push(attributes);
+    if (passwordPolicyMode) {
+      return { data: { user: null }, error: { status: 422, code: 'weak_password', message: 'Password should be stronger.' } };
+    }
     if (existingAccountMode) {
       return { data: { user: null }, error: { status: 422, code: 'email_exists', message: 'Email already exists.' } };
     }
@@ -183,11 +187,9 @@ test('portal invitation registration checks the exact email and blocks replayed 
         email: 'client@example.com',
         password: 'long-enough-password-123',
         email_confirm: true,
+        app_metadata: { taxflow_client_portal: true },
       }]);
-      assert.deepEqual(markedUsers, [{
-        userId: 'client-auth-user',
-        attributes: { app_metadata: { taxflow_client_portal: true } },
-      }]);
+      assert.deepEqual(markedUsers, []);
       assert.equal(rpcCalls.filter((call) => call.functionName === 'claim_client_portal_invite').length, 1);
 
       const claimedStatus = await fetch(`${origin}/api/v1/client-portal/invitations/status`, {
@@ -280,6 +282,27 @@ test('portal invitation registration checks the exact email and blocks replayed 
       const staffEmailError = await staffEmailRegistration.json();
       assert.equal(staffEmailError.code, 'email_in_use_by_non_portal_account');
       assert.match(staffEmailError.message, /separate email address/i);
+
+      const passwordPolicyToken = crypto.randomBytes(32).toString('base64url');
+      rows.client_portal_invites.push({
+        id: 'invite-password-policy',
+        client_id: 'client-1',
+        invited_email: 'client@example.com',
+        token_hash: hashInviteToken(passwordPolicyToken),
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+        consumed_at: null,
+        revoked_at: null,
+      });
+      existingAccountMode = false;
+      existingStaffAccountMode = false;
+      passwordPolicyMode = true;
+      const passwordPolicyRegistration = await fetch(`${origin}/api/v1/client-portal/invitations/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: passwordPolicyToken, email: 'client@example.com', password: 'long-enough-password-456' }),
+      });
+      assert.equal(passwordPolicyRegistration.status, 400);
+      assert.equal((await passwordPolicyRegistration.json()).code, 'password_policy');
 
       rows.clients[0].email = 'new-client@example.com';
       const changedEmailStatus = await fetch(`${origin}/api/v1/client-portal/invitations/status`, {
