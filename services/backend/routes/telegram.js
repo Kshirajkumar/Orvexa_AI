@@ -74,6 +74,21 @@ function getRecentWebhookError(webhookInfo, now = Date.now()) {
   return { message, occurredAt: new Date(occurredAtMs).toISOString() };
 }
 
+function getTelegramMediaMessageType(message) {
+  const mediaTypes = [
+    ['photo', message.photo],
+    ['document', message.document],
+    ['video', message.video],
+    ['animation', message.animation],
+    ['video_note', message.video_note],
+    ['audio', message.audio],
+    ['voice', message.voice],
+    ['sticker', message.sticker],
+    ['paid_media', message.paid_media],
+  ];
+  return mediaTypes.find(([, value]) => value != null)?.[0] || null;
+}
+
 function publicTelegramMessage(message) {
   const {
     telegram_file_id,
@@ -354,6 +369,39 @@ async function hasActiveClientPortalAccount(client) {
     && access.user_id
     && String(access.invited_email || '').trim().toLowerCase() === String(client.email || '').trim().toLowerCase()
   );
+}
+
+async function sendTelegramMediaPrivacyReply(client, chatId, update) {
+  const mediaGroupId = String(update.message?.media_group_id || '').trim();
+  const updateId = mediaGroupId
+    ? `album:${mediaGroupId}`
+    : Number.isSafeInteger(update.update_id)
+      ? String(update.update_id)
+      : `${String(chatId)}:${String(update.message?.message_id || 'unknown')}`;
+  const providerMessageId = `taxflow:media-privacy:${client.id}:${updateId}`;
+  if (await isTelegramMessageSent(providerMessageId)) return;
+  const portalAccountExists = await hasActiveClientPortalAccount(client);
+  const portalLink = portalAccountExists
+    ? getClientPortalBaseUrl()
+    : getClientPortalLink(await getOrCreateTelegramPortalInvite(client, { createdBy: client.user_id }));
+  const body = [
+    'For your privacy and security, please do not send documents, photos, or files in Telegram.',
+    'The TaxFlow bot does not download or process media sent here.',
+    'Upload them only through your private TaxFlow Client Portal:',
+    portalLink,
+    '',
+    portalAccountExists
+      ? 'Sign in with the email address and password you already created for your portal account. Use the portal whenever you need to upload files.'
+      : 'First visit: create your account using the email address registered with your CA and set a password. Sign in with that email and password on future visits. Sign in to the portal whenever you need to upload files.',
+    ...(!portalAccountExists ? ['This invitation is private; please do not forward it.'] : []),
+  ].join('\n');
+  await sendTrackedTelegramMessage({
+    client,
+    chatId,
+    providerMessageId,
+    body,
+    label: 'Telegram file privacy reply',
+  });
 }
 
 async function sendTelegramWelcome(client, chatId, telegramToken, createdBy) {
@@ -773,7 +821,8 @@ router.post('/webhook', express.json({ limit: '2mb' }), async (req, res) => {
   if (!secretMatches(req.headers['x-telegram-bot-api-secret-token'], webhookSecret())) return res.sendStatus(401);
   const update = req.body || {};
   const message = update.message || update.edited_message;
-  if (message && typeof message.text !== 'string') {
+  const mediaType = update.message ? getTelegramMediaMessageType(update.message) : null;
+  if (!mediaType && message && typeof message.text !== 'string') {
     return res.status(200).json({ ok: true, ignored: true, reason: 'text_messages_only' });
   }
   if (!isConnected || !supabase) {
@@ -783,6 +832,24 @@ router.post('/webhook', express.json({ limit: '2mb' }), async (req, res) => {
 
   try {
     if (!message?.chat?.id) return res.status(200).json({ ok: true, ignored: true });
+    if (mediaType) {
+      if (message.chat.type !== 'private') {
+        return res.status(200).json({ ok: true, ignored: true, reason: 'private_chat_required' });
+      }
+      const { data: client, error: clientError } = await supabase.from('clients')
+        .select('id,name,email,status,user_id,telegram_user_id')
+        .eq('telegram_chat_id', String(message.chat.id))
+        .maybeSingle();
+      if (clientError) throw clientError;
+      if (!client || client.status !== 'Active') {
+        return res.status(200).json({ ok: true, ignored: true, reason: 'linked_active_client_required' });
+      }
+      if (client.telegram_user_id && String(client.telegram_user_id) !== String(message.from?.id || '')) {
+        return res.status(200).json({ ok: true, ignored: true, reason: 'linked_user_mismatch' });
+      }
+      await sendTelegramMediaPrivacyReply(client, message.chat.id, update);
+      return res.status(200).json({ ok: true, media_rejected: true });
+    }
     const text = typeof message.text === 'string' ? message.text.trim() : '';
     if (text.startsWith('/start')) {
       const token = text.replace(/^\/start(?:@[^\s]+)?\s*/i, '').trim();

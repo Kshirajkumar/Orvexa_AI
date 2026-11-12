@@ -157,7 +157,7 @@ test('Telegram status reports messaging diagnostics without checking portal Stor
   assert.equal(telegramApiCalls, 2);
 });
 
-test.skip('legacy Telegram media privacy workflow', async (t) => {
+test('Telegram media updates receive a private portal link without downloading or storing file bytes', async (t) => {
   const oldFrom = database.supabase.from;
   const oldStorageFrom = database.supabase.storage.from;
   const oldFetch = global.fetch;
