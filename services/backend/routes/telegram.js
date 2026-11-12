@@ -149,18 +149,22 @@ function createTelegramWelcome(clientName) {
   ].join('\n');
 }
 
-function createTelegramPortalInvitation(inviteToken) {
-  if (!inviteToken) {
-    return 'Your secure client portal invitation is unavailable or has expired. Please ask your CA to issue a new invitation.';
-  }
-  return [
-    `Your secure client portal invitation is ready:\n${getClientPortalLink(inviteToken)}`,
-    '',
-    'Open the link and use the same email address you gave your CA.',
-    'Create a password the first time. On future visits, sign in with that email and password.',
-    'Your invitation is private; do not forward it. If you lose access, contact your CA for a new invitation.',
-    'Upload documents only through the secure portal. Do not send documents in Telegram.',
-  ].join('\n');
+function createTelegramPortalAccessMessage(portalAccountExists, portalLink) {
+  return portalAccountExists
+    ? [
+      'Your TaxFlow client portal account is already active.',
+      `Open your secure portal here: ${portalLink}`,
+      '',
+      'Sign in with the email address and password you already created. Upload documents only through the secure portal.',
+    ].join('\n')
+    : [
+      `Your secure client portal invitation is ready:\n${portalLink}`,
+      '',
+      'Open the link and use the same email address you gave your CA.',
+      'Create a password the first time. On future visits, sign in with that email and password.',
+      'Your invitation is private; do not forward it. If you lose access, contact your CA for a new invitation.',
+      'Upload documents only through the secure portal. Do not send documents in Telegram.',
+    ].join('\n');
 }
 
 function isUsablePortalInvite(invitation, client) {
@@ -407,10 +411,13 @@ async function sendTelegramMediaPrivacyReply(client, chatId, update) {
 async function sendTelegramWelcome(client, chatId, telegramToken, createdBy) {
   const invitationMessageId = `taxflow:portal-invite:${client.id}:${chatId}`;
   if (await isTelegramMessageSent(invitationMessageId)) return;
-  const portalInviteToken = await getOrCreateTelegramPortalInvite(client, {
-    createdBy,
-    preferredToken: deriveTelegramPortalInviteToken(telegramToken),
-  });
+  const portalAccountExists = await hasActiveClientPortalAccount(client);
+  const portalLink = portalAccountExists
+    ? getClientPortalBaseUrl()
+    : getClientPortalLink(await getOrCreateTelegramPortalInvite(client, {
+      createdBy,
+      preferredToken: deriveTelegramPortalInviteToken(telegramToken),
+    }));
 
   await sendTrackedTelegramMessage({
     client,
@@ -423,7 +430,7 @@ async function sendTelegramWelcome(client, chatId, telegramToken, createdBy) {
     client,
     chatId,
     providerMessageId: invitationMessageId,
-    body: createTelegramPortalInvitation(portalInviteToken),
+    body: createTelegramPortalAccessMessage(portalAccountExists, portalLink),
     label: 'Portal invitation message',
   });
 }
@@ -949,5 +956,7 @@ module.exports._test = {
   getMissingDatabaseColumn,
   getRecentWebhookError,
   configureWebhook,
-  publicTelegramMessage
+  publicTelegramMessage,
+  getTelegramMediaMessageType,
+  createTelegramPortalAccessMessage
 };

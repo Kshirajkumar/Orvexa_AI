@@ -85,6 +85,25 @@ test('Telegram message projection never exposes legacy attachment fields', () =>
   assert.equal(Object.hasOwn(projected, 'telegram_file_id'), false);
 });
 
+test('Telegram media updates are classified without downloading or forwarding files', () => {
+  const { getTelegramMediaMessageType } = telegramRouter._test;
+  for (const type of ['photo', 'document', 'video', 'animation', 'video_note', 'audio', 'voice', 'sticker', 'paid_media']) {
+    assert.equal(getTelegramMediaMessageType({ [type]: {} }), type);
+  }
+  assert.equal(getTelegramMediaMessageType({ text: 'hello' }), null);
+});
+
+test('Telegram sends an invitation only before portal enrollment', () => {
+  const { createTelegramPortalAccessMessage } = telegramRouter._test;
+  const invitation = createTelegramPortalAccessMessage(false, 'https://portal.example/portal#invite=abc');
+  assert.match(invitation, /invitation/i);
+  assert.match(invitation, /#invite=abc/);
+
+  const existingAccount = createTelegramPortalAccessMessage(true, 'https://portal.example/portal');
+  assert.match(existingAccount, /already active/i);
+  assert.doesNotMatch(existingAccount, /#invite=/i);
+});
+
 test('Telegram webhook rejects a request with the wrong secret', async () => {
   const previous = process.env.TELEGRAM_WEBHOOK_SECRET;
   process.env.TELEGRAM_WEBHOOK_SECRET = 'configured-secret';
