@@ -4,7 +4,7 @@ create table if not exists public.telegram_link_tokens (
   token_hash text not null unique,
   expires_at timestamptz not null,
   consumed_at timestamptz,
-  created_by uuid references auth.users(id),
+  created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
@@ -19,7 +19,7 @@ create table if not exists public.telegram_messages (
   body text not null check (char_length(body) between 1 and 4096),
   message_type text not null default 'text',
   delivery_status text not null default 'received',
-  approved_by uuid references auth.users(id),
+  approved_by uuid references auth.users(id) on delete set null,
   approved_at timestamptz,
   created_at timestamptz not null default now(),
   unique (provider_message_id, direction)
@@ -46,7 +46,7 @@ $$;
 create unique index if not exists clients_telegram_chat_id_unique on public.clients(telegram_chat_id) where telegram_chat_id is not null;
 create unique index if not exists telegram_messages_provider_direction_unique on public.telegram_messages(provider_message_id, direction);
 create index if not exists telegram_messages_client_created_idx on public.telegram_messages(client_id, created_at desc);
-alter table public.telegram_messages add column if not exists approved_by uuid references auth.users(id);
+alter table public.telegram_messages add column if not exists approved_by uuid references auth.users(id) on delete set null;
 alter table public.telegram_messages add column if not exists approved_at timestamptz;
 alter table public.telegram_messages add column if not exists provider_response_id text;
 alter table public.telegram_messages drop constraint if exists telegram_messages_delivery_status_check;

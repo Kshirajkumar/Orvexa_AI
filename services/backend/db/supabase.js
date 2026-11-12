@@ -1,5 +1,5 @@
 /**
- * TaxFlow.AI â€” Supabase Cloud Database Client
+ * TaxFlow.AI — Supabase Cloud Database Client
  *
  * PURPOSE: Supabase stores structured metadata and private document objects:
  *   - Client records (name, PAN, GSTIN, phone, entity type)
@@ -13,6 +13,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const logger = require('../lib/logger');
 
 const SUPABASE_URL = String(process.env.SUPABASE_URL || '').trim();
 // Supabase's new server-only key replaces the legacy service_role key.
@@ -27,9 +28,15 @@ function isUsableSupabaseKey(value) {
 }
 
 if (!SUPABASE_URL || !isUsableSupabaseKey(SUPABASE_SERVER_KEY) || SUPABASE_URL.includes('YOUR_PROJECT_ID')) {
-  console.warn('[Supabase] âš ï¸  WARNING: Supabase credentials not configured in .env');
-  console.warn('[Supabase] Cloud-backed auth and data routes are unavailable until valid credentials are configured.');
-  console.warn('[Supabase] Set SUPABASE_URL and SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY).');
+  const reason = !SUPABASE_URL
+    ? 'SUPABASE_URL is missing'
+    : SUPABASE_URL.includes('YOUR_PROJECT_ID')
+      ? 'SUPABASE_URL is still a placeholder'
+      : 'SUPABASE_SECRET_KEY is missing or not a valid server key';
+  logger.warn('SUPABASE', 'cloud database disabled; running in demo mode', {
+    reason,
+    fix: 'Set SUPABASE_URL and SUPABASE_SECRET_KEY in services/backend/.env'
+  });
 }
 
 let supabase = null;
@@ -41,11 +48,10 @@ try {
       auth: { persistSession: false }
     });
     isConnected = true;
-    console.log('[Supabase] âœ… Connected to cloud database:', SUPABASE_URL);
+    logger.info('SUPABASE', 'cloud database client initialized', { project: SUPABASE_URL });
   }
 } catch (err) {
-  console.error('[Supabase] âŒ Connection failed:', err.message);
+  logger.error('SUPABASE', 'client initialization failed', { error: err });
 }
 
 module.exports = { supabase, isConnected, SUPABASE_SERVER_KEY };
-

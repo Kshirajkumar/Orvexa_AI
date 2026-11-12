@@ -22,6 +22,13 @@ const PORTAL_INVITE_LINK_PATTERN = /https?:\/\/[^\s<>"']+\/portal#invite=[A-Za-z
 function redactPortalInviteLinks(message) {
   return message.replace(PORTAL_INVITE_LINK_PATTERN, '[private client portal invitation link]');
 }
+
+function presentTelegramBody(message) {
+  return redactPortalInviteLinks(String(message || '')).replace(
+    /\[private client portal invitation link\]/g,
+    'Secure portal invitation link redacted from message history.'
+  );
+}
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
 function secretMatches(value, expected) { const left = Buffer.from(String(value || '')); const right = Buffer.from(String(expected || '')); return left.length === right.length && left.length > 0 && crypto.timingSafeEqual(left, right); }
 
@@ -104,7 +111,7 @@ function publicTelegramMessage(message) {
     ...visibleMessage
   } = message;
   if (!telegram_file_id && !telegram_file_name && !vault_file_ref && !file_download_pending) {
-    return visibleMessage;
+    return { ...visibleMessage, body: presentTelegramBody(visibleMessage.body) };
   }
   return {
     ...visibleMessage,

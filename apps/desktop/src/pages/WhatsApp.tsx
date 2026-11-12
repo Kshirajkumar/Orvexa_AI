@@ -1367,19 +1367,32 @@ export function WhatsAppPage() {
                   <div className="tg-skeleton-message outgoing short"><i /><i /><i /></div>
                 </div>
               )}
-              {channel === 'telegram' && (telegramStatusError || telegramDiagnostics.length > 0) && (
+              {channel === 'telegram' && telegramStatusError && (
                 <div className="empty telegram-state error" role="alert">
                   <b>Telegram integration setup needs attention</b>
-                  <span>This is a workspace-wide database or webhook issue, not a status report for {c.name}'s Telegram link.</span>
-                  {telegramStatusError && <span>{telegramStatusError}</span>}
-                  {telegramDiagnostics.map((warning) => <span key={warning}>{warning}</span>)}
-                  {needsTelegramMigrationHelp([telegramStatusError, ...telegramDiagnostics]) && (
+                  <span>Telegram could not complete its service health check. This does not delete or invalidate {c.name}'s stored conversation.</span>
+                  <details className="telegram-diagnostic-details">
+                    <summary>View technical details</summary>
+                    <span>{telegramStatusError}</span>
+                  </details>
+                  {needsTelegramMigrationHelp([telegramStatusError]) && (
                     <TelegramMigrationHelp
                       copied={telegramMigrationCommandCopied}
                       copyError={telegramMigrationCopyError}
                       onCopy={() => void copyTelegramMigrationCommand()}
                     />
                   )}
+                  <button className="btn sm" onClick={() => setTelegramStatusRetry((value) => value + 1)}>Check again</button>
+                </div>
+              )}
+              {channel === 'telegram' && !telegramStatusError && telegramDiagnostics.length > 0 && (
+                <div className="telegram-notice telegram-diagnostics-warning" role="status" aria-live="polite">
+                  <b>Telegram delivery needs attention</b>
+                  <span>Stored messages remain available. New inbound or outbound delivery may be delayed until the webhook is healthy.</span>
+                  <details className="telegram-diagnostic-details">
+                    <summary>View details ({telegramDiagnostics.length})</summary>
+                    {telegramDiagnostics.map((warning) => <span key={warning}>{warning}</span>)}
+                  </details>
                   <button className="btn sm" onClick={() => setTelegramStatusRetry((value) => value + 1)}>Check again</button>
                 </div>
               )}

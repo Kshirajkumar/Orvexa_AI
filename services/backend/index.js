@@ -34,6 +34,7 @@ const { requireAuth } = require('./middleware/requireAuth');
 
 const { supabase, isConnected } = require('./db/supabase');
 const { captureWhatsAppWebhookBody } = require('./lib/whatsappWebhookSecurity');
+const logger = require('./lib/logger');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -44,8 +45,15 @@ app.use(express.json({ limit: '100mb', verify: captureWhatsAppWebhookBody }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Request logger
-app.use((req, _res, next) => {
-  console.log(`[API] ${new Date().toISOString().substring(11, 19)} ${req.method} ${req.path}`);
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  res.on('finish', () => {
+    const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
+    logger[level]('HTTP', `${req.method} ${req.path}`, {
+      status: res.statusCode,
+      durationMs: Date.now() - startedAt
+    });
+  });
   next();
 });
 
@@ -150,6 +158,7 @@ app.get('/api/v1/health', async (req, res) => {
 
 // ─── 404 Handler ──────────────────────────────────────────────
 app.use((req, res) => {
+  logger.warn('HTTP', 'route not found', { method: req.method, path: req.path, status: 404 });
   res.status(404).json({ success: false, message: `Route not found: ${req.method} ${req.path}` });
 });
 
@@ -163,27 +172,30 @@ app.use((err, req, res, _next) => {
         : 'The request body is too large.';
     return res.status(413).json({ success: false, message });
   }
-  console.error('[Server Error]', err.message);
-  res.status(500).json({ success: false, message: 'Internal server error', error: err.message });
+  logger.error('HTTP', 'unhandled request error', {
+    method: req.method,
+    path: req.path,
+    status: 500,
+    error: err
+  });
+  res.status(500).json({
+    success: false,
+    message: 'Internal server error',
+    ...(process.env.NODE_ENV !== 'production' ? { error: err.message } : {})
+  });
 });
 
 // ─── Start Server ─────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log('');
-  console.log('╔═══════════════════════════════════════════════╗');
-  console.log('║    TaxFlow.AI Backend API Server v2.0         ║');
-  console.log('╠═══════════════════════════════════════════════╣');
-  console.log(`║  Server:    http://localhost:${PORT}              ║`);
-  console.log(`║  Database:  ${isConnected ? 'Supabase ✅' : 'Demo Mode ⚠️ (set .env)   '}  ║`);
-  console.log('╚═══════════════════════════════════════════════╝');
-  console.log('');
-  console.log('  API Health:  http://localhost:5000/api/v1/health');
-  console.log('  Clients:     http://localhost:5000/api/v1/clients');
-  console.log('  Documents:   http://localhost:5000/api/v1/documents');
-  console.log('  Deadlines:   http://localhost:5000/api/v1/deadlines');
-  console.log('');
+  logger.info('SERVER', 'TaxFlow.AI backend started', {
+    url: `http://localhost:${PORT}`,
+    mode: process.env.NODE_ENV || 'development',
+    database: isConnected ? 'supabase' : 'demo_mode',
+    storage: process.env.SUPABASE_STORAGE_BUCKET ? 'configured' : 'not_configured'
+  });
+  logger.info('SERVER', 'health endpoint ready', { path: '/api/v1/health' });
   telegramRouter.configureWebhook().catch((error) => {
-    console.error(`[Telegram] Webhook auto-configuration failed: ${error.message}`);
+    logger.error('TELEGRAM', 'webhook auto-configuration failed', { error });
   });
   require('./lib/telegramScheduleWorker').startTelegramScheduleWorker();
   require('./lib/storageCleanupWorker').startStorageCleanupWorker();
