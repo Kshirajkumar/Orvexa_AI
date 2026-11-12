@@ -480,8 +480,10 @@ export interface ClientPortalAccess {
   linked: boolean;
   email: string | null;
   createdAt: string | null;
-  status: 'account_created' | 'invitation_pending' | 'pending' | 'not_started';
+  status: 'account_created' | 'invitation_pending' | 'invitation_expired' | 'pending' | 'not_started';
   invitation?: { status: string; link: string; expiresAt: string } | null;
+  portalLink: string | null;
+  telegramLinked: boolean;
 }
 
 export async function fetchClientPortalAccess(clientId: string): Promise<ClientPortalAccess> {
@@ -522,6 +524,21 @@ export async function revokeClientPortalAccess(clientId: string): Promise<void> 
   if (!response.success) {
     throw new Error(response.message || 'Could not revoke client portal access.');
   }
+}
+
+export async function sendClientPortalLinkToTelegram(clientId: string): Promise<{ accountCreated: boolean; link: string }> {
+  const response = await authRequest<{
+    success: boolean;
+    message?: string;
+    data?: { accountCreated: boolean; link: string };
+  }>(
+    `${API_BASE_URL}/client-portal/clients/${encodeURIComponent(clientId)}/send-access-link`,
+    { method: 'POST', headers: authHeaders(), body: JSON.stringify({ requestId: crypto.randomUUID() }) },
+  );
+  if (!response.success || !response.data) {
+    throw new Error(response.message || 'Could not send the client portal link through Telegram.');
+  }
+  return response.data;
 }
 
 // ─── Client API ────────────────────────────────────────────────

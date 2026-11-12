@@ -3,7 +3,7 @@ import { Icon } from '../components/Icon';
 import { useAppState, useDispatch } from '../state/store';
 import { allTasks, missing } from '../lib/domain';
 import { money, sum } from '../lib/format';
-import { createClient, deleteClient, fetchClientPortalAccess, fetchStorageCleanupJob, fetchStorageCleanupJobs, inviteClientToPortal, retryStorageCleanupJob, revokeClientPortalAccess, updateClient, type StorageCleanupJob } from '../lib/api';
+import { createClient, deleteClient, fetchClientPortalAccess, fetchStorageCleanupJob, fetchStorageCleanupJobs, inviteClientToPortal, retryStorageCleanupJob, revokeClientPortalAccess, sendClientPortalLinkToTelegram, updateClient, type StorageCleanupJob } from '../lib/api';
 import { ClientFormCard, type ClientFormValues } from '../components/ClientFormCard';
 import { FilingTypePicker } from '../components/FilingTypePicker';
 import {
@@ -47,7 +47,10 @@ export function ClientsPage() {
   const [portalInviteLink, setPortalInviteLink] = React.useState('');
   const [portalMessage, setPortalMessage] = React.useState('');
   const [portalError, setPortalError] = React.useState('');
-  const [portalStatus, setPortalStatus] = React.useState<'account_created' | 'invitation_pending' | 'pending' | 'not_started'>('not_started');
+  const [portalStatus, setPortalStatus] = React.useState<'account_created' | 'invitation_pending' | 'invitation_expired' | 'pending' | 'not_started'>('not_started');
+  const [portalCardStates, setPortalCardStates] = React.useState<Record<string, 'account_created' | 'invitation_pending' | 'invitation_expired' | 'not_started'>>({});
+  const [portalTelegramLinked, setPortalTelegramLinked] = React.useState(false);
+  const [portalTelegramLoading, setPortalTelegramLoading] = React.useState(false);
   const [editForm, setEditForm] = React.useState({ name: '', entityType: 'Individual', pan: '', gstin: '', phone: '', email: '', countryId: '', filingTypes: [] as string[] });
   const [form, setForm] = React.useState<ClientFormValues>({ name: '', entityType: 'Individual', pan: '', gstin: '', phone: '', email: '', countryId: '', filingTypes: [] });
   const update = (key: keyof ClientFormValues, value: string | string[]) => setForm(prev => ({ ...prev, [key]: value }));
@@ -72,7 +75,8 @@ export function ClientsPage() {
         if (!disposed) {
           setPortalAccessEnabled(access.linked);
           setPortalStatus(access.status);
-          if (access.invitation?.link) setPortalInviteLink(access.invitation.link);
+          setPortalTelegramLinked(access.telegramLinked);
+          if (access.portalLink) setPortalInviteLink(access.portalLink);
         }
       })
       .catch(err => {
@@ -83,6 +87,24 @@ export function ClientsPage() {
       });
     return () => { disposed = true; };
   }, [selectedClient?.id]);
+  React.useEffect(() => {
+    let disposed = false;
+    if (!s.clients.length) {
+      setPortalCardStates({});
+      return () => { disposed = true; };
+    }
+    Promise.all(s.clients.map(async client => {
+      try {
+        const access = await fetchClientPortalAccess(client.id);
+        return [client.id, access.status === 'account_created' || access.status === 'invitation_expired' || access.status === 'invitation_pending' ? access.status : 'not_started'] as const;
+      } catch {
+        return [client.id, 'not_started'] as const;
+      }
+    })).then(entries => {
+      if (!disposed) setPortalCardStates(Object.fromEntries(entries));
+    });
+    return () => { disposed = true; };
+  }, [s.clients]);
 
   async function inviteSelectedClientToPortal() {
     if (!selectedClient || portalActionLoading) return;
@@ -94,6 +116,7 @@ export function ClientsPage() {
       const result = await inviteClientToPortal(selectedClient.id);
       setPortalInviteLink(result.link);
       setPortalStatus(result.status === 'account_created' ? 'account_created' : 'invitation_pending');
+      setPortalCardStates(previous => ({ ...previous, [selectedClient.id]: result.status === 'account_created' ? 'account_created' : 'invitation_pending' }));
       setPortalMessage(result.status === 'account_created'
         ? `This client already has a portal account. Use the normal portal link to sign in.`
         : `A private invitation for ${result.email} is ready. The same link will be reused until the client creates their account.`);
@@ -115,6 +138,24 @@ export function ClientsPage() {
     }
   }
 
+  async function sendPortalLinkToTelegram() {
+    if (!selectedClient || portalTelegramLoading) return;
+    setPortalTelegramLoading(true);
+    setPortalMessage('');
+    setPortalError('');
+    try {
+      const result = await sendClientPortalLinkToTelegram(selectedClient.id);
+      setPortalInviteLink(result.link);
+      setPortalMessage(result.accountCreated
+        ? 'The normal client portal sign-in link was sent to the client’s linked Telegram chat.'
+        : 'The one-time portal account-creation link was sent to the client’s linked Telegram chat.');
+    } catch (err) {
+      setPortalError(err instanceof Error ? err.message : 'Could not send the portal link through Telegram.');
+    } finally {
+      setPortalTelegramLoading(false);
+    }
+  }
+
   async function revokeSelectedClientPortalAccess() {
     if (!selectedClient || portalActionLoading) return;
     if (!window.confirm(`Revoke client portal access for ${selectedClient.name}?`)) return;
@@ -125,6 +166,8 @@ export function ClientsPage() {
     try {
       await revokeClientPortalAccess(selectedClient.id);
       setPortalAccessEnabled(false);
+      setPortalStatus('not_started');
+      setPortalCardStates(previous => ({ ...previous, [selectedClient.id]: 'not_started' }));
       setPortalMessage('Portal access has been revoked.');
     } catch (err) {
       setPortalError(err instanceof Error ? err.message : 'Could not revoke portal access.');
@@ -143,6 +186,7 @@ export function ClientsPage() {
         ? `Client created. A one-time portal invitation is ready for ${saved.email} and expires in 30 days.`
         : 'Client created. Add an email address later to enable the secure client portal.');
       if (saved.portalInvitation?.link) setPortalInviteLink(saved.portalInvitation.link);
+      setPortalCardStates(previous => ({ ...previous, [saved.id]: saved.portalInvitation?.link ? 'invitation_pending' : 'not_started' }));
       dispatch({ type: 'ADD_CLIENT', client: { id: saved.id, name: saved.name, entityType: saved.entity_type || form.entityType, short: saved.name.slice(0, 3).toUpperCase(), city: 'Local', country: saved.country_name || 'Selected country', countryId: saved.country_id || form.countryId, cur: saved.currency_code || 'INR', gstin: saved.gstin || '', pan: saved.pan || '', svc: saved.filing_types || form.filingTypes, filingTypes: saved.filing_types || form.filingTypes, contact: saved.email || '', phone: saved.phone || '', fee: 0, tone: 'blue', alias: [] } });
       setShowAdd(false); setForm({ name: '', entityType: 'Individual', pan: '', gstin: '', phone: '', email: '', countryId: '', filingTypes: [] });
     } catch (err: any) { setError(err.message || 'Could not save client.'); }
@@ -269,7 +313,7 @@ export function ClientsPage() {
           const pct = mine.length ? Math.round((sum(mine, (x) => x.done) / sum(mine, (x) => x.total)) * 100) : 0;
           const m = missing(s.checks, c.id).length;
           return (
-            <div key={c.id} className="card ccard">
+            <div key={c.id} className={`card ccard${portalCardStates[c.id] === 'invitation_pending' ? ' portal-pending' : portalCardStates[c.id] === 'invitation_expired' ? ' portal-expired' : ''}`}>
               <div className="row">
                 <span className="av lg" style={{ ['--t' as any]: c.tone }}>{c.short.slice(0, 2).toUpperCase()}</span>
                 <div style={{ minWidth: 0 }}><b>{c.name}</b><div className="mut" style={{ fontSize: 12 }}>{c.city}, {c.country}</div></div>
@@ -284,6 +328,9 @@ export function ClientsPage() {
               <div className="bar"><i style={{ width: pct + '%' }} /></div>
               <div className="row" style={{ margin: '12px 0', flexWrap: 'wrap', gap: 6 }}>
                 {m ? <span className="chip amber">{m} documents missing</span> : <span className="chip green">All documents received</span>}
+                {portalCardStates[c.id] === 'invitation_pending' && <span className="chip portal-card-chip">Portal setup pending</span>}
+                {portalCardStates[c.id] === 'invitation_expired' && <span className="chip portal-card-chip">Portal invite expired</span>}
+                {portalCardStates[c.id] === 'account_created' && <span className="chip green">Portal active</span>}
               </div>
               <div className="row"><button className="btn sm" onClick={() => setSelectedClient(c)}>View details</button><button className="btn sm" onClick={() => { dispatch({ type: 'WA_CLIENT', id: c.id }); dispatch({ type: 'GO', page: 'whatsapp' }); }}><Icon name="chat" size={13} />Chat</button></div>
             </div>
@@ -320,18 +367,21 @@ export function ClientsPage() {
             <div className="client-details-section client-portal-access">
               <span className="eyebrow">Secure client portal</span>
               <p>Clients upload documents here. Files are stored in the configured private Supabase Storage bucket.</p>
+              {portalAccessLoading && <div className="portal-access-skeleton" aria-busy="true" aria-label="Checking client portal access"><span /><span /><span /></div>}
               {portalError && <div className="ob-error" role="alert">{portalError}</div>}
               {portalMessage && <div className="portal-success-message" role="status">{portalMessage}</div>}
-              <div className="row">
+              <div className={`row${portalAccessLoading ? ' portal-controls-hidden' : ''}`}>
                 <span className={`chip ${portalAccessEnabled ? 'green' : 'amber'}`}>
                   {portalAccessLoading ? 'Checking access…' : portalAccessEnabled ? 'Client portal active' : 'Invitation required'}
                 </span>
                 <span className="sp" />
+                <button className="btn sm" disabled={portalTelegramLoading || portalActionLoading || !portalTelegramLinked} onClick={() => void sendPortalLinkToTelegram()} title={!portalTelegramLinked ? 'Link this client to Telegram first' : undefined}>{portalTelegramLoading ? 'Sending…' : 'Send via Telegram'}</button>
                 {portalAccessEnabled
                   && <button className="btn sm danger" disabled={portalActionLoading || portalAccessLoading} onClick={() => void revokeSelectedClientPortalAccess()}>{portalActionLoading ? 'Please wait…' : 'Revoke access'}</button>}
                 <button className="btn sm pri" disabled={portalActionLoading || portalAccessLoading || !selectedClient.contact.trim()} onClick={() => void inviteSelectedClientToPortal()} title={!selectedClient.contact.trim() ? 'Add an email address to this client first' : undefined}>{portalActionLoading ? 'Creating link…' : 'Create secure invite link'}</button>
               </div>
-              {portalInviteLink && <div className="client-portal-invite-link">
+              {portalStatus === 'invitation_expired' && !portalAccessLoading && <div className="portal-expired-note" role="status">This invitation expired after 30 days. Create a fresh link before sending it.</div>}
+              {portalInviteLink && <div className={`client-portal-invite-link${portalAccessLoading ? ' portal-controls-hidden' : ''}`}>
                 <label htmlFor="portal-invite-link">Private invitation link · expires in 30 days</label>
                 <div className="row">
                   <input id="portal-invite-link" value={portalInviteLink} readOnly onFocus={event => event.currentTarget.select()} aria-label="Private portal invitation link" />

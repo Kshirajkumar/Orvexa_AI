@@ -12,6 +12,7 @@ const {
 } = require('../lib/clientPortalInvites');
 const { requireAuth } = require('../middleware/requireAuth');
 const { assertOwnedClient } = require('../lib/ownership');
+const { isClientAccount } = require('../lib/accountRoles');
 
 const botToken = () => process.env.TELEGRAM_BOT_TOKEN || '';
 const webhookSecret = () => process.env.TELEGRAM_WEBHOOK_SECRET || '';
@@ -379,11 +380,38 @@ async function hasActiveClientPortalAccount(client) {
     .eq('client_id', client.id)
     .maybeSingle();
   if (error) throw error;
+  if (!access?.active || !access.user_id) return false;
+  const [{ data: authData, error: authError }, { data: profile, error: profileError }] = await Promise.all([
+    supabase.auth.admin.getUserById(access.user_id),
+    supabase.from('user_profiles').select('account_category').eq('id', access.user_id).maybeSingle(),
+  ]);
+  if (authError) throw authError;
+  if (profileError) throw profileError;
   return Boolean(
-    access?.active
-    && access.user_id
+    isClientAccount(authData?.user)
+    && profile?.account_category === 'client_user'
     && String(access.invited_email || '').trim().toLowerCase() === String(client.email || '').trim().toLowerCase()
+    && String(authData.user.email || '').trim().toLowerCase() === String(client.email || '').trim().toLowerCase()
   );
+}
+
+async function sendClientPortalAccessMessage(client, createdBy, requestId) {
+  if (!client?.telegram_chat_id) {
+    throw Object.assign(new Error('Link delivery requires a linked Telegram chat for this client.'), { status: 422 });
+  }
+  const portalAccountExists = await hasActiveClientPortalAccount(client);
+  const portalLink = portalAccountExists
+    ? getClientPortalBaseUrl()
+    : getClientPortalLink(await getOrCreateTelegramPortalInvite(client, { createdBy }));
+  const providerMessageId = `taxflow:portal-access:${client.id}:${String(requestId || crypto.randomUUID())}`;
+  await sendTrackedTelegramMessage({
+    client,
+    chatId: client.telegram_chat_id,
+    providerMessageId,
+    body: createTelegramPortalAccessMessage(portalAccountExists, portalLink),
+    label: 'Client portal link delivery',
+  });
+  return { accountCreated: portalAccountExists, link: portalLink };
 }
 
 async function sendTelegramMediaPrivacyReply(client, chatId, update) {
@@ -958,6 +986,7 @@ module.exports = router;
 module.exports.configureWebhook = configureWebhook;
 module.exports.notifyClientPortalEmailChanged = notifyClientPortalEmailChanged;
 module.exports.sendScheduledTelegramReminder = sendScheduledTelegramReminder;
+module.exports.sendClientPortalAccessMessage = sendClientPortalAccessMessage;
 module.exports._test = {
   secretMatches,
   expectedWebhookUrl,

@@ -7,6 +7,7 @@ const { requireAuth } = require('../middleware/requireAuth');
 const { requireClientPortalAuth } = require('../middleware/requireClientPortalAuth');
 const { ACCOUNT_ROLE, isClientAccount } = require('../lib/accountRoles');
 const { assertOwnedClient } = require('../lib/ownership');
+const telegramRouter = require('./telegram');
 const { consume, RateLimiterUnavailableError } = require('../lib/rateLimiter');
 const {
   getActiveClientPortalInvite,
@@ -294,6 +295,7 @@ router.get('/clients/:clientId/access', requireAuth, async (req, res) => {
       .maybeSingle();
     if (error) throw error;
     let invitation = null;
+    let invitationStatus = 'not_started';
     if (!data?.user_id && data?.invitation_pending && client.email) {
       const pendingInvite = await getActiveClientPortalInvite(client.id, client.email);
       if (pendingInvite?.token_ciphertext) {
@@ -301,9 +303,26 @@ router.get('/clients/:clientId/access', requireAuth, async (req, res) => {
           const token = decryptPortalInviteToken(pendingInvite.token_ciphertext);
           if (hashInviteToken(token) === pendingInvite.token_hash) {
             invitation = { status: 'pending', link: getClientPortalInvitationLink(token), expiresAt: pendingInvite.expires_at };
+            invitationStatus = 'invitation_pending';
           }
         } catch (inviteError) {
           console.error('[Client Portal] Could not restore pending invitation link:', inviteError.message);
+        }
+      }
+      if (!invitation) {
+        const { data: latestInvite, error: latestInviteError } = await supabase
+          .from('client_portal_invites')
+          .select('expires_at, consumed_at, revoked_at, invited_email')
+          .eq('client_id', client.id)
+          .eq('invited_email', String(client.email).trim().toLowerCase())
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latestInviteError) throw latestInviteError;
+        if (latestInvite && !latestInvite.consumed_at && !latestInvite.revoked_at) {
+          invitationStatus = latestInvite.expires_at && new Date(latestInvite.expires_at).getTime() <= Date.now()
+            ? 'invitation_expired'
+            : 'invitation_pending';
         }
       }
     }
@@ -315,15 +334,32 @@ router.get('/clients/:clientId/access', requireAuth, async (req, res) => {
           && String(data.invited_email || '').toLowerCase() === String(client.email || '').trim().toLowerCase()
         ),
         linked: Boolean(data?.active && data.user_id),
-        status: data?.active && data.user_id ? 'account_created' : invitation?.status || (data?.invitation_pending ? 'invitation_pending' : 'not_started'),
+        status: data?.active && data.user_id ? 'account_created' : invitation?.status === 'pending' ? 'invitation_pending' : invitationStatus,
         email: client.email || null,
         createdAt: data?.created_at || null,
-        invitation
+        invitation,
+        portalLink: data?.active && data.user_id ? getClientPortalBaseUrl() : invitation?.link || null,
+        telegramLinked: Boolean(client.telegram_chat_id)
       }
     });
   } catch (error) {
     console.error('[Client Portal] Could not load client access:', error.message);
     return res.status(500).json({ success: false, message: 'Could not load this client’s portal access.' });
+  }
+});
+
+router.post('/clients/:clientId/send-access-link', requireAuth, async (req, res) => {
+  try {
+    const client = await requireStaffClient(req, res);
+    if (!client) return;
+    if (!client.telegram_chat_id) {
+      return res.status(422).json({ success: false, message: 'Link delivery requires a linked Telegram chat for this client.' });
+    }
+    const result = await telegramRouter.sendClientPortalAccessMessage(client, req.user.id, req.body?.requestId);
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('[Client Portal] Telegram portal-link delivery failed:', error.message);
+    return res.status(error.status || 500).json({ success: false, message: error.message || 'Could not send the client portal link through Telegram.' });
   }
 });
 
