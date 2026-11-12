@@ -72,13 +72,17 @@ test('Telegram webhook diagnostics do not present errors older than one day as r
   );
 });
 
-test('Telegram accepts text but classifies file and non-text updates as unsupported', () => {
-  const { getUnsupportedTelegramMessageType } = telegramRouter._test;
-  assert.equal(getUnsupportedTelegramMessageType({ text: 'hello' }), null);
-  assert.equal(getUnsupportedTelegramMessageType({ document: { file_id: 'private-document' } }), 'document');
-  assert.equal(getUnsupportedTelegramMessageType({ photo: [{ file_id: 'private-photo' }] }), 'photo');
-  assert.equal(getUnsupportedTelegramMessageType({ voice: { file_id: 'voice-message' } }), 'voice');
-  assert.equal(getUnsupportedTelegramMessageType({ location: { latitude: 1, longitude: 2 } }), 'location');
+test('Telegram message projection never exposes legacy attachment fields', () => {
+  const { publicTelegramMessage } = telegramRouter._test;
+  const projected = publicTelegramMessage({
+    id: 'message-1',
+    body: 'legacy attachment',
+    telegram_file_id: 'private-document',
+    telegram_file_name: 'private.pdf',
+  });
+  assert.equal(projected.message_type, 'text');
+  assert.match(projected.body, /text messages only/i);
+  assert.equal(Object.hasOwn(projected, 'telegram_file_id'), false);
 });
 
 test('Telegram webhook rejects a request with the wrong secret', async () => {

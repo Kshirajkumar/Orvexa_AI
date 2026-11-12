@@ -74,44 +74,6 @@ function getRecentWebhookError(webhookInfo, now = Date.now()) {
   return { message, occurredAt: new Date(occurredAtMs).toISOString() };
 }
 
-function getUnsupportedTelegramMessageType(message) {
-  const unsupportedTypes = [
-    ['photo', message.photo],
-    ['document', message.document],
-    ['video', message.video],
-    ['animation', message.animation],
-    ['video_note', message.video_note],
-    ['audio', message.audio],
-    ['voice', message.voice],
-    ['sticker', message.sticker],
-    ['contact', message.contact],
-    ['location', message.location],
-    ['venue', message.venue],
-    ['poll', message.poll],
-    ['dice', message.dice],
-    ['game', message.game],
-    ['story', message.story],
-    ['paid_media', message.paid_media],
-    ['checklist', message.checklist],
-  ];
-  return unsupportedTypes.find(([, value]) => value)?.[0] || null;
-}
-
-function getTelegramMediaMessageType(message) {
-  const mediaTypes = [
-    ['photo', message.photo],
-    ['document', message.document],
-    ['video', message.video],
-    ['animation', message.animation],
-    ['video_note', message.video_note],
-    ['audio', message.audio],
-    ['voice', message.voice],
-    ['sticker', message.sticker],
-    ['paid_media', message.paid_media],
-  ];
-  return mediaTypes.find(([, value]) => value != null)?.[0] || null;
-}
-
 function publicTelegramMessage(message) {
   const {
     telegram_file_id,
@@ -394,39 +356,6 @@ async function hasActiveClientPortalAccount(client) {
   );
 }
 
-async function sendTelegramMediaPrivacyReply(client, chatId, update) {
-  const mediaGroupId = String(update.message?.media_group_id || '').trim();
-  const updateId = mediaGroupId
-    ? `album:${mediaGroupId}`
-    : Number.isSafeInteger(update.update_id)
-      ? String(update.update_id)
-      : `${String(chatId)}:${String(update.message?.message_id || 'unknown')}`;
-  const providerMessageId = `taxflow:media-privacy:${client.id}:${updateId}`;
-  if (await isTelegramMessageSent(providerMessageId)) return;
-  const portalAccountExists = await hasActiveClientPortalAccount(client);
-  const portalLink = portalAccountExists
-    ? getClientPortalBaseUrl()
-    : getClientPortalLink(await getOrCreateTelegramPortalInvite(client, { createdBy: client.user_id }));
-  const body = [
-    'For your privacy and security, please do not send documents, photos, or files in Telegram.',
-    'The TaxFlow bot does not download or process media sent here.',
-    'Upload them only through your private TaxFlow Client Portal:',
-    portalLink,
-    '',
-    portalAccountExists
-      ? 'Sign in with the email address and password you already created for your portal account. Use the portal whenever you need to upload files.'
-      : 'First visit: create your account using the email address registered with your CA and set a password. Sign in with that email and password on future visits. Sign in to the portal whenever you need to upload files.',
-    ...(!portalAccountExists ? ['This invitation is private; please do not forward it.'] : []),
-  ].join('\n');
-  await sendTrackedTelegramMessage({
-    client,
-    chatId,
-    providerMessageId,
-    body,
-    label: 'Telegram file privacy reply',
-  });
-}
-
 async function sendTelegramWelcome(client, chatId, telegramToken, createdBy) {
   const invitationMessageId = `taxflow:portal-invite:${client.id}:${chatId}`;
   if (await isTelegramMessageSent(invitationMessageId)) return;
@@ -493,8 +422,6 @@ router.get('/status', requireAuth, async (_req, res) => {
   let bot;
   let webhookInfo = null;
   let telegramSchemaReady = false;
-  let clientPortalAccessReady = false;
-  let clientPortalInvitesReady = false;
   try {
     bot = await telegramCall('getMe', {});
     webhookInfo = await telegramCall('getWebhookInfo', {});
@@ -513,19 +440,13 @@ router.get('/status', requireAuth, async (_req, res) => {
       const [
         { error: messagesSchemaError },
         { error: linkTokensSchemaError },
-        { error: portalAccessSchemaError },
-        { error: invitesSchemaError },
       ] = await Promise.all([
         supabase.from('telegram_messages')
           .select('id,body')
           .limit(1),
         supabase.from('telegram_link_tokens').select('id').limit(1),
-        supabase.from('client_portal_access').select('id,invited_email,active').limit(1),
-        supabase.from('client_portal_invites').select('id,token_ciphertext').limit(1),
       ]);
       telegramSchemaReady = !messagesSchemaError && !linkTokensSchemaError;
-      clientPortalAccessReady = !portalAccessSchemaError;
-      clientPortalInvitesReady = !invitesSchemaError;
       if (!telegramSchemaReady) {
         if (messagesSchemaError) {
           console.error('[Telegram] telegram_messages schema check failed:', messagesSchemaError.message);
@@ -535,14 +456,6 @@ router.get('/status', requireAuth, async (_req, res) => {
           console.error('[Telegram] telegram_link_tokens schema check failed:', linkTokensSchemaError.message);
           warnings.push(databaseSetupWarning('telegram_link_tokens', linkTokensSchemaError));
         }
-      }
-      if (invitesSchemaError) {
-        console.error('[Telegram] client_portal_invites schema check failed:', invitesSchemaError.message);
-        warnings.push(databaseSetupWarning('client_portal_invites', invitesSchemaError));
-      }
-      if (portalAccessSchemaError) {
-        console.error('[Telegram] client_portal_access schema check failed:', portalAccessSchemaError.message);
-        warnings.push(databaseSetupWarning('client_portal_access', portalAccessSchemaError));
       }
     } catch (error) {
       console.error('[Telegram] Runtime database schema check failed:', error.message);
@@ -580,8 +493,6 @@ router.get('/status', requireAuth, async (_req, res) => {
       webhookLastError: recentWebhookError?.message || null,
       webhookLastErrorAt: recentWebhookError?.occurredAt || null,
       telegramSchemaReady,
-      clientPortalAccessReady,
-      clientPortalInvitesReady,
       webhookAutoConfigureEnabled: webhookAutoConfigureEnabled(),
       webhookIngress,
       warnings
@@ -862,10 +773,7 @@ router.post('/webhook', express.json({ limit: '2mb' }), async (req, res) => {
   if (!secretMatches(req.headers['x-telegram-bot-api-secret-token'], webhookSecret())) return res.sendStatus(401);
   const update = req.body || {};
   const message = update.message || update.edited_message;
-  const mediaType = update.message ? getTelegramMediaMessageType(update.message) : null;
-  const unsupportedType = message ? getUnsupportedTelegramMessageType(message) : null;
-  if (unsupportedType && !mediaType) {
-    console.info(`[Telegram] Ignored ${unsupportedType} update ${update.update_id ?? 'unknown'}; file transfers are disabled.`);
+  if (message && typeof message.text !== 'string') {
     return res.status(200).json({ ok: true, ignored: true, reason: 'text_messages_only' });
   }
   if (!isConnected || !supabase) {
@@ -875,27 +783,6 @@ router.post('/webhook', express.json({ limit: '2mb' }), async (req, res) => {
 
   try {
     if (!message?.chat?.id) return res.status(200).json({ ok: true, ignored: true });
-    if (mediaType) {
-      if (message.chat.type !== 'private') {
-        console.info(`[Telegram] Ignored ${mediaType} update from unsupported ${message.chat.type} chat.`);
-        return res.status(200).json({ ok: true, ignored: true, reason: 'private_chat_required' });
-      }
-      const { data: client, error: clientError } = await supabase.from('clients')
-        .select('id,name,email,status,user_id,telegram_user_id')
-        .eq('telegram_chat_id', String(message.chat.id))
-        .maybeSingle();
-      if (clientError) throw clientError;
-      if (!client || client.status !== 'Active') {
-        console.info(`[Telegram] Ignored ${mediaType} update from an unlinked or inactive client chat.`);
-        return res.status(200).json({ ok: true, ignored: true, reason: 'linked_active_client_required' });
-      }
-      if (client.telegram_user_id && String(client.telegram_user_id) !== String(message.from?.id || '')) {
-        console.warn('[Telegram] Ignored a media update whose sender does not match the linked Telegram user.');
-        return res.status(200).json({ ok: true, ignored: true, reason: 'linked_user_mismatch' });
-      }
-      await sendTelegramMediaPrivacyReply(client, message.chat.id, update);
-      return res.status(200).json({ ok: true, media_rejected: true });
-    }
     const text = typeof message.text === 'string' ? message.text.trim() : '';
     if (text.startsWith('/start')) {
       const token = text.replace(/^\/start(?:@[^\s]+)?\s*/i, '').trim();
@@ -995,6 +882,5 @@ module.exports._test = {
   getMissingDatabaseColumn,
   getRecentWebhookError,
   configureWebhook,
-  getUnsupportedTelegramMessageType,
   publicTelegramMessage
 };

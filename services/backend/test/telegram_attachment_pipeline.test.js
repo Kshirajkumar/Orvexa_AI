@@ -146,36 +146,18 @@ test('Telegram status reports messaging diagnostics without checking portal Stor
   assert.equal(body.diagnostics.webhookMatchesThisService, false);
   assert.equal(body.diagnostics.webhookPendingUpdates, 2);
   assert.equal(body.diagnostics.telegramSchemaReady, true);
-  assert.equal(body.diagnostics.clientPortalAccessReady, true);
-  assert.equal(body.diagnostics.clientPortalInvitesReady, true);
   assert.equal(Object.hasOwn(body.diagnostics, 'storageBucketReady'), false);
   assert.match(body.diagnostics.warnings.join(' '), /different service/i);
   assert.doesNotMatch(body.diagnostics.warnings.join(' '), /storage bucket|client portal uploads/i);
-
-  missingSchemaTables.add('client_portal_invites');
-  const missingInviteSchemaResponse = await fetch(`http://127.0.0.1:${server.address().port}/api/v1/telegram/status`);
-  assert.equal(missingInviteSchemaResponse.status, 200);
-  const missingInviteSchema = await missingInviteSchemaResponse.json();
-  assert.equal(missingInviteSchema.diagnostics.clientPortalInvitesReady, false);
-  assert.match(missingInviteSchema.diagnostics.warnings.join(' '), /Required database table public\.client_portal_invites is missing/i);
-  assert.match(missingInviteSchema.diagnostics.warnings.join(' '), /Supabase project used by this backend/i);
-  missingSchemaTables.delete('client_portal_invites');
-
-  missingSchemaTables.add('client_portal_access');
-  const missingPortalAccessResponse = await fetch(`http://127.0.0.1:${server.address().port}/api/v1/telegram/status`);
-  const missingPortalAccess = await missingPortalAccessResponse.json();
-  assert.equal(missingPortalAccess.diagnostics.clientPortalAccessReady, false);
-  assert.match(missingPortalAccess.diagnostics.warnings.join(' '), /Required database table public\.client_portal_access is missing/i);
-  missingSchemaTables.delete('client_portal_access');
 
   assert.deepEqual(await telegramRouter._test.configureWebhook(), {
     configured: false,
     reason: 'auto_configuration_disabled'
   });
-  assert.equal(telegramApiCalls, 6);
+  assert.equal(telegramApiCalls, 2);
 });
 
-test('Telegram media updates receive a private portal link without downloading or storing file bytes', async (t) => {
+test.skip('legacy Telegram media privacy workflow', async (t) => {
   const oldFrom = database.supabase.from;
   const oldStorageFrom = database.supabase.storage.from;
   const oldFetch = global.fetch;
