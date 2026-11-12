@@ -9,9 +9,12 @@ const { ACCOUNT_ROLE, isClientAccount } = require('../lib/accountRoles');
 const { assertOwnedClient } = require('../lib/ownership');
 const { consume, RateLimiterUnavailableError } = require('../lib/rateLimiter');
 const {
-  createClientPortalInvite,
+  getActiveClientPortalInvite,
+  getOrCreateClientPortalInvite,
   deriveTelegramPortalInviteToken,
   getClientPortalInvitationLink,
+  getClientPortalBaseUrl,
+  decryptPortalInviteToken,
   hashInviteToken,
   revokeClientPortalInvites,
 } = require('../lib/clientPortalInvites');
@@ -268,7 +271,7 @@ async function requireStaffClient(req, res) {
   }
   const { data, error } = await supabase
     .from('clients')
-    .select('id, name, email, status')
+    .select('id, name, email, status, telegram_chat_id')
     .eq('id', req.params.clientId)
     .eq('user_id', req.user.id)
     .maybeSingle();
@@ -290,6 +293,20 @@ router.get('/clients/:clientId/access', requireAuth, async (req, res) => {
       .eq('client_id', client.id)
       .maybeSingle();
     if (error) throw error;
+    let invitation = null;
+    if (!data?.user_id && data?.invitation_pending && client.email) {
+      const pendingInvite = await getActiveClientPortalInvite(client.id, client.email);
+      if (pendingInvite?.token_ciphertext) {
+        try {
+          const token = decryptPortalInviteToken(pendingInvite.token_ciphertext);
+          if (hashInviteToken(token) === pendingInvite.token_hash) {
+            invitation = { status: 'pending', link: getClientPortalInvitationLink(token), expiresAt: pendingInvite.expires_at };
+          }
+        } catch (inviteError) {
+          console.error('[Client Portal] Could not restore pending invitation link:', inviteError.message);
+        }
+      }
+    }
     return res.json({
       success: true,
       data: {
@@ -298,8 +315,10 @@ router.get('/clients/:clientId/access', requireAuth, async (req, res) => {
           && String(data.invited_email || '').toLowerCase() === String(client.email || '').trim().toLowerCase()
         ),
         linked: Boolean(data?.active && data.user_id),
+        status: data?.active && data.user_id ? 'account_created' : invitation?.status || (data?.invitation_pending ? 'invitation_pending' : 'not_started'),
         email: client.email || null,
-        createdAt: data?.created_at || null
+        createdAt: data?.created_at || null,
+        invitation
       }
     });
   } catch (error) {
@@ -462,15 +481,23 @@ router.post('/clients/:clientId/invite', requireAuth, async (req, res) => {
     if (client.status !== 'Active') {
       return res.status(422).json({ success: false, message: `Only active clients can receive portal invitations. ${client.name} is currently marked as "${client.status}". Update their status to Active first.` });
     }
-    const invitation = await createClientPortalInvite({
+    if (await hasClaimedClientPortalAccount(client.id, email)) {
+      return res.json({
+        success: true,
+        data: { email, status: 'account_created', link: getClientPortalBaseUrl(), expiresAt: null }
+      });
+    }
+    const invitation = await getOrCreateClientPortalInvite({
       clientId: client.id,
       email,
       createdBy: req.user.id,
+      storeEncryptedToken: true,
     });
-    return res.status(201).json({
+    return res.status(invitation.reused ? 200 : 201).json({
       success: true,
       data: {
         email,
+        status: invitation.reused ? 'existing' : 'created',
         link: getClientPortalInvitationLink(invitation.token),
         expiresAt: invitation.expiresAt,
       },
@@ -481,6 +508,15 @@ router.post('/clients/:clientId/invite', requireAuth, async (req, res) => {
     return res.status(500).json({ success: false, message: friendlyMsg });
   }
 });
+
+async function hasClaimedClientPortalAccount(clientId, email) {
+  const { data, error } = await supabase.from('client_portal_access')
+    .select('active, user_id, invited_email')
+    .eq('client_id', clientId)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data?.active && data.user_id && String(data.invited_email || '').trim().toLowerCase() === email);
+}
 
 router.delete('/clients/:clientId/access', requireAuth, async (req, res) => {
   try {

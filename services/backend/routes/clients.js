@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
-const { createClientPortalInvite, getClientPortalInvitationLink, revokeClientPortalInvites } = require('../lib/clientPortalInvites');
+const { createClientPortalInvite, getOrCreateClientPortalInvite, getClientPortalInvitationLink, revokeClientPortalInvites } = require('../lib/clientPortalInvites');
 const telegramRouter = require('./telegram');
 const { getStorageBucket, isOwnedDocumentObject } = require('../lib/documentStorage');
 const { isClientAccount } = require('../lib/accountRoles');
@@ -222,42 +222,58 @@ router.post('/', async (req, res) => {
         .single();
       if (error) throw error;
 
-      // Auto-create portal access for the client's email so they can log in and upload documents
+      // Every emailed client is immediately enrolled in the canonical pending
+      // portal lifecycle. The invitation is single-use and is reused by the
+      // client page and Telegram until it is claimed.
       let portalAccess = null;
-      let portalAccessWarning = '';
+      let portalInvitation = null;
       if (normalizedEmail) {
         try {
-          const { data: existingAccess, error: existingAccessError } = await supabase
+          const { data: access, error: accessLookupError } = await supabase
             .from('client_portal_access')
-            .select('id')
+            .select('id, user_id, active, invitation_pending, invited_email')
             .eq('client_id', data.id)
             .maybeSingle();
-          if (existingAccessError) throw existingAccessError;
-          if (!existingAccess) {
+          if (accessLookupError) throw accessLookupError;
+          if (!access) {
             const { data: newAccess, error: accessError } = await supabase
               .from('client_portal_access')
               .insert({
                 client_id: data.id,
                 invited_email: normalizedEmail,
-                active: true,
-                invitation_pending: false,
+                active: false,
+                invitation_pending: true,
                 created_by: req.user.id,
               })
-              .select('id, invited_email, active, created_at')
+              .select('id, user_id, invited_email, active, invitation_pending, created_at')
               .single();
             if (accessError) throw accessError;
             portalAccess = newAccess;
+          } else {
+            portalAccess = access;
           }
+          const invitation = await getOrCreateClientPortalInvite({
+            clientId: data.id,
+            email: normalizedEmail,
+            createdBy: req.user.id,
+            storeEncryptedToken: true,
+          });
+          portalInvitation = {
+            status: invitation.reused ? 'existing' : 'created',
+            link: getClientPortalInvitationLink(invitation.token),
+            expiresAt: invitation.expiresAt,
+          };
         } catch (portalError) {
           console.error(`[Clients] Auto portal access creation failed for ${data.id}:`, portalError.message);
-          portalAccessWarning = 'Client was saved, but portal access could not be enabled. Confirm the client portal database migration has been applied, then enable access from the client portal settings.';
+          // Do not report a successful client creation when the required
+          // security boundary could not be established.
+          await supabase.from('clients').delete().eq('id', data.id).eq('user_id', req.user.id);
+          return res.status(503).json({ success: false, message: 'The client could not be created because the secure portal invitation was not prepared. No partial client record was kept. Please try again.' });
         }
-      } else {
-        portalAccessWarning = 'Client was saved without an email address, so client portal access is not enabled.';
       }
 
       invalidateClientsCache(req.user.id);
-      return res.status(201).json({ success: true, source: 'supabase', data: { ...data, country_name: data.supported_countries?.country_name, currency_code: data.supported_countries?.currency_code, portalAccess, portalAccessWarning } });
+      return res.status(201).json({ success: true, source: 'supabase', data: { ...data, country_name: data.supported_countries?.country_name, currency_code: data.supported_countries?.currency_code, portalAccess, portalInvitation } });
     }
 
     // Fallback
@@ -341,7 +357,7 @@ router.patch('/:id', async (req, res) => {
           if (existingAccess && updatedEmail) {
             const { data: updatedAccess, error: accessUpdateError } = await supabase
               .from('client_portal_access')
-              .update({ invited_email: updatedEmail, user_id: null, active: true, invitation_pending: false, updated_at: new Date().toISOString() })
+              .update({ invited_email: updatedEmail, user_id: null, active: false, invitation_pending: true, updated_at: new Date().toISOString() })
               .eq('id', existingAccess.id)
               .select('id')
               .maybeSingle();
@@ -359,7 +375,7 @@ router.patch('/:id', async (req, res) => {
           } else if (updatedEmail) {
             const { error: accessInsertError } = await supabase
               .from('client_portal_access')
-              .insert({ client_id: data.id, invited_email: updatedEmail, active: true, invitation_pending: false, created_by: req.user.id });
+              .insert({ client_id: data.id, invited_email: updatedEmail, active: false, invitation_pending: true, created_by: req.user.id });
             if (accessInsertError) throw accessInsertError;
             accessDetached = true;
           }
@@ -399,7 +415,7 @@ router.patch('/:id', async (req, res) => {
               clientId: data.id,
               email: updatedEmail,
               createdBy: req.user.id,
-              storeEncryptedToken: Boolean(data.telegram_chat_id),
+              storeEncryptedToken: true,
             });
             portalInviteLink = getClientPortalInvitationLink(invitation.token);
             portalInviteDeliveryStatus = 'created';

@@ -23,6 +23,19 @@ function getClientPortalInvitationLink(token) {
   return `${portalUrl.origin}/portal#invite=${encodeURIComponent(token)}`;
 }
 
+function getClientPortalBaseUrl() {
+  const configuredUrl = String(process.env.CLIENT_PORTAL_URL || '').trim();
+  if (!configuredUrl) throw new Error('CLIENT_PORTAL_URL is not configured.');
+  const portalUrl = new URL(configuredUrl);
+  if (process.env.NODE_ENV === 'production' && portalUrl.protocol !== 'https:') {
+    throw new Error('CLIENT_PORTAL_URL must use HTTPS in production.');
+  }
+  if (portalUrl.username || portalUrl.password || portalUrl.search || portalUrl.hash || portalUrl.pathname !== '/') {
+    throw new Error('CLIENT_PORTAL_URL must be the website origin without a path or credentials.');
+  }
+  return `${portalUrl.origin}/portal`;
+}
+
 function getPortalInviteEncryptionKey() {
   const secret = SUPABASE_SERVER_KEY;
   if (!secret) throw new Error('Portal invitation encryption is not configured.');
@@ -82,6 +95,65 @@ async function createClientPortalInvite({ clientId, email, createdBy, token = cr
   return { token, expiresAt: data.expires_at, id: data.id };
 }
 
+function isUsableClientPortalInvite(invite, normalizedEmail) {
+  return Boolean(invite)
+    && !invite.consumed_at
+    && !invite.revoked_at
+    && new Date(invite.expires_at).getTime() > Date.now()
+    && String(invite.invited_email || '').trim().toLowerCase() === normalizedEmail;
+}
+
+async function getActiveClientPortalInvite(clientId, email) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const { data, error } = await supabase.from('client_portal_invites')
+    .select('id, token_hash, token_ciphertext, invited_email, expires_at, consumed_at, revoked_at')
+    .eq('client_id', clientId)
+    .is('consumed_at', null)
+    .is('revoked_at', null)
+    .order('created_at', { ascending: false })
+    .limit(10);
+  if (error) throw error;
+  return (data || []).find((invite) => isUsableClientPortalInvite(invite, normalizedEmail)) || null;
+}
+
+async function getOrCreateClientPortalInvite({ clientId, email, createdBy, storeEncryptedToken = true }) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    throw new Error('Add a valid email address to this client before creating a portal invitation.');
+  }
+
+  const existing = await getActiveClientPortalInvite(clientId, normalizedEmail);
+  if (existing?.token_ciphertext) {
+    try {
+      const token = decryptPortalInviteToken(existing.token_ciphertext);
+      if (hashInviteToken(token) === existing.token_hash) {
+        return { id: existing.id, token, expiresAt: existing.expires_at, reused: true };
+      }
+    } catch {
+      // A corrupt ciphertext cannot be reused; rotate it below.
+    }
+  }
+
+  try {
+    return await createClientPortalInvite({
+      clientId,
+      email: normalizedEmail,
+      createdBy,
+      storeEncryptedToken,
+    });
+  } catch (error) {
+    // A concurrent creator may have won the unique pending-invite race.
+    const concurrent = await getActiveClientPortalInvite(clientId, normalizedEmail);
+    if (concurrent?.token_ciphertext) {
+      const token = decryptPortalInviteToken(concurrent.token_ciphertext);
+      if (hashInviteToken(token) === concurrent.token_hash) {
+        return { id: concurrent.id, token, expiresAt: concurrent.expires_at, reused: true };
+      }
+    }
+    throw error;
+  }
+}
+
 async function revokeClientPortalInvites(clientId) {
   const { error } = await supabase.from('client_portal_invites')
     .update({ revoked_at: new Date().toISOString() })
@@ -93,10 +165,13 @@ async function revokeClientPortalInvites(clientId) {
 
 module.exports = {
   createClientPortalInvite,
+  getActiveClientPortalInvite,
+  getOrCreateClientPortalInvite,
   encryptPortalInviteToken,
   decryptPortalInviteToken,
   deriveTelegramPortalInviteToken,
   getClientPortalInvitationLink,
+  getClientPortalBaseUrl,
   hashInviteToken,
   revokeClientPortalInvites,
 };

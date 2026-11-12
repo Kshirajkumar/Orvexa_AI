@@ -170,6 +170,7 @@ function buildUserResponse(supaUser, profile) {
     practiceType: profile?.practice_type || supaUser.user_metadata?.practice_type || 'Chartered Accountant (CA)',
     membershipNo: profile?.membership_no || supaUser.user_metadata?.membership_no || null,
     role: profile?.role || 'Managing Partner',
+    accountCategory: profile?.account_category || (getAccountRole(supaUser) === ACCOUNT_ROLE.CLIENT ? 'client_user' : 'ca_user'),
     accountType: getAccountRole(supaUser),
     onboardingComplete: profile?.onboarding_complete ?? false
   };

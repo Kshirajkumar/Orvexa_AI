@@ -47,6 +47,7 @@ export function ClientsPage() {
   const [portalInviteLink, setPortalInviteLink] = React.useState('');
   const [portalMessage, setPortalMessage] = React.useState('');
   const [portalError, setPortalError] = React.useState('');
+  const [portalStatus, setPortalStatus] = React.useState<'account_created' | 'invitation_pending' | 'pending' | 'not_started'>('not_started');
   const [editForm, setEditForm] = React.useState({ name: '', entityType: 'Individual', pan: '', gstin: '', phone: '', email: '', countryId: '', filingTypes: [] as string[] });
   const [form, setForm] = React.useState<ClientFormValues>({ name: '', entityType: 'Individual', pan: '', gstin: '', phone: '', email: '', countryId: '', filingTypes: [] });
   const update = (key: keyof ClientFormValues, value: string | string[]) => setForm(prev => ({ ...prev, [key]: value }));
@@ -68,7 +69,11 @@ export function ClientsPage() {
     setPortalInviteLink('');
     fetchClientPortalAccess(selectedClient.id)
       .then(access => {
-        if (!disposed) setPortalAccessEnabled(access.linked);
+        if (!disposed) {
+          setPortalAccessEnabled(access.linked);
+          setPortalStatus(access.status);
+          if (access.invitation?.link) setPortalInviteLink(access.invitation.link);
+        }
       })
       .catch(err => {
         if (!disposed) setPortalError(err instanceof Error ? err.message : 'Could not load portal access.');
@@ -88,7 +93,10 @@ export function ClientsPage() {
     try {
       const result = await inviteClientToPortal(selectedClient.id);
       setPortalInviteLink(result.link);
-      setPortalMessage(`A private invitation for ${result.email} is ready. Copy it and send it directly to the client.`);
+      setPortalStatus(result.status === 'account_created' ? 'account_created' : 'invitation_pending');
+      setPortalMessage(result.status === 'account_created'
+        ? `This client already has a portal account. Use the normal portal link to sign in.`
+        : `A private invitation for ${result.email} is ready. The same link will be reused until the client creates their account.`);
     } catch (err) {
       setPortalError(err instanceof Error ? err.message : 'Could not send the portal invitation.');
     } finally {
@@ -131,7 +139,10 @@ export function ClientsPage() {
     try {
       const saved: any = await createClient(form as any);
       if (!saved) throw new Error('Could not save client.');
-      setPortalNotice(saved.portalAccessWarning || '');
+      setPortalNotice(saved.portalInvitation?.link
+        ? `Client created. A one-time portal invitation is ready for ${saved.email} and expires in 30 days.`
+        : 'Client created. Add an email address later to enable the secure client portal.');
+      if (saved.portalInvitation?.link) setPortalInviteLink(saved.portalInvitation.link);
       dispatch({ type: 'ADD_CLIENT', client: { id: saved.id, name: saved.name, entityType: saved.entity_type || form.entityType, short: saved.name.slice(0, 3).toUpperCase(), city: 'Local', country: saved.country_name || 'Selected country', countryId: saved.country_id || form.countryId, cur: saved.currency_code || 'INR', gstin: saved.gstin || '', pan: saved.pan || '', svc: saved.filing_types || form.filingTypes, filingTypes: saved.filing_types || form.filingTypes, contact: saved.email || '', phone: saved.phone || '', fee: 0, tone: 'blue', alias: [] } });
       setShowAdd(false); setForm({ name: '', entityType: 'Individual', pan: '', gstin: '', phone: '', email: '', countryId: '', filingTypes: [] });
     } catch (err: any) { setError(err.message || 'Could not save client.'); }

@@ -480,6 +480,8 @@ export interface ClientPortalAccess {
   linked: boolean;
   email: string | null;
   createdAt: string | null;
+  status: 'account_created' | 'invitation_pending' | 'pending' | 'not_started';
+  invitation?: { status: string; link: string; expiresAt: string } | null;
 }
 
 export async function fetchClientPortalAccess(clientId: string): Promise<ClientPortalAccess> {
@@ -497,11 +499,11 @@ export async function fetchClientPortalAccess(clientId: string): Promise<ClientP
   return response.data;
 }
 
-export async function inviteClientToPortal(clientId: string): Promise<{ email: string; link: string; expiresAt: string }> {
+export async function inviteClientToPortal(clientId: string): Promise<{ email: string; link: string; expiresAt: string | null; status: string }> {
   const response = await authRequest<{
     success: boolean;
     message?: string;
-    data?: { email: string; link: string; expiresAt: string };
+    data?: { email: string; link: string; expiresAt: string | null; status: string };
   }>(
     `${API_BASE_URL}/client-portal/clients/${encodeURIComponent(clientId)}/invite`,
     { method: 'POST', headers: authHeaders(), body: '{}' },
