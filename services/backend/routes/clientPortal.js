@@ -296,7 +296,7 @@ router.get('/clients/:clientId/access', requireAuth, async (req, res) => {
     if (error) throw error;
     let invitation = null;
     let invitationStatus = 'not_started';
-    if (!data?.user_id && data?.invitation_pending && client.email) {
+    if (!data?.user_id && client.email) {
       const pendingInvite = await getActiveClientPortalInvite(client.id, client.email);
       if (pendingInvite?.token_ciphertext) {
         try {

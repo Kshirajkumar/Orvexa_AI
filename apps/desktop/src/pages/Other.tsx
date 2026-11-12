@@ -371,8 +371,8 @@ export function ClientsPage() {
               {portalError && <div className="ob-error" role="alert">{portalError}</div>}
               {portalMessage && <div className="portal-success-message" role="status">{portalMessage}</div>}
               <div className={`row${portalAccessLoading ? ' portal-controls-hidden' : ''}`}>
-                <span className={`chip ${portalAccessEnabled ? 'green' : 'amber'}`}>
-                  {portalAccessLoading ? 'Checking access…' : portalAccessEnabled ? 'Client portal active' : 'Invitation required'}
+                <span className={`chip ${portalStatus === 'account_created' ? 'green' : portalStatus === 'invitation_pending' ? 'portal-card-chip' : 'amber'}`}>
+                  {portalAccessLoading ? 'Checking access…' : portalStatus === 'account_created' ? 'Portal account created' : portalStatus === 'invitation_pending' ? 'Invitation pending' : portalStatus === 'invitation_expired' ? 'Invitation expired' : 'Invitation required'}
                 </span>
                 <span className="sp" />
                 <button className="btn sm" disabled={portalTelegramLoading || portalActionLoading || !portalTelegramLinked} onClick={() => void sendPortalLinkToTelegram()} title={!portalTelegramLinked ? 'Link this client to Telegram first' : undefined}>{portalTelegramLoading ? 'Sending…' : 'Send via Telegram'}</button>
@@ -382,12 +382,12 @@ export function ClientsPage() {
               </div>
               {portalStatus === 'invitation_expired' && !portalAccessLoading && <div className="portal-expired-note" role="status">This invitation expired after 30 days. Create a fresh link before sending it.</div>}
               {portalInviteLink && <div className={`client-portal-invite-link${portalAccessLoading ? ' portal-controls-hidden' : ''}`}>
-                <label htmlFor="portal-invite-link">Private invitation link · expires in 30 days</label>
+                <label htmlFor="portal-invite-link">{portalStatus === 'account_created' ? 'Client portal sign-in link' : 'Private account creation link · expires in 30 days'}</label>
                 <div className="row">
                   <input id="portal-invite-link" value={portalInviteLink} readOnly onFocus={event => event.currentTarget.select()} aria-label="Private portal invitation link" />
                   <button className="btn sm" onClick={() => void copyPortalInviteLink()}>Copy</button>
                 </div>
-                <small>Anyone holding this one-time link can start enrollment. Send it only to the client through a private channel.</small>
+                <small>{portalStatus === 'account_created' ? 'Use this normal portal link for the client’s future sign-ins.' : 'Anyone holding this one-time link can create the client account. Send it only to the client through a private channel.'}</small>
               </div>}
             </div>
             </>}
