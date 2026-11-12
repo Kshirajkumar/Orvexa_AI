@@ -45,7 +45,7 @@ For UI changes, validate with `npm run build` and a local `npm run dev` session.
 
 ## Security and Configuration
 
-Keep backend secrets in `services/backend/.env` and never commit them. Use `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and server-side Gemini/WhatsApp credentials only on the server. The optional OpenRouter key is stored in Windows Credential Manager; its local mode sends extraction images directly from the desktop to OpenRouter. Keep client files in private Supabase Storage through `lib/documentStorage.js`; never expose service-role credentials or public document URLs to the desktop.
+Keep backend secrets in `services/backend/.env` and never commit them. Use `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (with `SUPABASE_SERVICE_ROLE_KEY` only as a legacy fallback), and server-side Gemini/WhatsApp credentials only on the server. The optional OpenRouter key is stored in Windows Credential Manager; its local mode sends extraction images directly from the desktop to OpenRouter. Keep client files in private Supabase Storage through `lib/documentStorage.js`; never expose server keys or public document URLs to the desktop.
 
 ## Commits and Pull Requests
 
