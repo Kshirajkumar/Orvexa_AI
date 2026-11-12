@@ -108,6 +108,14 @@ test('Telegram sends an invitation only before portal enrollment', () => {
   assert.doesNotMatch(existingAccount, /#invite=/i);
 });
 
+test('Telegram invitation delivery identity changes when the active bearer token changes', () => {
+  const { portalInvitationMessageId } = telegramRouter._test;
+  const first = portalInvitationMessageId('client-1', 'chat-1', 'token-one');
+  assert.equal(first, portalInvitationMessageId('client-1', 'chat-1', 'token-one'));
+  assert.notEqual(first, portalInvitationMessageId('client-1', 'chat-1', 'token-two'));
+  assert.match(first, /^taxflow:portal-invite:client-1:chat-1:[0-9a-f]{16}$/);
+});
+
 test('Telegram webhook rejects a request with the wrong secret', async () => {
   const previous = process.env.TELEGRAM_WEBHOOK_SECRET;
   process.env.TELEGRAM_WEBHOOK_SECRET = 'configured-secret';

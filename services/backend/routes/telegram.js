@@ -31,6 +31,9 @@ function presentTelegramBody(message) {
   );
 }
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
+function portalInvitationMessageId(clientId, chatId, token) {
+  return `taxflow:portal-invite:${clientId}:${chatId}:${hash(token).slice(0, 16)}`;
+}
 function secretMatches(value, expected) { const left = Buffer.from(String(value || '')); const right = Buffer.from(String(expected || '')); return left.length === right.length && left.length > 0 && crypto.timingSafeEqual(left, right); }
 
 function isMissingDatabaseSchema(error) {
@@ -448,15 +451,16 @@ async function sendTelegramMediaPrivacyReply(client, chatId, update) {
 }
 
 async function sendTelegramWelcome(client, chatId, telegramToken, createdBy) {
-  const invitationMessageId = `taxflow:portal-invite:${client.id}:${chatId}`;
-  if (await isTelegramMessageSent(invitationMessageId)) return;
   const portalAccountExists = await hasActiveClientPortalAccount(client);
-  const portalLink = portalAccountExists
-    ? getClientPortalBaseUrl()
-    : getClientPortalLink(await getOrCreateTelegramPortalInvite(client, {
+  const portalInviteToken = portalAccountExists ? null : await getOrCreateTelegramPortalInvite(client, {
       createdBy,
       preferredToken: deriveTelegramPortalInviteToken(telegramToken),
-    }));
+    });
+  const portalLink = portalAccountExists ? getClientPortalBaseUrl() : getClientPortalLink(portalInviteToken);
+  const invitationMessageId = portalAccountExists
+    ? `taxflow:portal-access:${client.id}:${chatId}`
+    : portalInvitationMessageId(client.id, chatId, portalInviteToken);
+  if (await isTelegramMessageSent(invitationMessageId)) return;
 
   await sendTrackedTelegramMessage({
     client,
@@ -998,5 +1002,6 @@ module.exports._test = {
   configureWebhook,
   publicTelegramMessage,
   getTelegramMediaMessageType,
-  createTelegramPortalAccessMessage
+  createTelegramPortalAccessMessage,
+  portalInvitationMessageId
 };
