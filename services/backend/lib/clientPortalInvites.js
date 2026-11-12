@@ -1,5 +1,5 @@
 const crypto = require('node:crypto');
-const { supabase } = require('../db/supabase');
+const { supabase, SUPABASE_SERVER_KEY } = require('../db/supabase');
 
 const INVITATION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -24,7 +24,7 @@ function getClientPortalInvitationLink(token) {
 }
 
 function getPortalInviteEncryptionKey() {
-  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const secret = SUPABASE_SERVER_KEY;
   if (!secret) throw new Error('Portal invitation encryption is not configured.');
   return crypto.createHash('sha256').update(`taxflow-client-portal-token-encryption-v1:${secret}`).digest();
 }
@@ -53,7 +53,7 @@ function decryptPortalInviteToken(encryptedToken) {
 }
 
 function deriveTelegramPortalInviteToken(telegramToken) {
-  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const secret = SUPABASE_SERVER_KEY;
   if (!secret) throw new Error('Portal invitation signing is not configured.');
   return crypto.createHmac('sha256', secret)
     .update(`taxflow-client-portal-invite-v1:${telegramToken}`)
