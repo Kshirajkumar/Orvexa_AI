@@ -69,6 +69,8 @@ function getMissingDatabaseColumn(error) {
   return postgresMatch ? { table: postgresMatch[1], column: postgresMatch[2] } : null;
 }
 
+const ACTIVE_WEBHOOK_ERROR_WINDOW_MS = 15 * 60 * 1000;
+
 function getRecentWebhookError(webhookInfo, now = Date.now()) {
   const message = String(webhookInfo?.last_error_message || '').trim();
   if (!message) return null;
@@ -77,7 +79,9 @@ function getRecentWebhookError(webhookInfo, now = Date.now()) {
     return { message, occurredAt: null };
   }
   const occurredAtMs = errorDate * 1000;
-  if (now - occurredAtMs > 24 * 60 * 60 * 1000) return null;
+  // Telegram keeps the last failed delivery in getWebhookInfo even after the
+  // service recovers. Only treat a failure from the last 15 minutes as active.
+  if (now - occurredAtMs > ACTIVE_WEBHOOK_ERROR_WINDOW_MS) return null;
   return { message, occurredAt: new Date(occurredAtMs).toISOString() };
 }
 

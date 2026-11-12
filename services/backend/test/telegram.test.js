@@ -63,6 +63,10 @@ test('Telegram webhook diagnostics do not present errors older than one day as r
     { message: '503 Service Unavailable', occurredAt: new Date(Math.floor((now - 5 * 60 * 1000) / 1000) * 1000).toISOString() }
   );
   assert.equal(
+    getRecentWebhookError({ last_error_message: '503 Service Unavailable', last_error_date: Math.floor((now - 16 * 60 * 1000) / 1000) }, now),
+    null
+  );
+  assert.equal(
     getRecentWebhookError({ last_error_message: '503 Service Unavailable', last_error_date: Math.floor((now - 25 * 60 * 60 * 1000) / 1000) }, now),
     null
   );
