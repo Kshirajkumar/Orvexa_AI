@@ -1,4 +1,5 @@
 const { supabase, isConnected } = require('../db/supabase');
+const { isClientAccount } = require('../lib/accountRoles');
 
 /** Validate the Supabase access token before any private API route runs. */
 async function requireAuth(req, res, next) {
@@ -24,7 +25,7 @@ async function requireAuth(req, res, next) {
     return res.status(401).json({ success: false, message: 'Session is invalid or has expired.' });
   }
 
-  if (data.user.app_metadata?.taxflow_client_portal === true) {
+  if (isClientAccount(data.user)) {
     return res.status(403).json({ success: false, message: 'Client portal accounts cannot access staff services.' });
   }
 

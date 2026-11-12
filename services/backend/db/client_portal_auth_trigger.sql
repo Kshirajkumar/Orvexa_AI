@@ -8,7 +8,8 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  IF COALESCE(NEW.raw_app_meta_data ->> 'taxflow_client_portal', 'false') = 'true' THEN
+  IF COALESCE(NEW.raw_app_meta_data ->> 'role', '') = 'client'
+    OR COALESCE(NEW.raw_app_meta_data ->> 'taxflow_client_portal', 'false') = 'true' THEN
     RETURN NEW;
   END IF;
 

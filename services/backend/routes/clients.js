@@ -9,6 +9,7 @@ const { supabase, isConnected } = require('../db/supabase');
 const { createClientPortalInvite, getClientPortalInvitationLink, revokeClientPortalInvites } = require('../lib/clientPortalInvites');
 const telegramRouter = require('./telegram');
 const { getStorageBucket, isOwnedDocumentObject } = require('../lib/documentStorage');
+const { isClientAccount } = require('../lib/accountRoles');
 
 function addCloudDocumentToTree(entries, document) {
   const createdAt = new Date(document.created_at);
@@ -381,7 +382,7 @@ router.patch('/:id', async (req, res) => {
               const { data: oldUserData, error: oldUserError } = await supabase.auth.admin.getUserById(existingAccess.user_id);
               if (oldUserError) throw oldUserError;
               const oldUser = oldUserData?.user;
-              if (oldUser?.app_metadata?.taxflow_client_portal === true) {
+              if (isClientAccount(oldUser)) {
                 const { error: deleteUserError } = await supabase.auth.admin.deleteUser(existingAccess.user_id);
                 if (deleteUserError) throw deleteUserError;
               }

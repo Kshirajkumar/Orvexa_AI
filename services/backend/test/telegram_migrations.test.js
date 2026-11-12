@@ -22,6 +22,14 @@ test('portal auth trigger skips staff profile creation for portal identities', (
   assert.match(sql, /raw_app_meta_data.*taxflow_client_portal/i);
   assert.match(sql, /RETURN NEW/i);
   assert.match(sql, /CREATE TRIGGER on_auth_user_created\s+AFTER INSERT ON auth\.users/i);
+  assert.match(sql, /raw_app_meta_data\s*->>\s*'role'.*client/i);
+});
+
+test('account role migration assigns explicit server-controlled client and staff roles', () => {
+  const sql = fs.readFileSync(path.join(migrationDirectory, 'account_roles.sql'), 'utf8');
+  assert.match(sql, /jsonb_build_object\('role', 'client'\)/i);
+  assert.match(sql, /jsonb_build_object\('role', 'staff'\)/i);
+  assert.match(sql, /client_portal_access/i);
 });
 
 test('portal migration enables existing active clients with email without reactivating prior access records', () => {

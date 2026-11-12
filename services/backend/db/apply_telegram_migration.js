@@ -16,6 +16,7 @@ async function main() {
       'client_portal.sql',
       'client_portal_invites.sql',
       'client_portal_auth_trigger.sql',
+      'account_roles.sql',
       'create_api_rate_limits.sql',
       'inbox_automation.sql',
       'decommission_telegram_file_transfer.sql',

@@ -1,5 +1,6 @@
 const { supabase, isConnected } = require('../db/supabase');
 const { isOwnedDocumentObject } = require('./documentStorage');
+const { isClientAccount } = require('./accountRoles');
 
 const POLL_INTERVAL_MS = 15_000;
 const STORAGE_PAGE_SIZE = 100;
@@ -43,7 +44,7 @@ async function removeClientPortalIdentity(job) {
   const { data: userData, error: userError } = await supabase.auth.admin.getUserById(access.user_id);
   if (userError && userError.status !== 404 && userError.code !== 'user_not_found') throw userError;
   const portalUser = userData?.user;
-  if (!portalUser || portalUser.app_metadata?.taxflow_client_portal !== true) return;
+  if (!portalUser || !isClientAccount(portalUser)) return;
 
   const { data: otherAccess, error: otherAccessError } = await supabase.from('client_portal_access')
     .select('client_id')

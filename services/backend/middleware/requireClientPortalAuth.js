@@ -1,4 +1,5 @@
 const { supabase, isConnected } = require('../db/supabase');
+const { isClientAccount } = require('../lib/accountRoles');
 
 async function requireClientPortalAuth(req, res, next) {
   if (!isConnected || !supabase) {
@@ -24,7 +25,7 @@ async function requireClientPortalAuth(req, res, next) {
     if (authError || !user) {
       return res.status(401).json({ success: false, message: 'Your portal session is invalid or has expired.' });
     }
-    if (user.app_metadata?.taxflow_client_portal !== true) {
+    if (!isClientAccount(user)) {
       return res.status(403).json({ success: false, message: 'This account is not a client portal account.' });
     }
     const { data: access, error: accessError } = await supabase

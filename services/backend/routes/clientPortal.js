@@ -5,6 +5,7 @@ const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
 const { requireAuth } = require('../middleware/requireAuth');
 const { requireClientPortalAuth } = require('../middleware/requireClientPortalAuth');
+const { ACCOUNT_ROLE, isClientAccount } = require('../lib/accountRoles');
 const { assertOwnedClient } = require('../lib/ownership');
 const { consume, RateLimiterUnavailableError } = require('../lib/rateLimiter');
 const {
@@ -208,7 +209,7 @@ router.post('/invitations/status', async (req, res) => {
 async function claimPortalInvite(user, token) {
   if (
     !user?.id
-    || user.app_metadata?.taxflow_client_portal !== true
+    || !isClientAccount(user)
     || typeof token !== 'string'
     || !PORTAL_INVITE_TOKEN_PATTERN.test(token)
   ) {
@@ -354,7 +355,7 @@ router.post('/invitations/register', async (req, res) => {
       email,
       password,
       email_confirm: true,
-      app_metadata: { taxflow_client_portal: true },
+      app_metadata: { role: ACCOUNT_ROLE.CLIENT, taxflow_client_portal: true },
     });
     if (createError || !created?.user?.id) {
       if (isAuthEmailAlreadyRegisteredError(createError)) {
@@ -374,14 +375,14 @@ router.post('/invitations/register', async (req, res) => {
         }
         const { data: existingUserData, error: existingUserError } = await supabase.auth.admin.getUserById(existingUserId);
         const existingUser = existingUserData?.user;
-        if (existingUserError || !existingUser || existingUser.app_metadata?.taxflow_client_portal !== true) {
+        if (existingUserError || !existingUser || !isClientAccount(existingUser)) {
           console.error('[Client Portal] Existing portal account lookup failed:', existingUserError?.message || 'Account metadata did not match.');
           return res.status(502).json({ success: false, message: 'The existing portal account could not be verified. Please contact your CA.' });
         }
         const { data: updated, error: updateError } = await supabase.auth.admin.updateUserById(existingUserId, {
           password,
           email_confirm: true,
-          app_metadata: { ...existingUser.app_metadata, taxflow_client_portal: true },
+          app_metadata: { ...existingUser.app_metadata, role: ACCOUNT_ROLE.CLIENT, taxflow_client_portal: true },
         });
         if (updateError || !updated?.user?.id) {
           console.error('[Client Portal] Could not update the existing invited account password:', updateError?.message || 'Supabase returned no user.');

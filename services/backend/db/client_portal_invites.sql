@@ -40,6 +40,7 @@ CREATE POLICY client_portal_invites_service_role
 UPDATE auth.users AS portal_user
 SET raw_app_meta_data = COALESCE(portal_user.raw_app_meta_data, '{}'::jsonb)
   || jsonb_build_object(
+    'role', 'client',
     'taxflow_client_portal', TRUE,
     'taxflow_portal_invite_required', TRUE
   )
@@ -90,7 +91,10 @@ BEGIN
   SELECT * INTO v_user
   FROM auth.users
   WHERE id = p_user_id
-    AND raw_app_meta_data ->> 'taxflow_client_portal' = 'true';
+    AND (
+      raw_app_meta_data ->> 'role' = 'client'
+      OR raw_app_meta_data ->> 'taxflow_client_portal' = 'true'
+    );
   IF NOT FOUND THEN
     RAISE EXCEPTION 'This account is not authorized for client portal enrollment';
   END IF;
@@ -183,7 +187,10 @@ AS $$
   FROM auth.users
   WHERE email IS NOT NULL
     AND lower(btrim(email)) = lower(btrim(p_email))
-    AND raw_app_meta_data ->> 'taxflow_client_portal' = 'true'
+    AND (
+      raw_app_meta_data ->> 'role' = 'client'
+      OR raw_app_meta_data ->> 'taxflow_client_portal' = 'true'
+    )
   LIMIT 1;
 $$;
 

@@ -1,15 +1,15 @@
 /**
- * TaxFlow.AI â€” Authentication Routes (Production Grade)
+ * TaxFlow.AI — Authentication Routes (Production Grade)
  *
  * All auth flows are exclusively handled through Supabase.
- * - Signup  â†’ supabase.auth.signUp  â†’ trigger auto-creates user_profiles row
- * - Login   â†’ supabase.auth.signInWithPassword â†’ fetches profile + onboarding status
- * - /me     â†’ supabase.auth.getUser(token) â†’ validates JWT + returns profile
- * - Onboarding â†’ stores completion status in the Supabase profile
- * - Forgot  â†’ supabase.auth.resetPasswordForEmail â†’ real email via Supabase SMTP
+ * - Signup  → supabase.auth.signUp  → trigger auto-creates user_profiles row
+ * - Login   → supabase.auth.signInWithPassword → fetches profile + onboarding status
+ * - /me     → supabase.auth.getUser(token) → validates JWT + returns profile
+ * - Onboarding → stores completion status in the Supabase profile
+ * - Forgot  → supabase.auth.resetPasswordForEmail → real email via Supabase SMTP
  *
  * Security:
- * - Rate limiting (5 failed attempts â†’ 60 sec lockout) per IP+email
+ * - Rate limiting (5 failed attempts → 60 sec lockout) per IP+email
  * - No in-memory user stores, no mock credentials, no demo bypass
  * - All tokens validated with Supabase on every /me request
  */
@@ -19,6 +19,7 @@ const crypto = require('node:crypto');
 const { createClient } = require('@supabase/supabase-js');
 const router = express.Router();
 const { supabase, isConnected, SUPABASE_SERVER_KEY } = require('../db/supabase');
+const { ACCOUNT_ROLE, getAccountRole } = require('../lib/accountRoles');
 const { requireAuth } = require('../middleware/requireAuth');
 const { deleteAccountStorage, deleteAccountVaultSecrets } = require('../lib/accountDeletion');
 const ALLOWED_PRACTICE_TYPES = new Set(['Chartered Accountant (CA)', 'Individual']);
@@ -97,10 +98,10 @@ function decodeChallengeSub(token) {
   }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 // Rate Limiting (in-memory, per IP+email)
-// Max 5 failed attempts in 60 s â†’ 60 s lockout
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Max 5 failed attempts in 60 s → 60 s lockout
+// ──────────────────────────────────────────────────────────
 const loginAttempts = new Map();
 
 function checkRateLimit(key) {
@@ -133,10 +134,10 @@ function clearRateLimit(key) {
   loginAttempts.delete(key);
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 // Helper: fetch user_profile row from Supabase
 // Uses service-role key (bypasses RLS) so backend can always read
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 async function fetchUserProfile(userId) {
   const { data, error } = await supabase
     .from('user_profiles')
@@ -158,9 +159,9 @@ async function fetchUserProfile(userId) {
   return created;
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 // Helper: build sanitised user object for API responses
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 function buildUserResponse(supaUser, profile) {
   return {
     id: supaUser.id,
@@ -169,13 +170,14 @@ function buildUserResponse(supaUser, profile) {
     practiceType: profile?.practice_type || supaUser.user_metadata?.practice_type || 'Chartered Accountant (CA)',
     membershipNo: profile?.membership_no || supaUser.user_metadata?.membership_no || null,
     role: profile?.role || 'Managing Partner',
+    accountType: getAccountRole(supaUser),
     onboardingComplete: profile?.onboarding_complete ?? false
   };
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 // Guard: require Supabase connection
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 function requireSupabase(res) {
   if (!isConnected) {
     res.status(503).json({
@@ -187,12 +189,12 @@ function requireSupabase(res) {
   return true;
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 // POST /api/v1/auth/signup
 // Creates a real Supabase Auth account.
 // If Supabase requires email confirmation, returns needsEmailConfirmation: true.
 // A DB trigger auto-creates the user_profiles row.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 router.post('/signup', async (req, res) => {
   if (!requireSupabase(res)) return;
 
@@ -233,6 +235,16 @@ router.post('/signup', async (req, res) => {
       return res.status(400).json({ success: false, message: supaErr.message });
     }
 
+    if (supaAuth.user) {
+      const { error: roleError } = await supabase.auth.admin.updateUserById(supaAuth.user.id, {
+        app_metadata: { role: ACCOUNT_ROLE.STAFF },
+      });
+      if (roleError) {
+        // Missing role metadata is treated as staff by the backend for safe backward compatibility.
+        console.error('[AUTH] Could not persist the staff account role:', roleError.message);
+      }
+    }
+
     // Email confirmation required (default Supabase behaviour)
     if (supaAuth.user && !supaAuth.session) {
       return res.status(201).json({
@@ -260,11 +272,11 @@ router.post('/signup', async (req, res) => {
   }
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 // POST /api/v1/auth/login
 // Authenticates via Supabase. Returns JWT + full profile incl.
 // onboarding status so the frontend knows what to show next.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   if (!requireSupabase(res)) return;
 
@@ -324,7 +336,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 // POST /api/v1/auth/refresh
 // Exchange a refresh token for a new access token when the short-lived access
 // token expires during normal desktop app use.
@@ -370,7 +382,7 @@ router.post('/refresh', async (req, res) => {
 
 // POST /api/v1/auth/forgot-password
 // Sends a real password reset email via Supabase
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 router.post('/forgot-password', async (req, res) => {
   if (!requireSupabase(res)) return;
 
@@ -528,11 +540,11 @@ router.post('/delete-account/confirm', async (req, res) => {
   }
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 // GET /api/v1/auth/me
 // Validates the bearer JWT with Supabase and returns the
 // full user profile including onboarding state.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 router.get('/me', async (req, res) => {
   if (!requireSupabase(res)) return;
 
@@ -591,10 +603,10 @@ router.post('/onboarding-complete', async (req, res) => {
   });
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 // PATCH /api/v1/auth/profile
 // Update personal profile fields (name, practiceType, membershipNo)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────────────────────────────────────────────────
 router.patch('/profile', async (req, res) => {
   if (!requireSupabase(res)) return;
 
@@ -643,4 +655,3 @@ router.patch('/profile', async (req, res) => {
 });
 
 module.exports = router;
-
