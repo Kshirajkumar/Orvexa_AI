@@ -16,3 +16,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <App />
   </React.StrictMode>
 );
+
+// Keep the branded HTML boot surface visible until React has had a frame to paint.
+requestAnimationFrame(() => {
+  const bootScreen = document.getElementById('boot-screen');
+  if (!bootScreen) return;
+  bootScreen.classList.add('is-ready');
+  window.setTimeout(() => bootScreen.remove(), 520);
+});

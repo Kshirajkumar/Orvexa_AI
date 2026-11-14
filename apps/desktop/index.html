@@ -5,6 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Taxflow.AI – CA Practice Suite</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      try {
+        const savedTheme = localStorage.getItem('taxflow_theme');
+        if (savedTheme === 'light' || savedTheme === 'dark') {
+          document.documentElement.setAttribute('data-theme', savedTheme);
+        }
+      } catch (_) {}
+    </script>
+    <style>
+      :root { color-scheme: dark; --boot-bg:#060a13; --boot-panel:rgba(17,27,49,.74); --boot-line:rgba(120,150,243,.2); --boot-text:#e8eefb; --boot-muted:#8b9abb; --boot-accent:#7896f3; }
+      :root[data-theme="light"] { color-scheme:light; --boot-bg:#edf1f9; --boot-panel:rgba(255,255,255,.82); --boot-line:rgba(37,99,235,.16); --boot-text:#0e1a33; --boot-muted:#617198; --boot-accent:#2563eb; }
+      html,body { background:var(--boot-bg); }
+      #boot-screen { position:fixed; inset:0; z-index:9999; display:grid; place-items:center; overflow:hidden; background:var(--boot-bg); color:var(--boot-text); font-family:"Plus Jakarta Sans","Segoe UI",system-ui,sans-serif; transition:opacity .48s ease,visibility .48s ease; }
+      #boot-screen.is-ready { opacity:0; visibility:hidden; pointer-events:none; }
+      .boot-glow { position:absolute; width:48vw; height:48vw; border-radius:50%; filter:blur(70px); opacity:.14; background:var(--boot-accent); transform:translate(28%,-34%); }
+      .boot-grid { position:absolute; inset:0; opacity:.24; background-image:linear-gradient(var(--boot-line) 1px,transparent 1px),linear-gradient(90deg,var(--boot-line) 1px,transparent 1px); background-size:52px 52px; mask-image:radial-gradient(circle at center,black,transparent 72%); }
+      .boot-card { position:relative; display:flex; width:min(430px,calc(100vw - 48px)); flex-direction:column; align-items:center; padding:42px 38px 34px; border:1px solid var(--boot-line); border-radius:28px; background:var(--boot-panel); box-shadow:0 24px 80px rgba(0,0,0,.22); backdrop-filter:blur(20px); animation:boot-card-in .7s cubic-bezier(.2,.8,.2,1) both; }
+      .boot-logo { width:206px; height:auto; display:block; } .boot-logo-dark { display:none; } :root[data-theme="dark"] .boot-logo-light { display:none; } :root[data-theme="dark"] .boot-logo-dark { display:block; }
+      .boot-signal { position:relative; display:grid; width:76px; height:76px; margin:32px 0 20px; place-items:center; border:1px solid var(--boot-line); border-radius:24px; background:color-mix(in srgb,var(--boot-accent) 10%,transparent); color:var(--boot-accent); }
+      .boot-signal::before,.boot-signal::after { content:""; position:absolute; inset:-9px; border:1px solid color-mix(in srgb,var(--boot-accent) 28%,transparent); border-radius:30px; animation:boot-ring 2.4s ease-out infinite; } .boot-signal::after { animation-delay:1.2s; }
+      .boot-mark { width:30px; height:30px; border:2px solid currentColor; border-radius:9px; transform:rotate(-8deg); } .boot-mark::after { content:""; display:block; width:12px; height:6px; margin:14px 0 0 8px; border-bottom:2px solid currentColor; border-left:2px solid currentColor; transform:rotate(-45deg); }
+      .boot-title { margin:0; font-size:15px; font-weight:700; letter-spacing:-.3px; } .boot-copy { margin:7px 0 0; color:var(--boot-muted); font-size:11px; text-align:center; } .boot-status { display:flex; align-items:center; gap:8px; margin-top:24px; color:var(--boot-muted); font-size:10px; } .boot-dot { width:7px; height:7px; border-radius:50%; background:var(--boot-accent); box-shadow:0 0 0 5px color-mix(in srgb,var(--boot-accent) 14%,transparent); animation:boot-pulse 1.5s ease-in-out infinite; } .boot-foot { margin-top:30px; color:var(--boot-muted); font-size:9px; letter-spacing:.08em; text-transform:uppercase; }
+      @keyframes boot-card-in { from { opacity:0; transform:translateY(10px) scale(.98); } to { opacity:1; transform:none; } } @keyframes boot-ring { 0% { opacity:.7; transform:scale(.78); } 75%,100% { opacity:0; transform:scale(1.18); } } @keyframes boot-pulse { 50% { opacity:.45; transform:scale(.78); } }
+      @media (prefers-reduced-motion:reduce) { #boot-screen,.boot-card { transition:none; animation:none; } .boot-signal::before,.boot-signal::after,.boot-dot { animation:none; } }
+    </style>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -13,17 +38,16 @@
     />
   </head>
   <body>
+    <div id="boot-screen" role="status" aria-live="polite" aria-label="Opening TaxFlow AI">
+      <div class="boot-glow" aria-hidden="true"></div><div class="boot-grid" aria-hidden="true"></div>
+      <section class="boot-card">
+        <img class="boot-logo boot-logo-light" src="/taxflow-ai-logo.svg" alt="TaxFlow AI" /><img class="boot-logo boot-logo-dark" src="/taxflow-ai-logo-dark.svg" alt="TaxFlow AI" />
+        <div class="boot-signal" aria-hidden="true"><span class="boot-mark"></span></div>
+        <h1 class="boot-title">Your practice, in flow.</h1><p class="boot-copy">Preparing your secure workspace and latest activity.</p>
+        <div class="boot-status"><span class="boot-dot" aria-hidden="true"></span><span>Starting TaxFlow AI</span></div><span class="boot-foot">CA practice suite</span>
+      </section>
+    </div>
     <div id="root"></div>
-    <script>
-      try {
-        const savedTheme = localStorage.getItem('taxflow_theme');
-        if (savedTheme === 'light' || savedTheme === 'dark') {
-          document.documentElement.setAttribute('data-theme', savedTheme);
-        }
-      } catch (_) {
-        // Storage can be unavailable in restricted browser contexts.
-      }
-    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
