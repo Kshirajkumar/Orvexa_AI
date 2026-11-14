@@ -315,6 +315,9 @@ router.get('/clients/:clientId/access', requireAuth, async (req, res) => {
     let invitation = null;
     let invitationStatus = 'not_started';
     if (!data?.user_id && client.email) {
+      // Reuse an active invite, or rotate an expired unused invite into a
+      // fresh 30-day invite while loading access. A claimed account is handled
+      // above and never receives another account-creation link.
       const pendingInvite = await getActiveClientPortalInvite(client.id, client.email);
       if (pendingInvite?.token_ciphertext) {
         try {
@@ -328,20 +331,18 @@ router.get('/clients/:clientId/access', requireAuth, async (req, res) => {
         }
       }
       if (!invitation) {
-        const { data: latestInvite, error: latestInviteError } = await supabase
-          .from('client_portal_invites')
-          .select('expires_at, consumed_at, revoked_at, invited_email')
-          .eq('client_id', client.id)
-          .eq('invited_email', String(client.email).trim().toLowerCase())
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (latestInviteError) throw latestInviteError;
-        if (latestInvite && !latestInvite.consumed_at && !latestInvite.revoked_at) {
-          invitationStatus = latestInvite.expires_at && new Date(latestInvite.expires_at).getTime() <= Date.now()
-            ? 'invitation_expired'
-            : 'invitation_pending';
-        }
+        const renewedInvite = await getOrCreateClientPortalInvite({
+          clientId: client.id,
+          email: client.email,
+          createdBy: req.user.id,
+          storeEncryptedToken: true,
+        });
+        invitation = {
+          status: 'pending',
+          link: getClientPortalInvitationLink(renewedInvite.token),
+          expiresAt: renewedInvite.expiresAt,
+        };
+        invitationStatus = 'invitation_pending';
       }
     }
     return res.json({

@@ -381,7 +381,7 @@ export function ClientsPage() {
                 <button className="btn sm" disabled={portalTelegramLoading || portalActionLoading || !portalTelegramLinked} onClick={() => void sendPortalLinkToTelegram()} title={!portalTelegramLinked ? 'Link this client to Telegram first' : undefined}>{portalTelegramLoading ? 'Sending…' : 'Send via Telegram'}</button>
                 {portalAccessEnabled
                   && <button className="btn sm danger" disabled={portalActionLoading || portalAccessLoading} onClick={() => void revokeSelectedClientPortalAccess()}>{portalActionLoading ? 'Please wait…' : 'Revoke access'}</button>}
-                <button className="btn sm pri" disabled={portalActionLoading || portalAccessLoading || !selectedClient.contact.trim()} onClick={() => void inviteSelectedClientToPortal()} title={!selectedClient.contact.trim() ? 'Add an email address to this client first' : undefined}>{portalActionLoading ? 'Creating link…' : 'Create secure invite link'}</button>
+                {portalStatus === 'not_started' && <button className="btn sm pri" disabled={portalActionLoading || portalAccessLoading || !selectedClient.contact.trim()} onClick={() => void inviteSelectedClientToPortal()} title={!selectedClient.contact.trim() ? 'Add an email address to this client first' : undefined}>{portalActionLoading ? 'Creating link…' : 'Create secure invite link'}</button>}
               </div>
               {portalStatus === 'invitation_expired' && !portalAccessLoading && <div className="portal-expired-note" role="status">This invitation expired after 30 days. Create a fresh link before sending it.</div>}
               {portalInviteLink && <div className={`client-portal-invite-link${portalAccessLoading ? ' portal-controls-hidden' : ''}`}>
