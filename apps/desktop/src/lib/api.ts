@@ -480,7 +480,7 @@ export interface ClientPortalAccess {
   linked: boolean;
   email: string | null;
   createdAt: string | null;
-  status: 'account_created' | 'invitation_pending' | 'invitation_expired' | 'pending' | 'not_started';
+  status: 'account_created' | 'invitation_pending' | 'invitation_expired' | 'paused' | 'revoked' | 'pending' | 'not_started';
   invitation?: { status: string; link: string; expiresAt: string } | null;
   portalLink: string | null;
   telegramLinked: boolean;
@@ -524,6 +524,17 @@ export async function revokeClientPortalAccess(clientId: string): Promise<void> 
   if (!response.success) {
     throw new Error(response.message || 'Could not revoke client portal access.');
   }
+}
+
+export async function updateClientPortalAccess(clientId: string, action: 'pause' | 'resume'): Promise<{ status: string; active: boolean }> {
+  const response = await authRequest<{ success: boolean; message?: string; data?: { status: string; active: boolean } }>(
+    `${API_BASE_URL}/client-portal/clients/${encodeURIComponent(clientId)}/access`,
+    { method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) },
+  );
+  if (!response.success || !response.data) {
+    throw new Error(response.message || `Could not ${action} client portal access.`);
+  }
+  return response.data;
 }
 
 export async function sendClientPortalLinkToTelegram(clientId: string): Promise<{ accountCreated: boolean; link: string }> {

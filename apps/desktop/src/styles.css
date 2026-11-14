@@ -336,7 +336,7 @@ tr:last-child td{border-bottom:0}
 .client-portal-invite-link .row{display:flex;align-items:center}
 .client-portal-invite-link input{min-width:0;flex:1;padding:9px 10px;border:1px solid var(--line);border-radius:8px;color:var(--tx);background:var(--panel);font:11px var(--mono)}
 .client-portal-invite-link small{color:var(--tx3);font-size:10px;line-height:1.5}
-.ccard.portal-pending,.ccard.portal-expired{border-color:color-mix(in srgb,var(--amber) 72%,var(--line));box-shadow:0 0 0 1px color-mix(in srgb,var(--amber) 18%,transparent),0 12px 30px color-mix(in srgb,var(--amber) 10%,transparent)}
+.ccard.portal-pending,.ccard.portal-expired,.ccard.portal-paused{border-color:color-mix(in srgb,var(--amber) 72%,var(--line));box-shadow:0 0 0 1px color-mix(in srgb,var(--amber) 18%,transparent),0 12px 30px color-mix(in srgb,var(--amber) 10%,transparent)}
 .ccard.portal-expired{border-color:color-mix(in srgb,var(--amber) 52%,var(--line));background:color-mix(in srgb,var(--amber) 4%,var(--card))}
 .portal-card-chip{border:1px solid color-mix(in srgb,var(--amber) 48%,var(--line));background:color-mix(in srgb,var(--amber) 14%,var(--panel));color:var(--amber)}
 .portal-card-link{display:flex;align-items:center;gap:6px;margin:0 0 12px;padding:6px 7px;border:1px solid color-mix(in srgb,var(--cyan) 26%,var(--line));border-radius:9px;background:color-mix(in srgb,var(--cyan) 5%,var(--panel))}.portal-card-link input{min-width:0;flex:1;border:0;background:transparent;color:var(--tx3);font-size:10px;outline:0}.portal-card-link .btn{flex:none}

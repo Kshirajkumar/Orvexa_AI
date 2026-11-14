@@ -51,6 +51,13 @@ test('portal migration enables existing active clients with email without reacti
   assert.match(sql, /ON CONFLICT \(client_id\) DO NOTHING/i);
 });
 
+test('portal access lifecycle separates pause from permanent revoke', () => {
+  const sql = fs.readFileSync(path.join(migrationDirectory, 'client_portal_access_lifecycle.sql'), 'utf8');
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS access_status TEXT NOT NULL DEFAULT 'active'/i);
+  assert.match(sql, /access_status IN \('active', 'paused', 'revoked'\)/i);
+  assert.match(sql, /Pause preserves the enrolled client account/i);
+});
+
 test('storage migration replaces the sync RPC with the portal-only result shape', () => {
   const sql = fs.readFileSync(path.join(migrationDirectory, 'create_taxflow_storage_bucket.sql'), 'utf8');
   const dropIndex = sql.indexOf('DROP FUNCTION IF EXISTS public.list_pending_document_sync(UUID, UUID, INTEGER);');

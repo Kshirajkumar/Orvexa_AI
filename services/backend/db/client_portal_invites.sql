@@ -146,14 +146,15 @@ BEGIN
     SET user_id = p_user_id,
         invited_email = lower(btrim(v_invite.invited_email)),
         active = TRUE,
+        access_status = 'active',
         invitation_pending = FALSE,
         updated_at = clock_timestamp()
     WHERE id = v_access.id;
   ELSE
     INSERT INTO public.client_portal_access (
-      client_id, user_id, invited_email, active, invitation_pending, created_by
+      client_id, user_id, invited_email, active, access_status, invitation_pending, created_by
     ) VALUES (
-      v_client.id, p_user_id, lower(btrim(v_invite.invited_email)), TRUE, FALSE, v_invite.created_by
+      v_client.id, p_user_id, lower(btrim(v_invite.invited_email)), TRUE, 'active', FALSE, v_invite.created_by
     );
   END IF;
 

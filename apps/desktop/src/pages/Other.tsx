@@ -3,7 +3,7 @@ import { Icon } from '../components/Icon';
 import { useAppState, useDispatch } from '../state/store';
 import { allTasks, missing } from '../lib/domain';
 import { money, sum } from '../lib/format';
-import { createClient, deleteClient, fetchClientPortalAccess, fetchStorageCleanupJob, fetchStorageCleanupJobs, inviteClientToPortal, retryStorageCleanupJob, revokeClientPortalAccess, sendClientPortalLinkToTelegram, updateClient, type StorageCleanupJob } from '../lib/api';
+import { createClient, deleteClient, fetchClientPortalAccess, fetchStorageCleanupJob, fetchStorageCleanupJobs, inviteClientToPortal, retryStorageCleanupJob, revokeClientPortalAccess, sendClientPortalLinkToTelegram, updateClient, updateClientPortalAccess, type StorageCleanupJob } from '../lib/api';
 import { ClientFormCard, type ClientFormValues } from '../components/ClientFormCard';
 import { FilingTypePicker } from '../components/FilingTypePicker';
 import {
@@ -47,8 +47,8 @@ export function ClientsPage() {
   const [portalInviteLink, setPortalInviteLink] = React.useState('');
   const [portalMessage, setPortalMessage] = React.useState('');
   const [portalError, setPortalError] = React.useState('');
-  const [portalStatus, setPortalStatus] = React.useState<'account_created' | 'invitation_pending' | 'invitation_expired' | 'pending' | 'not_started'>('not_started');
-  const [portalCardStates, setPortalCardStates] = React.useState<Record<string, { status: 'account_created' | 'invitation_pending' | 'invitation_expired' | 'not_started' | 'unavailable'; link: string | null }>>({});
+  const [portalStatus, setPortalStatus] = React.useState<'account_created' | 'invitation_pending' | 'invitation_expired' | 'paused' | 'revoked' | 'pending' | 'not_started'>('not_started');
+  const [portalCardStates, setPortalCardStates] = React.useState<Record<string, { status: 'account_created' | 'invitation_pending' | 'invitation_expired' | 'paused' | 'revoked' | 'not_started' | 'unavailable'; link: string | null }>>({});
   const [portalCardCopied, setPortalCardCopied] = React.useState('');
   const [portalTelegramLinked, setPortalTelegramLinked] = React.useState(false);
   const [portalTelegramLoading, setPortalTelegramLoading] = React.useState(false);
@@ -97,7 +97,7 @@ export function ClientsPage() {
     Promise.all(s.clients.map(async client => {
       try {
         const access = await fetchClientPortalAccess(client.id);
-        return [client.id, { status: access.status === 'account_created' || access.status === 'invitation_expired' || access.status === 'invitation_pending' ? access.status : 'not_started', link: access.portalLink }] as const;
+        return [client.id, { status: access.status === 'account_created' || access.status === 'invitation_expired' || access.status === 'invitation_pending' || access.status === 'paused' || access.status === 'revoked' ? access.status : 'not_started', link: access.portalLink }] as const;
       } catch {
         return [client.id, { status: 'unavailable', link: null }] as const;
       }
@@ -167,11 +167,34 @@ export function ClientsPage() {
     try {
       await revokeClientPortalAccess(selectedClient.id);
       setPortalAccessEnabled(false);
-      setPortalStatus('not_started');
-      setPortalCardStates(previous => ({ ...previous, [selectedClient.id]: { status: 'not_started', link: null } }));
-      setPortalMessage('Portal access has been revoked.');
+      setPortalStatus('revoked');
+      setPortalCardStates(previous => ({ ...previous, [selectedClient.id]: { status: 'revoked', link: null } }));
+      setPortalMessage('Portal access was revoked and the old client portal account was deleted. Create a new secure account link when you are ready to invite this client again.');
     } catch (err) {
       setPortalError(err instanceof Error ? err.message : 'Could not revoke portal access.');
+    } finally {
+      setPortalActionLoading(false);
+    }
+  }
+
+  async function pauseOrResumeSelectedClientPortalAccess(action: 'pause' | 'resume') {
+    if (!selectedClient || portalActionLoading) return;
+    const verb = action === 'pause' ? 'Pause' : 'Resume';
+    if (!window.confirm(`${verb} client portal access for ${selectedClient.name}?`)) return;
+    setPortalActionLoading(true);
+    setPortalMessage('');
+    setPortalError('');
+    try {
+      const result = await updateClientPortalAccess(selectedClient.id, action);
+      setPortalAccessEnabled(action === 'resume');
+      setPortalStatus(action === 'resume' ? 'account_created' : 'paused');
+      setPortalCardStates(previous => ({ ...previous, [selectedClient.id]: { status: action === 'resume' ? 'account_created' : 'paused', link: action === 'resume' ? 'https://taxflowaiwebsite.vercel.app/portal' : null } }));
+      setPortalInviteLink(action === 'resume' ? 'https://taxflowaiwebsite.vercel.app/portal' : '');
+      setPortalMessage(action === 'pause'
+        ? 'Portal access is paused. The client account and documents are preserved; sign-in and uploads are blocked until you resume access.'
+        : `Portal access is active again (${result.status}). The client can sign in using the normal portal link.`);
+    } catch (err) {
+      setPortalError(err instanceof Error ? err.message : `Could not ${action} portal access.`);
     } finally {
       setPortalActionLoading(false);
     }
@@ -314,7 +337,7 @@ export function ClientsPage() {
           const pct = mine.length ? Math.round((sum(mine, (x) => x.done) / sum(mine, (x) => x.total)) * 100) : 0;
           const m = missing(s.checks, c.id).length;
           return (
-            <div key={c.id} className={`card ccard${portalCardStates[c.id]?.status === 'invitation_pending' ? ' portal-pending' : portalCardStates[c.id]?.status === 'invitation_expired' ? ' portal-expired' : ''}`}>
+            <div key={c.id} className={`card ccard${portalCardStates[c.id]?.status === 'invitation_pending' ? ' portal-pending' : portalCardStates[c.id]?.status === 'invitation_expired' ? ' portal-expired' : portalCardStates[c.id]?.status === 'paused' || portalCardStates[c.id]?.status === 'revoked' ? ' portal-paused' : ''}`}>
               <div className="row">
                 <span className="av lg" style={{ ['--t' as any]: c.tone }}>{c.short.slice(0, 2).toUpperCase()}</span>
                 <div style={{ minWidth: 0 }}><b>{c.name}</b><div className="mut" style={{ fontSize: 12 }}>{c.city}, {c.country}</div></div>
@@ -332,6 +355,8 @@ export function ClientsPage() {
                 {portalCardStates[c.id]?.status === 'invitation_pending' && <span className="chip portal-card-chip">Portal setup pending</span>}
                 {portalCardStates[c.id]?.status === 'invitation_expired' && <span className="chip portal-card-chip">Portal invite expired</span>}
                 {portalCardStates[c.id]?.status === 'account_created' && <span className="chip green">Portal created & connected</span>}
+                {portalCardStates[c.id]?.status === 'paused' && <span className="chip amber">Portal temporarily paused</span>}
+                {portalCardStates[c.id]?.status === 'revoked' && <span className="chip amber">Portal revoked · new account required</span>}
                 {portalCardStates[c.id]?.status === 'unavailable' && <span className="chip amber">Portal status unavailable</span>}
               </div>
               {portalCardStates[c.id]?.link && <div className="portal-card-link"><input value={portalCardStates[c.id].link || ''} readOnly aria-label={`${c.name} portal link`} onFocus={event => event.currentTarget.select()} /><button className="btn xs" onClick={() => { void navigator.clipboard.writeText(portalCardStates[c.id].link || ''); setPortalCardCopied(c.id); window.setTimeout(() => setPortalCardCopied(current => current === c.id ? '' : current), 1400); }}>{portalCardCopied === c.id ? 'Copied' : 'Copy link'}</button></div>}
@@ -375,13 +400,14 @@ export function ClientsPage() {
               {portalMessage && <div className="portal-success-message" role="status">{portalMessage}</div>}
               <div className={`row${portalAccessLoading ? ' portal-controls-hidden' : ''}`}>
                 <span className={`chip ${portalStatus === 'account_created' ? 'green' : portalStatus === 'invitation_pending' ? 'portal-card-chip' : 'amber'}`}>
-                  {portalAccessLoading ? 'Checking access…' : portalStatus === 'account_created' ? 'Portal account created' : portalStatus === 'invitation_pending' ? 'Invitation pending' : portalStatus === 'invitation_expired' ? 'Invitation expired' : 'Invitation required'}
+                  {portalAccessLoading ? 'Checking access…' : portalStatus === 'account_created' ? 'Portal account created' : portalStatus === 'paused' ? 'Portal temporarily paused' : portalStatus === 'revoked' ? 'Portal revoked · new account required' : portalStatus === 'invitation_pending' ? 'Invitation pending' : portalStatus === 'invitation_expired' ? 'Invitation expired' : 'Invitation required'}
                 </span>
                 <span className="sp" />
                 <button className="btn sm" disabled={portalTelegramLoading || portalActionLoading || !portalTelegramLinked} onClick={() => void sendPortalLinkToTelegram()} title={!portalTelegramLinked ? 'Link this client to Telegram first' : undefined}>{portalTelegramLoading ? 'Sending…' : 'Send via Telegram'}</button>
-                {portalAccessEnabled
-                  && <button className="btn sm danger" disabled={portalActionLoading || portalAccessLoading} onClick={() => void revokeSelectedClientPortalAccess()}>{portalActionLoading ? 'Please wait…' : 'Revoke access'}</button>}
-                {portalStatus === 'not_started' && <button className="btn sm pri" disabled={portalActionLoading || portalAccessLoading || !selectedClient.contact.trim()} onClick={() => void inviteSelectedClientToPortal()} title={!selectedClient.contact.trim() ? 'Add an email address to this client first' : undefined}>{portalActionLoading ? 'Creating link…' : 'Create secure invite link'}</button>}
+                {portalAccessEnabled && <button className="btn sm" disabled={portalActionLoading || portalAccessLoading} onClick={() => void pauseOrResumeSelectedClientPortalAccess('pause')}>{portalActionLoading ? 'Please wait…' : 'Pause access'}</button>}
+                {portalStatus === 'paused' && <button className="btn sm pri" disabled={portalActionLoading || portalAccessLoading} onClick={() => void pauseOrResumeSelectedClientPortalAccess('resume')}>{portalActionLoading ? 'Please wait…' : 'Resume access'}</button>}
+                {portalAccessEnabled && <button className="btn sm danger" disabled={portalActionLoading || portalAccessLoading} onClick={() => void revokeSelectedClientPortalAccess()}>{portalActionLoading ? 'Please wait…' : 'Revoke permanently'}</button>}
+                {(portalStatus === 'not_started' || portalStatus === 'revoked' || portalStatus === 'invitation_expired') && <button className="btn sm pri" disabled={portalActionLoading || portalAccessLoading || !selectedClient.contact.trim()} onClick={() => void inviteSelectedClientToPortal()} title={!selectedClient.contact.trim() ? 'Add an email address to this client first' : undefined}>{portalActionLoading ? 'Creating link…' : portalStatus === 'revoked' ? 'Create new secure account link' : 'Create secure invite link'}</button>}
               </div>
               {portalStatus === 'invitation_expired' && !portalAccessLoading && <div className="portal-expired-note" role="status">This invitation expired after 30 days. Create a fresh link before sending it.</div>}
               {portalInviteLink && <div className={`client-portal-invite-link${portalAccessLoading ? ' portal-controls-hidden' : ''}`}>

@@ -30,9 +30,8 @@ async function requireClientPortalAuth(req, res, next) {
     }
     const { data: access, error: accessError } = await supabase
       .from('client_portal_access')
-      .select('client_id, invited_email, user_id')
+      .select('client_id, invited_email, user_id, active, access_status')
       .eq('user_id', user.id)
-      .eq('active', true)
       .maybeSingle();
     if (accessError) throw accessError;
 
@@ -41,6 +40,15 @@ async function requireClientPortalAuth(req, res, next) {
         success: false,
         code: 'portal_access_revoked',
         message: 'Your client portal access is no longer active. Your practice may have revoked access. You have been signed out; contact your CA if you need access again.'
+      });
+    }
+    if (access.access_status === 'paused' || access.active !== true) {
+      return res.status(403).json({
+        success: false,
+        code: access.access_status === 'paused' ? 'portal_access_paused' : 'portal_access_revoked',
+        message: access.access_status === 'paused'
+          ? 'Your client portal access is temporarily paused by your practice. You have been signed out; contact your CA when you need access restored.'
+          : 'Your client portal access is no longer active. Your practice may have revoked access. You have been signed out; contact your CA if you need access again.'
       });
     }
     if (String(user.email || '').trim().toLowerCase() !== String(access.invited_email || '').trim().toLowerCase()) {

@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS public.client_portal_access (
   user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
   invited_email TEXT,
   active BOOLEAN NOT NULL DEFAULT FALSE,
+  access_status TEXT NOT NULL DEFAULT 'active',
   invitation_pending BOOLEAN NOT NULL DEFAULT FALSE,
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -15,7 +16,14 @@ CREATE TABLE IF NOT EXISTS public.client_portal_access (
 
 ALTER TABLE public.client_portal_access
   ADD COLUMN IF NOT EXISTS invited_email TEXT,
+  ADD COLUMN IF NOT EXISTS access_status TEXT NOT NULL DEFAULT 'active',
   ADD COLUMN IF NOT EXISTS invitation_pending BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE public.client_portal_access
+  DROP CONSTRAINT IF EXISTS client_portal_access_status_check;
+ALTER TABLE public.client_portal_access
+  ADD CONSTRAINT client_portal_access_status_check
+  CHECK (access_status IN ('active', 'paused', 'revoked'));
 
 ALTER TABLE public.client_portal_access ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.client_portal_access FROM anon, authenticated;

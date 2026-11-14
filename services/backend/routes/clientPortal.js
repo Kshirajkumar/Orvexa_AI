@@ -315,13 +315,13 @@ router.get('/clients/:clientId/access', requireAuth, async (req, res) => {
     if (!client) return;
     const { data, error } = await supabase
       .from('client_portal_access')
-      .select('active, user_id, invited_email, created_at')
+      .select('active, access_status, user_id, invited_email, created_at')
       .eq('client_id', client.id)
       .maybeSingle();
     if (error) throw error;
     let invitation = null;
     let invitationStatus = 'not_started';
-    if (!data?.user_id && client.email) {
+    if (!data?.user_id && client.email && data?.access_status !== 'revoked') {
       // Reuse an active invite, or rotate an expired unused invite into a
       // fresh 30-day invite while loading access. A claimed account is handled
       // above and never receives another account-creation link.
@@ -360,11 +360,19 @@ router.get('/clients/:clientId/access', requireAuth, async (req, res) => {
           && String(data.invited_email || '').toLowerCase() === String(client.email || '').trim().toLowerCase()
         ),
         linked: Boolean(data?.active && data.user_id),
-        status: data?.active && data.user_id ? 'account_created' : invitation?.status === 'pending' ? 'invitation_pending' : invitationStatus,
+        status: data?.active && data.user_id
+          ? 'account_created'
+          : data?.access_status === 'paused'
+            ? 'paused'
+            : data?.access_status === 'revoked'
+              ? 'revoked'
+              : invitation?.status === 'pending' ? 'invitation_pending' : invitationStatus,
         email: client.email || null,
         createdAt: data?.created_at || null,
         invitation,
-        portalLink: data?.active && data.user_id ? getClientPortalBaseUrl() : invitation?.link || null,
+        portalLink: data?.active && data.user_id
+          ? getClientPortalBaseUrl()
+          : invitation?.link || null,
         telegramLinked: Boolean(client.telegram_chat_id)
       }
     });
@@ -595,21 +603,69 @@ async function hasClaimedClientPortalAccount(clientId, email) {
   );
 }
 
+router.patch('/clients/:clientId/access', requireAuth, async (req, res) => {
+  try {
+    const client = await requireStaffClient(req, res);
+    if (!client) return;
+    const action = String(req.body?.action || '').trim().toLowerCase();
+    if (!['pause', 'resume'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'Access action must be pause or resume.' });
+    }
+    const { data, error } = await supabase
+      .from('client_portal_access')
+      .update({
+        active: action === 'resume',
+        access_status: action === 'resume' ? 'active' : 'paused',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('client_id', client.id)
+      .neq('access_status', 'revoked')
+      .select('id, active, access_status')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ success: false, message: 'This client does not have an enrolled portal account to update.' });
+    return res.json({ success: true, data: { active: data.active, status: data.access_status } });
+  } catch (error) {
+    console.error('[Client Portal] Access pause/resume failed:', error.message);
+    return res.status(500).json({ success: false, message: 'Could not update this client’s portal access. Please try again.' });
+  }
+});
+
 router.delete('/clients/:clientId/access', requireAuth, async (req, res) => {
   try {
     const client = await requireStaffClient(req, res);
     if (!client) return;
+    const { data: existing, error: existingError } = await supabase
+      .from('client_portal_access')
+      .select('id, user_id, access_status')
+      .eq('client_id', client.id)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (!existing || !existing.user_id) {
+      return res.status(404).json({ success: false, message: 'This client does not have an enrolled portal account to revoke.' });
+    }
+
     await revokeClientPortalInvites(client.id);
     const { data, error } = await supabase
       .from('client_portal_access')
-      .update({ user_id: null, active: false, invitation_pending: false, updated_at: new Date().toISOString() })
+      .update({ active: false, access_status: 'revoked', invitation_pending: false, updated_at: new Date().toISOString() })
       .eq('client_id', client.id)
-      .eq('active', true)
+      .eq('user_id', existing.user_id)
       .select('id')
       .maybeSingle();
     if (error) throw error;
-    if (!data) return res.status(404).json({ success: false, message: 'This client does not have active portal access.' });
-    return res.json({ success: true, data: { enabled: false } });
+    if (!data) return res.status(409).json({ success: false, message: 'Portal access changed before it could be revoked. Refresh and try again.' });
+
+    const { error: deleteError } = await supabase.auth.admin.deleteUser(existing.user_id);
+    if (deleteError) {
+      console.error('[Client Portal] Revoked access but could not delete client Auth user:', deleteError.message);
+      return res.status(503).json({
+        success: false,
+        code: 'portal_user_cleanup_pending',
+        message: 'Portal access was revoked immediately, but the old client account could not be fully removed yet. Retry revoke cleanup before creating a new account link.'
+      });
+    }
+    return res.json({ success: true, data: { enabled: false, status: 'revoked', accountDeleted: true } });
   } catch (error) {
     console.error('[Client Portal] Access revocation failed:', error.message);
     return res.status(500).json({ success: false, message: 'Could not revoke this client’s portal access.' });
