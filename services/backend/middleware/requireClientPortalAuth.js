@@ -37,10 +37,14 @@ async function requireClientPortalAuth(req, res, next) {
     if (accessError) throw accessError;
 
     if (!access) {
-      return res.status(403).json({ success: false, message: 'This account has no active portal access. Ask your CA for a client-specific invitation link.' });
+      return res.status(403).json({
+        success: false,
+        code: 'portal_access_revoked',
+        message: 'Your client portal access is no longer active. Your practice may have revoked access. You have been signed out; contact your CA if you need access again.'
+      });
     }
     if (String(user.email || '').trim().toLowerCase() !== String(access.invited_email || '').trim().toLowerCase()) {
-      return res.status(403).json({ success: false, message: 'This account no longer matches the client’s portal email. Contact the practice.' });
+      return res.status(403).json({ success: false, code: 'portal_access_revoked', message: 'Your client portal email no longer matches the practice record. You have been signed out; contact your CA.' });
     }
 
     const { data: client, error: clientError } = await supabase
@@ -52,10 +56,14 @@ async function requireClientPortalAuth(req, res, next) {
       .maybeSingle();
     if (clientError) throw clientError;
     if (!client) {
-      return res.status(403).json({ success: false, message: 'This client portal is no longer active.' });
+      return res.status(403).json({
+        success: false,
+        code: 'portal_access_revoked',
+        message: 'This client portal is no longer active. You have been signed out; contact your CA if you need access again.'
+      });
     }
     if (String(client.email || '').trim().toLowerCase() !== String(access.invited_email || '').trim().toLowerCase()) {
-      return res.status(403).json({ success: false, message: 'The portal email on file has changed. Contact the practice for updated access.' });
+      return res.status(403).json({ success: false, code: 'portal_access_revoked', message: 'The portal email on file has changed. You have been signed out; contact your CA for updated access.' });
     }
 
     req.portalUser = user;
