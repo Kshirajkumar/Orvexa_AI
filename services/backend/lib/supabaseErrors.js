@@ -7,6 +7,9 @@ function getSupabaseConfigurationMessage(error, resource) {
   if (code === 'PGRST205' || code === '42P01' || /could not find the table|relation .* does not exist/.test(message)) {
     return `The Supabase migration for ${resource} is not installed. Apply the required database migration, then restart the backend.`;
   }
+  if (/owning ca profile is missing|client portal access cannot be verified|auth account email is missing/.test(message)) {
+    return `The CA/client identity migration is incomplete for ${resource}. Run client_identity_profiles.sql and repair the affected account before retrying.`;
+  }
   return null;
 }
 

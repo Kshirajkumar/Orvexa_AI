@@ -101,7 +101,7 @@ function getPortalAuthFailure(error) {
       message: 'Client portal enrollment is not configured correctly on the practice server. Please contact your practice administrator.',
     };
   }
-  if (/database error creating new user|user_profiles|on_auth_user_created|trigger/i.test(message)) {
+  if (/database error creating new user|user_profiles|ca_user_profiles|client_user_profiles|ca_client_relationships|on_auth_user_created|trigger/i.test(message)) {
     return {
       status: 503,
       code: 'portal_auth_schema',
@@ -117,6 +117,13 @@ function getPortalAuthFailure(error) {
 
 function getPortalClaimFailure(error) {
   const message = String(error?.message || '');
+  if (/owning ca profile is missing|client portal access cannot be verified|identity migration|client portal access references a missing client/i.test(message)) {
+    return {
+      status: 503,
+      code: 'portal_identity_schema',
+      message: 'Client portal identity verification is temporarily unavailable because the practice database needs an identity migration or account repair. Please contact your CA.',
+    };
+  }
   if (/invalid portal invitation|invalid or expired|no longer valid|already linked|not authorized/i.test(message)) {
     return {
       status: 409,

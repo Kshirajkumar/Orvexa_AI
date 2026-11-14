@@ -3,6 +3,24 @@
 -- This migration is intentionally non-destructive: user_profiles remains as a
 -- compatibility table while application traffic moves to these source tables.
 
+BEGIN;
+
+SELECT pg_advisory_xact_lock(hashtextextended('taxflow.client_identity_profiles.v1', 0));
+
+DO $$
+BEGIN
+  IF to_regclass('public.user_profiles') IS NULL
+     OR to_regclass('public.clients') IS NULL
+     OR to_regclass('public.client_portal_access') IS NULL THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '42P01',
+      MESSAGE = 'Client identity migration prerequisites are missing',
+      DETAIL = 'Run schema.sql and client_portal_account_lifecycle.sql before client_identity_profiles.sql.',
+      HINT = 'No identity tables were changed because the migration stopped during its preflight check.';
+  END IF;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.generate_taxflow_ca_code()
 RETURNS text
 LANGUAGE plpgsql
@@ -153,6 +171,28 @@ BEGIN
     SELECT * INTO v_user
     FROM auth.users
     WHERE id = NEW.user_id;
+
+    IF v_client.id IS NULL THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '23503',
+        MESSAGE = 'Client portal access references a missing client',
+        DETAIL = format('client_portal_access.client_id=%s', NEW.client_id);
+    END IF;
+
+    IF v_ca.user_id IS NULL THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '23514',
+        MESSAGE = 'Client portal access cannot be verified because the owning CA profile is missing',
+        DETAIL = format('client_id=%s, ca_user_id=%s', v_client.id, v_client.user_id),
+        HINT = 'Create or repair the ca_user_profiles row before claiming the portal invitation.';
+    END IF;
+
+    IF v_user.id IS NULL OR COALESCE(v_user.email, '') = '' THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '23514',
+        MESSAGE = 'Client portal access cannot be verified because the Auth account email is missing',
+        DETAIL = format('client_user_id=%s', NEW.user_id);
+    END IF;
 
     IF v_client.id IS NOT NULL AND v_ca.user_id IS NOT NULL AND v_user.id IS NOT NULL THEN
       INSERT INTO public.client_user_profiles (
@@ -305,14 +345,20 @@ BEGIN
   FROM public.ca_user_profiles
   WHERE user_id = NEW.user_id;
 
-  IF v_ca.user_id IS NOT NULL THEN
-    INSERT INTO public.ca_client_relationships (ca_user_id, client_id, ca_code, status)
-    VALUES (v_ca.user_id, NEW.id, v_ca.ca_code, 'pending')
-    ON CONFLICT (client_id) DO UPDATE SET
-      ca_user_id = EXCLUDED.ca_user_id,
-      ca_code = EXCLUDED.ca_code,
-      updated_at = now();
+  IF v_ca.user_id IS NULL THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '23514',
+      MESSAGE = 'Client cannot be connected because the owning CA profile is missing',
+      DETAIL = format('client_id=%s, ca_user_id=%s', NEW.id, NEW.user_id),
+      HINT = 'Create the CA account profile before adding clients.';
   END IF;
+
+  INSERT INTO public.ca_client_relationships (ca_user_id, client_id, ca_code, status)
+  VALUES (v_ca.user_id, NEW.id, v_ca.ca_code, 'pending')
+  ON CONFLICT (client_id) DO UPDATE SET
+    ca_user_id = EXCLUDED.ca_user_id,
+    ca_code = EXCLUDED.ca_code,
+    updated_at = now();
   RETURN NEW;
 END;
 $$;
@@ -324,3 +370,5 @@ CREATE TRIGGER trg_ensure_ca_client_relationship
   FOR EACH ROW EXECUTE FUNCTION public.ensure_ca_client_relationship();
 
 NOTIFY pgrst, 'reload schema';
+
+COMMIT;
