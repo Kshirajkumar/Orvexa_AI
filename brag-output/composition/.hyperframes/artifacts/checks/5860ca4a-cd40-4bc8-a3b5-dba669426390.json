@@ -1,0 +1,1673 @@
+{
+  "ok": false,
+  "strict": false,
+  "browserSkipped": false,
+  "lint": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 11,
+    "infoCount": 0,
+    "findings": [
+      {
+        "code": "overlapping_gsap_tweens",
+        "severity": "warning",
+        "message": "GSAP tweens overlap on \"#s1-docs-orbit\" for scale between 5.40s and 5.50s.",
+        "selector": "#s1-docs-orbit",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\K.HARI BABU\\OneDrive\\Pictures\\TaxFlow_AI\\brag-output\\composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Shorten the earlier tween, move the later tween, or add `overwrite: \"auto\"`."
+      },
+      {
+        "code": "composition_file_too_large",
+        "severity": "warning",
+        "message": "This HTML composition file has 862 lines. Smaller sub-compositions are easier to read, iterate on, and diff.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\K.HARI BABU\\OneDrive\\Pictures\\TaxFlow_AI\\brag-output\\composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Split coherent scenes or layers into separate .html files under compositions/, then mount them from the parent with data-composition-src so each file stays small enough to inspect, revise, and validate independently."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"scene-1\"> is a timeline element that contains nested <div id=\"s1-docs-orbit\">. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#scene-1",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\K.HARI BABU\\OneDrive\\Pictures\\TaxFlow_AI\\brag-output\\composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"scene-1\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"scene-2\"> is a timeline element that contains nested <div id=\"s2-halo\">. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#scene-2",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\K.HARI BABU\\OneDrive\\Pictures\\TaxFlow_AI\\brag-output\\composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"scene-2\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"scene-3\"> is a timeline element that contains nested <div id=\"s3-desktop-window\">. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#scene-3",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\K.HARI BABU\\OneDrive\\Pictures\\TaxFlow_AI\\brag-output\\composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"scene-3\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"scene-4\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#scene-4",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\K.HARI BABU\\OneDrive\\Pictures\\TaxFlow_AI\\brag-output\\composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"scene-4\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"scene-5\"> is a timeline element that contains nested <div id=\"s5-container\">. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#scene-5",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\K.HARI BABU\\OneDrive\\Pictures\\TaxFlow_AI\\brag-output\\composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"scene-5\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"scene-6\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#scene-6",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\K.HARI BABU\\OneDrive\\Pictures\\TaxFlow_AI\\brag-output\\composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"scene-6\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"scene-7\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#scene-7",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\K.HARI BABU\\OneDrive\\Pictures\\TaxFlow_AI\\brag-output\\composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"scene-7\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"scene-8\"> is a timeline element that contains nested <div id=\"s8-card\">. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#scene-8",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\K.HARI BABU\\OneDrive\\Pictures\\TaxFlow_AI\\brag-output\\composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"scene-8\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"scene-9\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#scene-9",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\K.HARI BABU\\OneDrive\\Pictures\\TaxFlow_AI\\brag-output\\composition\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"scene-9\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      }
+    ],
+    "filesScanned": 1
+  },
+  "runtime": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": []
+  },
+  "layout": {
+    "ok": false,
+    "errorCount": 1,
+    "warningCount": 0,
+    "infoCount": 1,
+    "findings": [
+      {
+        "code": "content_overlap",
+        "severity": "error",
+        "time": 4.38,
+        "selector": "#s1-card-3 > div:nth-of-type(1) > span:nth-of-type(2)",
+        "message": "Two text blocks overlap and may render unreadable.",
+        "rect": {
+          "left": 533.28,
+          "top": 776.26,
+          "right": 583.76,
+          "bottom": 790.9,
+          "width": 50.48,
+          "height": 14.64
+        },
+        "containerSelector": "#s1-headline-wrap > div:nth-of-type(2)",
+        "text": "GSTR-3B",
+        "fixHint": "Give each block its own zone, or put data-layout-allow-overlap on the text or on a container inside the scene. A marker on the scene root does not apply. Decoration nobody needs to read can take data-layout-ignore.",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 533.28,
+          "y": 776.26,
+          "width": 50.48,
+          "height": 14.64
+        },
+        "firstSeen": 4.38,
+        "lastSeen": 5.631,
+        "occurrences": 5,
+        "heldMs": 1251.0000000000002,
+        "times": [
+          4.38,
+          4.693,
+          5.006,
+          5.318,
+          5.631
+        ]
+      },
+      {
+        "code": "container_overflow",
+        "severity": "info",
+        "time": 52.889,
+        "selector": "#scene-9 > div:nth-of-type(1)",
+        "message": "Element extends outside a clipping layout container.",
+        "rect": {
+          "left": 360,
+          "top": -60,
+          "right": 1560,
+          "bottom": 1140,
+          "width": 1200,
+          "height": 1200
+        },
+        "containerSelector": "#scene-9",
+        "fixHint": "Resize/reposition the child or container, or mark intentional overflow with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "top": 60,
+          "bottom": 60
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 360,
+          "y": -60,
+          "width": 1200,
+          "height": 1200
+        },
+        "firstSeen": 52.889,
+        "lastSeen": 52.889,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          52.889
+        ]
+      }
+    ],
+    "duration": 56,
+    "samples": [
+      3.111,
+      9.333,
+      15.556,
+      21.778,
+      28,
+      34.222,
+      40.444,
+      46.667,
+      52.889
+    ],
+    "transitionSamples": [],
+    "transitionSamplesDropped": 0,
+    "tolerance": 2,
+    "totalIssueCount": 2,
+    "truncated": false
+  },
+  "motion": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": false,
+    "samples": 0
+  },
+  "contrast": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 5,
+    "infoCount": 0,
+    "findings": [
+      {
+        "code": "contrast_aa_failure",
+        "severity": "warning",
+        "message": "Contrast is 4.37:1; WCAG AA requires 4.5:1.",
+        "text": "SA",
+        "fg": "rgb(255,255,255)",
+        "bg": "rgb(48,114,241)",
+        "ratio": 4.37,
+        "requiredRatio": 4.5,
+        "suggestedColor": "rgb(11,11,11)",
+        "large": false,
+        "selector": "div > div:nth-of-type(7) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1)",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 513,
+          "y": 519,
+          "width": 42,
+          "height": 42
+        },
+        "time": 15.556,
+        "times": [
+          15.556
+        ]
+      },
+      {
+        "code": "contrast_aa_failure",
+        "severity": "warning",
+        "message": "Contrast is 3.09:1; WCAG AA requires 4.5:1.",
+        "text": "ME",
+        "fg": "rgb(255,255,255)",
+        "bg": "rgb(11,167,117)",
+        "ratio": 3.09,
+        "requiredRatio": 4.5,
+        "suggestedColor": "rgb(44,44,44)",
+        "large": false,
+        "selector": "div > div:nth-of-type(7) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(1)",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 513,
+          "y": 603,
+          "width": 42,
+          "height": 42
+        },
+        "time": 15.556,
+        "times": [
+          15.556
+        ]
+      },
+      {
+        "code": "contrast_aa_failure",
+        "severity": "warning",
+        "message": "Contrast is 2.99:1; WCAG AA requires 4.5:1.",
+        "text": "Approve & Mark Verified",
+        "fg": "rgb(255,255,255)",
+        "bg": "rgb(11,170,119)",
+        "ratio": 2.99,
+        "requiredRatio": 4.5,
+        "suggestedColor": "rgb(46,46,46)",
+        "large": false,
+        "selector": "#s5-btn-approve",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 990,
+          "y": 850,
+          "width": 679,
+          "height": 49
+        },
+        "time": 28,
+        "times": [
+          28
+        ]
+      },
+      {
+        "code": "contrast_aa_failure",
+        "severity": "warning",
+        "message": "Contrast is 4.31:1; WCAG AA requires 4.5:1.",
+        "text": "ME",
+        "fg": "rgb(255,255,255)",
+        "bg": "rgb(229,52,52)",
+        "ratio": 4.31,
+        "requiredRatio": 4.5,
+        "suggestedColor": "rgb(13,13,13)",
+        "large": false,
+        "selector": "div > div:nth-of-type(11) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 318,
+          "y": 500.5,
+          "width": 42,
+          "height": 42
+        },
+        "time": 40.444,
+        "times": [
+          40.444
+        ]
+      },
+      {
+        "code": "contrast_aa_failure",
+        "severity": "warning",
+        "message": "Contrast is 4.43:1; WCAG AA requires 4.5:1.",
+        "text": "SA",
+        "fg": "rgb(255,255,255)",
+        "bg": "rgb(47,113,240)",
+        "ratio": 4.43,
+        "requiredRatio": 4.5,
+        "suggestedColor": "rgb(8,8,8)",
+        "large": false,
+        "selector": "div > div:nth-of-type(11) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1)",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 318,
+          "y": 597.5,
+          "width": 42,
+          "height": 42
+        },
+        "time": 40.444,
+        "times": [
+          40.444
+        ]
+      }
+    ],
+    "enabled": true,
+    "samples": [
+      3.111,
+      15.556,
+      28,
+      40.444,
+      52.889
+    ],
+    "checked": 82,
+    "passed": 77
+  },
+  "craft": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 6,
+    "infoCount": 0,
+    "findings": [
+      {
+        "code": "first_frame_empty",
+        "severity": "warning",
+        "message": "Frame 0 shows only the background, and the first frame is the thumbnail on social players: have the title or key image already on screen at 0 s instead of entering from nothing; see references/review.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0
+      },
+      {
+        "code": "dead_stretch",
+        "severity": "warning",
+        "message": "Nothing on screen changes for 3.13 s (13.25–16.38 s): start the next move within 3 s, or put data-hold on the element whose stillness is deliberate; see references/motion.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 13.25,
+        "seconds": 3.125,
+        "floorSeconds": 3,
+        "until": 16.375
+      },
+      {
+        "code": "text_below_floor",
+        "severity": "warning",
+        "message": "Type floor is 28 px (2.6% of the 1080 px short side, what a phone can read) and 135 text elements stay under it for 0.5 s or more, the smallest \"AI PARSING\" at 6 px: set reading text to at least 28 px, or put data-layout-ignore on text that is texture rather than reading; see references/look.md.",
+        "text": "AI PARSING",
+        "selector": "div.badge.badge-cyan",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 899.89,
+          "y": 524.34,
+          "width": 36.29,
+          "height": 7.15
+        },
+        "time": 17.875,
+        "times": [
+          0.5,
+          0.5,
+          0.75,
+          0.75,
+          1,
+          1,
+          1,
+          1.125,
+          1.125,
+          1.375,
+          3.5,
+          6.625,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.375,
+          11.625,
+          11.625,
+          11.75,
+          11.75,
+          12,
+          12,
+          12.125,
+          12.125,
+          17.375,
+          17.375,
+          17.375,
+          17.375,
+          17.375,
+          17.375,
+          17.375,
+          17.375,
+          17.375,
+          17.375,
+          17.375,
+          17.375,
+          17.375,
+          17.875,
+          17.875,
+          17.875,
+          17.875,
+          18.375,
+          18.375,
+          18.625,
+          18.625,
+          19,
+          19,
+          19.25,
+          19.25,
+          19.625,
+          19.625,
+          24.375,
+          24.375,
+          24.375,
+          24.375,
+          24.375,
+          24.375,
+          24.375,
+          24.375,
+          24.375,
+          24.375,
+          24.375,
+          24.375,
+          24.375,
+          24.375,
+          24.375,
+          24.375,
+          26.875,
+          28,
+          32.375,
+          32.375,
+          32.375,
+          32.375,
+          32.375,
+          32.375,
+          32.375,
+          32.375,
+          32.375,
+          32.375,
+          33,
+          33,
+          33,
+          33,
+          33,
+          33,
+          33,
+          38.375,
+          38.375,
+          38.375,
+          38.375,
+          38.375,
+          38.375,
+          38.375,
+          38.375,
+          38.375,
+          38.375,
+          38.375,
+          38.375,
+          38.375,
+          41.5,
+          41.5,
+          41.5,
+          44.375,
+          44.375,
+          44.375,
+          44.375,
+          44.375,
+          44.375,
+          44.375,
+          44.375,
+          44.375,
+          44.375,
+          44.375,
+          44.375,
+          50.75,
+          52.25,
+          53,
+          53
+        ],
+        "fontPx": 6.04,
+        "floorPx": 28,
+        "seconds": 5.875,
+        "elements": [
+          {
+            "selector": "div.badge.badge-cyan",
+            "text": "AI PARSING",
+            "fontPx": 6.04,
+            "time": 17.875,
+            "seconds": 5.875
+          },
+          {
+            "selector": "#s1-card-1 > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "GST INVOICE",
+            "fontPx": 8.86,
+            "time": 0.5,
+            "seconds": 5.125
+          },
+          {
+            "selector": "#s1-card-2 > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "FORM 16 · TDS",
+            "fontPx": 8.92,
+            "time": 0.75,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#s1-card-4 > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "BANK STATEMENT",
+            "fontPx": 9.11,
+            "time": 1.125,
+            "seconds": 4.5
+          },
+          {
+            "selector": "#s1-card-3 > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "DEADLINE MISSED",
+            "fontPx": 9.15,
+            "time": 1,
+            "seconds": 4.625
+          },
+          {
+            "selector": "#s1-card-1 > div:nth-of-type(1) > span:nth-of-type(2)",
+            "text": "₹1,47,500",
+            "fontPx": 9.74,
+            "time": 0.5,
+            "seconds": 5.125
+          },
+          {
+            "selector": "#kpi-card-1 > span:nth-of-type(2)",
+            "text": "India & UAE",
+            "fontPx": 9.77,
+            "time": 11.625,
+            "seconds": 5
+          },
+          {
+            "selector": "#s1-card-2 > div:nth-of-type(1) > span:nth-of-type(2)",
+            "text": "PART A & B",
+            "fontPx": 9.81,
+            "time": 0.75,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#kpi-card-2 > span:nth-of-type(2)",
+            "text": "3 In Queue",
+            "fontPx": 9.87,
+            "time": 11.75,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#kpi-card-3 > span:nth-of-type(2)",
+            "text": "2 Overdue",
+            "fontPx": 9.88,
+            "time": 12,
+            "seconds": 4.625
+          },
+          {
+            "selector": "#kpi-card-4 > span:nth-of-type(2)",
+            "text": "Scheduled",
+            "fontPx": 9.88,
+            "time": 12.125,
+            "seconds": 4.5
+          },
+          {
+            "selector": "#s6-folder-window > div:nth-of-type(2) > span:nth-of-type(2)",
+            "text": "3 Invoices Pending",
+            "fontPx": 10,
+            "time": 32.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s6-folder-window > div:nth-of-type(3) > span:nth-of-type(2)",
+            "text": "47 Processed",
+            "fontPx": 10,
+            "time": 32.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s6-folder-window > div:nth-of-type(4) > span:nth-of-type(2)",
+            "text": "Verified Outputs",
+            "fontPx": 10,
+            "time": 32.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s1-card-4 > div:nth-of-type(1) > span:nth-of-type(2)",
+            "text": "422 Txns",
+            "fontPx": 10.02,
+            "time": 1.125,
+            "seconds": 4.5
+          },
+          {
+            "selector": "#s7-telegram-pop > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "TELEGRAM BOT · SCHEDULED",
+            "fontPx": 10.31,
+            "time": 41.5,
+            "seconds": 2.25
+          },
+          {
+            "selector": "div.badge.badge-emerald",
+            "text": "SYNCED · LIVE PRACTICE",
+            "fontPx": 10.44,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s1-card-3 > div:nth-of-type(1) > span:nth-of-type(2)",
+            "text": "GSTR-3B",
+            "fontPx": 10.52,
+            "time": 1,
+            "seconds": 4.625
+          },
+          {
+            "selector": "#s8-card > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1)",
+            "text": "Selected Client",
+            "fontPx": 10.74,
+            "time": 44.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s8-card > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1)",
+            "text": "Statutory Form",
+            "fontPx": 10.74,
+            "time": 44.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s1-card-3 > div:nth-of-type(2)",
+            "text": "3 days overdue · Penalty accumulating",
+            "fontPx": 10.98,
+            "time": 1,
+            "seconds": 4.625
+          },
+          {
+            "selector": "#s4-doc-panel > div:nth-of-type(2) > div:nth-of-type(1)",
+            "text": "Supplier Entity",
+            "fontPx": 11,
+            "time": 17.375,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#s7-telegram-pop > div:nth-of-type(2) > div:nth-of-type(3)",
+            "text": "Delivered to Mehta Enterprises",
+            "fontPx": 11.24,
+            "time": 41.5,
+            "seconds": 2.25
+          },
+          {
+            "selector": "#s5-status-green",
+            "text": "✓ HUMAN VERIFIED",
+            "fontPx": 11.31,
+            "time": 28,
+            "seconds": 3.75
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2)",
+            "text": "Sharma & Associates · Due 11 Nov",
+            "fontPx": 11.39,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > span:nth-of-type(1)",
+            "text": "3 d overdue",
+            "fontPx": 11.39,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)",
+            "text": "Mehta Enterprises · Due 20 Nov",
+            "fontPx": 11.39,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > span:nth-of-type(1)",
+            "text": "5 d left",
+            "fontPx": 11.39,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s2-brand-core > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)",
+            "text": "PRACTICE AUTOMATION OS",
+            "fontPx": 11.46,
+            "time": 6.625,
+            "seconds": 4
+          },
+          {
+            "selector": "#s6-portal-window > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2)",
+            "text": "Uploaded by client & auto-cataloged",
+            "fontPx": 11.5,
+            "time": 33,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#s8-card > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2)",
+            "text": "47 Approved invoices cross-verified & reconciled",
+            "fontPx": 11.72,
+            "time": 44.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s8-card > div:nth-of-type(3) > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "Ready for Review ✓",
+            "fontPx": 11.72,
+            "time": 44.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s8-card > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+            "text": "Statutory calculation sheet for CA certification",
+            "fontPx": 11.72,
+            "time": 44.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s8-card > div:nth-of-type(3) > div:nth-of-type(2) > span:nth-of-type(1)",
+            "text": "Ready for Review ✓",
+            "fontPx": 11.72,
+            "time": 44.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "div.badge.badge-rose",
+            "text": "FRAGMENTED CLIENT EMAILS & UNCHECKED FILES",
+            "fontPx": 11.74,
+            "time": 1.375,
+            "seconds": 4.25
+          },
+          {
+            "selector": "#s5-container > div:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "SOURCE PDF",
+            "fontPx": 11.86,
+            "time": 24.375,
+            "seconds": 7.375
+          },
+          {
+            "selector": "#s5-container > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1)",
+            "text": "Actual Invoice Total:",
+            "fontPx": 11.86,
+            "time": 24.375,
+            "seconds": 7.375
+          },
+          {
+            "selector": "#s5-status-amber",
+            "text": "⚠ NEEDS REVIEW",
+            "fontPx": 11.86,
+            "time": 24.375,
+            "seconds": 3.5
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(1) > div:nth-of-type(2)",
+            "text": "Search clients, filings, GSTINs...",
+            "fontPx": 11.87,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1) > span:nth-of-type(2)",
+            "text": "View All Deadlines →",
+            "fontPx": 11.87,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s4-doc-panel > div:nth-of-type(1) > div:nth-of-type(2) > span:nth-of-type(1)",
+            "text": "ORIGINAL SOURCE",
+            "fontPx": 12,
+            "time": 17.375,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#s4-doc-panel > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)",
+            "text": "15 OCT 2024",
+            "fontPx": 12,
+            "time": 17.375,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#s4-output-panel > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "✦ 99.4% CONFIDENCE",
+            "fontPx": 12,
+            "time": 17.875,
+            "seconds": 5.875
+          },
+          {
+            "selector": "#s6-folder-window > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "ENTERPRISE VAULT",
+            "fontPx": 12,
+            "time": 32.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s6-portal-window > div:nth-of-type(2) > div:nth-of-type(2)",
+            "text": "Zero-knowledge end-to-end encrypted transfer",
+            "fontPx": 12,
+            "time": 33,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#s6-portal-window > div:nth-of-type(3) > span:nth-of-type(1)",
+            "text": "Verified Ingest",
+            "fontPx": 12,
+            "time": 33,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#s7-radar-window > div:nth-of-type(1) > div:nth-of-type(2) > span:nth-of-type(1)",
+            "text": "2 Overdue",
+            "fontPx": 12,
+            "time": 38.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s7-radar-window > div:nth-of-type(1) > div:nth-of-type(2) > span:nth-of-type(2)",
+            "text": "3 Due Soon",
+            "fontPx": 12,
+            "time": 38.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s7-radar-window > div:nth-of-type(1) > div:nth-of-type(2) > span:nth-of-type(3)",
+            "text": "8 Filed",
+            "fontPx": 12,
+            "time": 38.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s7-radar-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)",
+            "text": "3 Days Overdue",
+            "fontPx": 12,
+            "time": 38.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s7-radar-window > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(2)",
+            "text": "5 Days Left",
+            "fontPx": 12,
+            "time": 38.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#kpi-card-1 > span:nth-of-type(1)",
+            "text": "ACTIVE CLIENTS",
+            "fontPx": 12.21,
+            "time": 11.625,
+            "seconds": 5
+          },
+          {
+            "selector": "#kpi-card-2 > span:nth-of-type(1)",
+            "text": "INVOICES EXTRACTED",
+            "fontPx": 12.33,
+            "time": 11.75,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#kpi-card-3 > span:nth-of-type(1)",
+            "text": "FILINGS IN 7 DAYS",
+            "fontPx": 12.35,
+            "time": 12,
+            "seconds": 4.625
+          },
+          {
+            "selector": "#kpi-card-4 > span:nth-of-type(1)",
+            "text": "AUTO REMINDERS",
+            "fontPx": 12.35,
+            "time": 12.125,
+            "seconds": 4.5
+          },
+          {
+            "selector": "#s5-container > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "Prestige Industrial Traders · Tax Invoice",
+            "fontPx": 12.35,
+            "time": 24.375,
+            "seconds": 7.375
+          },
+          {
+            "selector": "#s5-container > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(4)",
+            "text": "The accountant verifies the document value against the automated extraction before certifying.",
+            "fontPx": 12.35,
+            "time": 24.375,
+            "seconds": 7.375
+          },
+          {
+            "selector": "#s5-container > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2)",
+            "text": "Review values and sign off with full audit log",
+            "fontPx": 12.35,
+            "time": 24.375,
+            "seconds": 7.375
+          },
+          {
+            "selector": "#s4-doc-panel > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2)",
+            "text": "INV-2024-8849",
+            "fontPx": 12.5,
+            "time": 17.375,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#s4-output-panel > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)",
+            "text": "High-precision multi-model inference",
+            "fontPx": 12.5,
+            "time": 17.875,
+            "seconds": 5.875
+          },
+          {
+            "selector": "#s6-folder-window > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)",
+            "text": "Automated Practice Workspace",
+            "fontPx": 12.5,
+            "time": 32.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s7-radar-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2)",
+            "text": "Mehta Enterprises · Client notified via Telegram bot",
+            "fontPx": 12.5,
+            "time": 38.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s7-radar-window > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)",
+            "text": "Sharma & Associates · Auto-reminder scheduled for tomorrow 09:00 AM",
+            "fontPx": 12.5,
+            "time": 38.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "Dashboard",
+            "fontPx": 12.82,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > span:nth-of-type(1)",
+            "text": "Clients",
+            "fontPx": 12.82,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(3) > span:nth-of-type(1)",
+            "text": "Extraction",
+            "fontPx": 12.82,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(4) > span:nth-of-type(1)",
+            "text": "Deadlines",
+            "fontPx": 12.82,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > p:nth-of-type(1)",
+            "text": "Saturday, 14 Nov · 5 filings need attention this week",
+            "fontPx": 12.82,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1)",
+            "text": "SA",
+            "fontPx": 12.82,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(1)",
+            "text": "ME",
+            "fontPx": 12.82,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s9-brand-box > div:nth-of-type(5)",
+            "text": "taxflowaiwebsite.vercel.app",
+            "fontPx": 12.82,
+            "time": 50.75,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s5-container > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)",
+            "text": "INV-2024-8849 · 15-OCT-2024",
+            "fontPx": 12.85,
+            "time": 24.375,
+            "seconds": 7.375
+          },
+          {
+            "selector": "#s5-container > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > span:nth-of-type(1)",
+            "text": "Taxable Amount",
+            "fontPx": 12.85,
+            "time": 24.375,
+            "seconds": 7.375
+          },
+          {
+            "selector": "#s5-container > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(3) > span:nth-of-type(1)",
+            "text": "Grand Total",
+            "fontPx": 12.85,
+            "time": 24.375,
+            "seconds": 7.375
+          },
+          {
+            "selector": "#s4-doc-panel > div:nth-of-type(2) > div:nth-of-type(3)",
+            "text": "GSTIN: 29ABCDE1234F1Z5",
+            "fontPx": 13,
+            "time": 17.375,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#s4-doc-panel > div:nth-of-type(3) > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "Industrial Tooling Assembly",
+            "fontPx": 13,
+            "time": 17.375,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#s4-doc-panel > div:nth-of-type(3) > div:nth-of-type(1) > span:nth-of-type(2)",
+            "text": "₹1,25,000",
+            "fontPx": 13,
+            "time": 17.375,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#s4-doc-panel > div:nth-of-type(3) > div:nth-of-type(2) > span:nth-of-type(1)",
+            "text": "CGST (9%) + SGST (9%)",
+            "fontPx": 13,
+            "time": 17.375,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#s4-doc-panel > div:nth-of-type(3) > div:nth-of-type(2) > span:nth-of-type(2)",
+            "text": "₹22,500",
+            "fontPx": 13,
+            "time": 17.375,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#f-row-1 > span:nth-of-type(1)",
+            "text": "Invoice Number",
+            "fontPx": 13,
+            "time": 18.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#f-row-2 > span:nth-of-type(1)",
+            "text": "Supplier GSTIN",
+            "fontPx": 13,
+            "time": 18.625,
+            "seconds": 5.125
+          },
+          {
+            "selector": "#f-row-3 > span:nth-of-type(1)",
+            "text": "Taxable Value",
+            "fontPx": 13,
+            "time": 19,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#f-row-4 > span:nth-of-type(1)",
+            "text": "Total Tax (IGST/GST)",
+            "fontPx": 13,
+            "time": 19.25,
+            "seconds": 4.5
+          },
+          {
+            "selector": "#s6-portal-window > div:nth-of-type(1) > p:nth-of-type(1)",
+            "text": "Clients upload requested documents directly into their file vault.",
+            "fontPx": 13,
+            "time": 33,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#s7-radar-window > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)",
+            "text": "Automated client communication & statutory follow-ups",
+            "fontPx": 13,
+            "time": 38.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s7-telegram-pop > div:nth-of-type(2) > div:nth-of-type(2)",
+            "text": "Reminder: GSTR-3B Due in 2 Days",
+            "fontPx": 13.12,
+            "time": 41.5,
+            "seconds": 2.25
+          },
+          {
+            "selector": "#s8-card > div:nth-of-type(1) > p:nth-of-type(1)",
+            "text": "Generate structured filing workpapers from approved and verified records.",
+            "fontPx": 13.18,
+            "time": 44.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > button:nth-of-type(1)",
+            "text": "Quick Ingest",
+            "fontPx": 13.29,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#f-row-5 > span:nth-of-type(1)",
+            "text": "Grand Total",
+            "fontPx": 13.43,
+            "time": 19.625,
+            "seconds": 4.125
+          },
+          {
+            "selector": "#s6-folder-window > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)",
+            "text": "SA",
+            "fontPx": 13.5,
+            "time": 32.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s7-radar-window > div:nth-of-type(2) > div:nth-of-type(1)",
+            "text": "ME",
+            "fontPx": 13.5,
+            "time": 38.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s7-radar-window > div:nth-of-type(3) > div:nth-of-type(1)",
+            "text": "SA",
+            "fontPx": 13.5,
+            "time": 38.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1)",
+            "text": "GSTR-1 · October 2024",
+            "fontPx": 13.77,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1)",
+            "text": "ITR-3 · FY 2023-24",
+            "fontPx": 13.77,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s9-cta > span:nth-of-type(1)",
+            "text": "COMING SOON",
+            "fontPx": 13.8,
+            "time": 53,
+            "seconds": 3
+          },
+          {
+            "selector": "#s9-cta > span:nth-of-type(2)",
+            "text": "JOIN THE WAITLIST",
+            "fontPx": 13.8,
+            "time": 53,
+            "seconds": 3
+          },
+          {
+            "selector": "#s5-container > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > span:nth-of-type(2)",
+            "text": "₹1,25,000.00",
+            "fontPx": 13.83,
+            "time": 24.375,
+            "seconds": 7.375
+          },
+          {
+            "selector": "#s5-val-raw",
+            "text": "₹1,47,000.00",
+            "fontPx": 13.83,
+            "time": 24.375,
+            "seconds": 2.5
+          },
+          {
+            "selector": "div.k-eyebrow",
+            "text": "THE ACCOUNTING REALITY",
+            "fontPx": 14,
+            "time": 3.5,
+            "seconds": 2.125
+          },
+          {
+            "selector": "#f-row-1 > span:nth-of-type(2)",
+            "text": "INV-2024-8849",
+            "fontPx": 14,
+            "time": 18.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#f-row-2 > span:nth-of-type(2)",
+            "text": "29ABCDE1234F1Z5",
+            "fontPx": 14,
+            "time": 18.625,
+            "seconds": 5.125
+          },
+          {
+            "selector": "#f-row-3 > span:nth-of-type(2)",
+            "text": "₹1,25,000.00",
+            "fontPx": 14,
+            "time": 19,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#f-row-4 > span:nth-of-type(2)",
+            "text": "₹22,500.00",
+            "fontPx": 14,
+            "time": 19.25,
+            "seconds": 4.5
+          },
+          {
+            "selector": "#s6-portal-window > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1)",
+            "text": "Bank_Statement_Oct2024.pdf",
+            "fontPx": 14,
+            "time": 33,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "Filings Requiring Action",
+            "fontPx": 14.24,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s8-card > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)",
+            "text": "Sharma & Associates (GST Registered)",
+            "fontPx": 14.65,
+            "time": 44.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s8-card > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2)",
+            "text": "GSTR-3B Computation Sheet",
+            "fontPx": 14.65,
+            "time": 44.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s8-card > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)",
+            "text": "GSTR3B_Working_Paper_Oct2024.txt",
+            "fontPx": 14.65,
+            "time": 44.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s8-card > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1)",
+            "text": "Tax_Computation_Sharma_Oct2024.txt",
+            "fontPx": 14.65,
+            "time": 44.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s5-container > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)",
+            "text": "Taxable Total: ₹1,25,000.00",
+            "fontPx": 14.82,
+            "time": 24.375,
+            "seconds": 7.375
+          },
+          {
+            "selector": "#s5-btn-approve",
+            "text": "Approve & Mark Verified",
+            "fontPx": 14.82,
+            "time": 24.375,
+            "seconds": 7.375
+          },
+          {
+            "selector": "#s4-doc-panel > div:nth-of-type(2) > div:nth-of-type(2)",
+            "text": "Prestige Industrial Traders Ltd",
+            "fontPx": 15,
+            "time": 17.375,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#s4-doc-panel > div:nth-of-type(3) > div:nth-of-type(3) > span:nth-of-type(1)",
+            "text": "Grand Total",
+            "fontPx": 15,
+            "time": 17.375,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#s4-doc-panel > div:nth-of-type(3) > div:nth-of-type(3) > span:nth-of-type(2)",
+            "text": "₹1,47,500",
+            "fontPx": 15,
+            "time": 17.375,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#s6-portal-window > div:nth-of-type(2) > div:nth-of-type(1)",
+            "text": "Secure Document Upload",
+            "fontPx": 15,
+            "time": 33,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "Taxflow",
+            "fontPx": 15.19,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(1) > span:nth-of-type(1)",
+            "text": ".AI",
+            "fontPx": 15.19,
+            "time": 11.375,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#s5-val-fixed",
+            "text": "₹1,47,500.00 ✓",
+            "fontPx": 15.5,
+            "time": 26.875,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#s5-container > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1)",
+            "text": "Source Document Verification",
+            "fontPx": 15.81,
+            "time": 24.375,
+            "seconds": 7.375
+          },
+          {
+            "selector": "#s5-container > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)",
+            "text": "Verification Dashboard",
+            "fontPx": 15.81,
+            "time": 24.375,
+            "seconds": 7.375
+          },
+          {
+            "selector": "#f-row-5 > span:nth-of-type(2)",
+            "text": "₹1,47,500.00",
+            "fontPx": 15.91,
+            "time": 19.625,
+            "seconds": 4.125
+          },
+          {
+            "selector": "#s6-folder-window > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)",
+            "text": "Sharma & Associates",
+            "fontPx": 16,
+            "time": 32.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s6-folder-window > div:nth-of-type(2) > span:nth-of-type(1)",
+            "text": "RAW INGESTION",
+            "fontPx": 16,
+            "time": 32.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s6-folder-window > div:nth-of-type(3) > span:nth-of-type(1)",
+            "text": "EXTRACTED STRUCTURED DATA",
+            "fontPx": 16,
+            "time": 32.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s6-folder-window > div:nth-of-type(4) > span:nth-of-type(1)",
+            "text": "GENERATED FILING MATRICES",
+            "fontPx": 16,
+            "time": 32.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s7-radar-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "GSTR-3B Statutory Return",
+            "fontPx": 16,
+            "time": 38.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s7-radar-window > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "GSTR-1 Monthly Statement",
+            "fontPx": 16,
+            "time": 38.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s6-portal-window > div:nth-of-type(1) > h3:nth-of-type(1)",
+            "text": "Encrypted Client Portal",
+            "fontPx": 17,
+            "time": 33,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#s4-output-panel > div:nth-of-type(1) > div:nth-of-type(1) > h2:nth-of-type(1)",
+            "text": "Structured Extraction",
+            "fontPx": 18,
+            "time": 17.875,
+            "seconds": 5.875
+          },
+          {
+            "selector": "#s9-sub",
+            "text": "AI-Powered Practice Automation for Chartered Accountants",
+            "fontPx": 18,
+            "time": 52.25,
+            "seconds": 3.75
+          },
+          {
+            "selector": "#s4-doc-panel > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)",
+            "text": "TAX INVOICE",
+            "fontPx": 22,
+            "time": 17.375,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#s7-radar-window > div:nth-of-type(1) > div:nth-of-type(1) > h2:nth-of-type(1)",
+            "text": "Compliance Schedule & Deadlines",
+            "fontPx": 22,
+            "time": 38.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s8-card > div:nth-of-type(1) > h2:nth-of-type(1)",
+            "text": "Working Document Generator",
+            "fontPx": 23.43,
+            "time": 44.375,
+            "seconds": 5.375
+          },
+          {
+            "selector": "#s5-container > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2)",
+            "text": "₹1,47,500.00",
+            "fontPx": 23.71,
+            "time": 24.375,
+            "seconds": 7.375
+          },
+          {
+            "selector": "#s3-desktop-window > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > h1:nth-of-type(1)",
+            "text": "Practice Overview",
+            "fontPx": 24.69,
+            "time": 11.375,
+            "seconds": 5.25
+          }
+        ]
+      },
+      {
+        "code": "dead_stretch",
+        "severity": "warning",
+        "message": "Nothing on screen changes for 3.50 s (20.00–23.50 s): start the next move within 3 s, or put data-hold on the element whose stillness is deliberate; see references/motion.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 20,
+        "seconds": 3.5,
+        "floorSeconds": 3,
+        "until": 23.5
+      },
+      {
+        "code": "dead_stretch",
+        "severity": "warning",
+        "message": "Nothing on screen changes for 3.88 s (33.63–37.50 s): start the next move within 3 s, or put data-hold on the element whose stillness is deliberate; see references/motion.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 33.625,
+        "seconds": 3.875,
+        "floorSeconds": 3,
+        "until": 37.5
+      },
+      {
+        "code": "dead_stretch",
+        "severity": "warning",
+        "message": "Nothing on screen changes for 4.00 s (45.50–49.50 s): start the next move within 3 s, or put data-hold on the element whose stillness is deliberate; see references/motion.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 45.5,
+        "seconds": 4,
+        "floorSeconds": 3,
+        "until": 49.5
+      }
+    ],
+    "enabled": true,
+    "step": 0.125,
+    "samples": 448
+  },
+  "audio": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": []
+  },
+  "hdr": {
+    "autoPromotion": null,
+    "inspection": "available"
+  },
+  "snapshots": {
+    "enabled": false,
+    "files": [],
+    "times": [],
+    "findingFiles": []
+  }
+}
