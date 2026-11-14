@@ -32,6 +32,17 @@ test('account role migration assigns explicit server-controlled client and staff
   assert.match(sql, /client_portal_access/i);
 });
 
+test('identity migration separates CA and client portal identities', () => {
+  const sql = fs.readFileSync(path.join(migrationDirectory, 'client_identity_profiles.sql'), 'utf8');
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.ca_user_profiles/i);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.client_user_profiles/i);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.ca_client_relationships/i);
+  assert.match(sql, /TF-CA-/i);
+  assert.match(sql, /TF-CL-/i);
+  assert.match(sql, /status = 'verified'/i);
+  assert.match(sql, /CREATE TRIGGER trg_ensure_ca_client_relationship/i);
+});
+
 test('portal migration enables existing active clients with email without reactivating prior access records', () => {
   const sql = fs.readFileSync(path.join(migrationDirectory, 'client_portal.sql'), 'utf8');
   assert.match(sql, /INSERT INTO public\.client_portal_access/i);
