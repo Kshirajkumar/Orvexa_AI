@@ -177,16 +177,9 @@ async function fillPortalTemplate(template: MessageTemplate, client: { id: strin
 
   // Only the specific 1-on-1 "portal_invite" needs an invitation token generated:
   if (template.template_key === 'portal_invite') {
-    try {
-      const invitation = await inviteClientToPortal(client.id);
-      if (invitation?.link) {
-        portalLink = invitation.link;
-      }
-    } catch (err) {
-      // Gracefully fall back to standard portal link so the CA is NEVER blocked by an invitation creation error
-      console.warn('[Portal Template] Invite link creation unavailable or failed, using standard portal URL:', err);
-      portalLink = defaultPortalUrl;
-    }
+    const invitation = await inviteClientToPortal(client.id);
+    if (!invitation?.link) throw new Error('The client portal link could not be resolved. Please open the client profile and check portal access.');
+    portalLink = invitation.link;
   } else {
     // For "website_link" and all other templates, directly use the public portal website link:
     portalLink = defaultPortalUrl;
@@ -982,14 +975,9 @@ export function WhatsAppPage() {
       const reminderTemplate = visibleTemplates.find((template) => template.id === reminder.tpl);
       let message = reminder.text;
       if (reminderTemplate?.template_key === 'portal_invite' && reminderTemplate.body.includes('{portalLink}')) {
-        try {
-          const invitation = await inviteClientToPortal(reminderClient.id);
-          if (invitation?.link) {
-            message = message.replace(/https:\/\/taxflowaiwebsite\.vercel\.app\/portal/g, invitation.link);
-          }
-        } catch (inviteErr) {
-          console.warn('[Reminder Send] Could not generate invite token, using default portal link:', inviteErr);
-        }
+        const invitation = await inviteClientToPortal(reminderClient.id);
+        if (!invitation?.link) throw new Error('The client portal link could not be resolved. Please check the client portal access before sending this reminder.');
+        message = message.replace(/https:\/\/taxflowaiwebsite\.vercel\.app\/portal/g, invitation.link);
       }
       await sendWhatsAppManualMessage(reminderClient.id, reminderClient.phone, message);
       dispatch({ type: 'REM_SEND_NOW', id: reminder.id });

@@ -7,6 +7,7 @@ const { requireAuth } = require('../middleware/requireAuth');
 const { requireClientPortalAuth } = require('../middleware/requireClientPortalAuth');
 const { ACCOUNT_ROLE, isClientAccount } = require('../lib/accountRoles');
 const { assertOwnedClient } = require('../lib/ownership');
+const { getSupabaseConfigurationMessage } = require('../lib/supabaseErrors');
 const telegramRouter = require('./telegram');
 const { consume, RateLimiterUnavailableError } = require('../lib/rateLimiter');
 const {
@@ -111,6 +112,22 @@ function getPortalAuthFailure(error) {
     status: 503,
     code: 'portal_auth_unavailable',
     message: 'The portal account service is temporarily unavailable. Please try again shortly. If the problem continues, contact your CA.',
+  };
+}
+
+function getPortalClaimFailure(error) {
+  const message = String(error?.message || '');
+  if (/invalid portal invitation|invalid or expired|no longer valid|already linked|not authorized/i.test(message)) {
+    return {
+      status: 409,
+      code: 'portal_invitation_invalid',
+      message: 'This invitation is invalid, expired, already used, or does not match this account.',
+    };
+  }
+  return {
+    status: 503,
+    code: 'portal_claim_database_error',
+    message: 'The portal account was created, but the invitation could not be linked. Please try again shortly. If the problem continues, contact your CA.',
   };
 }
 
@@ -225,7 +242,8 @@ async function claimPortalInvite(user, token) {
   });
   if (error) {
     console.error('[Client Portal] Invitation claim failed:', error.message);
-    return { error: 'This invitation is invalid, expired, already used, or does not match this account.' };
+    const failure = getPortalClaimFailure(error);
+    return { error: failure.message, code: failure.code, status: failure.status };
   }
   const claimed = Array.isArray(data) ? data[0] : data;
   if (!claimed?.client_id || normalizePortalEmail(claimed.invited_email) !== normalizePortalEmail(user.email)) {
@@ -344,7 +362,10 @@ router.get('/clients/:clientId/access', requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('[Client Portal] Could not load client access:', error.message);
-    return res.status(500).json({ success: false, message: 'Could not load this client’s portal access.' });
+    return res.status(503).json({
+      success: false,
+      message: getSupabaseConfigurationMessage(error, 'client portal access') || 'Could not load this client’s portal access. Please try again shortly.',
+    });
   }
 });
 
@@ -469,7 +490,7 @@ router.post('/invitations/register', async (req, res) => {
       createdUserId = null;
       const latestInvitation = await inspectPortalInvite(token, email);
       if (latestInvitation.status === 'already_claimed') return sendAlreadyClaimedInvitation(res);
-      return res.status(409).json({ success: false, message: claim.error });
+      return res.status(claim.status || 409).json({ success: false, code: claim.code, message: claim.error });
     }
     createdUserId = null;
     return res.status(201).json({ success: true, data: { email } });
@@ -495,7 +516,7 @@ router.post('/invitations/claim', async (req, res) => {
     const user = await getAuthenticatedPortalUser(req);
     if (!user) return res.status(401).json({ success: false, message: 'Sign in with your invited client account first.' });
     const claim = await claimPortalInvite(user, req.body?.token);
-    if (claim.error) return res.status(403).json({ success: false, message: claim.error });
+    if (claim.error) return res.status(claim.status || 403).json({ success: false, code: claim.code, message: claim.error });
     return res.json({ success: true, data: claim.data });
   } catch (error) {
     if (error instanceof RateLimiterUnavailableError) {
@@ -551,7 +572,19 @@ async function hasClaimedClientPortalAccount(clientId, email) {
     .eq('client_id', clientId)
     .maybeSingle();
   if (error) throw error;
-  return Boolean(data?.active && data.user_id && String(data.invited_email || '').trim().toLowerCase() === email);
+  if (!data?.active || !data.user_id) return false;
+  const [{ data: authData, error: authError }, { data: profile, error: profileError }] = await Promise.all([
+    supabase.auth.admin.getUserById(data.user_id),
+    supabase.from('user_profiles').select('account_category').eq('id', data.user_id).maybeSingle(),
+  ]);
+  if (authError) throw authError;
+  if (profileError) throw profileError;
+  return Boolean(
+    isClientAccount(authData?.user)
+    && profile?.account_category === 'client_user'
+    && String(data.invited_email || '').trim().toLowerCase() === email
+    && String(authData.user.email || '').trim().toLowerCase() === email
+  );
 }
 
 router.delete('/clients/:clientId/access', requireAuth, async (req, res) => {

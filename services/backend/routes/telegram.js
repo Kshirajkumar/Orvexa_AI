@@ -53,7 +53,7 @@ function databaseSetupWarning(table, error) {
     return `Required database table public.${table} is missing. Apply the Telegram setup migrations to the Supabase project used by this backend.`;
   }
   if (String(error?.code || '') === '42501') {
-    return `The backend database role cannot access public.${table}. Verify SUPABASE_SERVICE_ROLE_KEY belongs to the configured Supabase project.`;
+    return `The backend database role cannot access public.${table}. Verify SUPABASE_SECRET_KEY belongs to the configured Supabase project.`;
   }
   return `The backend could not verify public.${table}. Check the Supabase connection and service-role credentials.`;
 }
@@ -639,13 +639,13 @@ router.post('/clients/:clientId/link', requireAuth, async (req, res) => {
     if (String(error.code || '') === '42501') {
       return res.status(503).json({
         success: false,
-        message: 'The backend database role cannot access a required Telegram table. Verify that SUPABASE_SERVICE_ROLE_KEY belongs to the Supabase project configured by this backend.',
+        message: 'The backend database role cannot access a required Telegram table. Verify that SUPABASE_SECRET_KEY belongs to the Supabase project configured by this backend.',
       });
     }
     if (/CLIENT_PORTAL_URL|Portal invitation signing is not configured/i.test(String(error.message || ''))) {
       return res.status(503).json({
         success: false,
-        message: 'Secure client invitations are not configured. Set CLIENT_PORTAL_URL and SUPABASE_SERVICE_ROLE_KEY on the backend, then retry.',
+        message: 'Secure client invitations are not configured. Set CLIENT_PORTAL_URL and SUPABASE_SECRET_KEY on the backend, then retry.',
       });
     }
     return res.status(500).json({ success: false, message: 'Could not create the secure client connection invitation. Please try again.' });

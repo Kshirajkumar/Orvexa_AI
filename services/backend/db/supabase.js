@@ -16,16 +16,19 @@ const { createClient } = require('@supabase/supabase-js');
 const logger = require('../lib/logger');
 
 const SUPABASE_URL = String(process.env.SUPABASE_URL || '').trim();
-// Supabase's new server-only key replaces the legacy service_role key.
-// Keep the legacy name as a fallback while projects migrate.
-const SUPABASE_SERVER_KEY = String(
-  process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-).trim();
 
 function isUsableSupabaseKey(value) {
-  return value.startsWith('sb_secret_')
-    || (value.startsWith('eyJ') && value.split('.').length === 3 && value.length > 100);
+  if (value.startsWith('sb_secret_')) return true;
+  if (!value.startsWith('eyJ') || value.split('.').length !== 3 || value.length <= 100) return false;
+  try {
+    const payload = JSON.parse(Buffer.from(value.split('.')[1], 'base64url').toString('utf8'));
+    return payload.role === 'service_role' || payload.role === 'supabase_admin';
+  } catch {
+    return false;
+  }
 }
+
+const SUPABASE_SERVER_KEY = String(process.env.SUPABASE_SECRET_KEY || '').trim();
 
 if (!SUPABASE_URL || !isUsableSupabaseKey(SUPABASE_SERVER_KEY) || SUPABASE_URL.includes('YOUR_PROJECT_ID')) {
   const reason = !SUPABASE_URL

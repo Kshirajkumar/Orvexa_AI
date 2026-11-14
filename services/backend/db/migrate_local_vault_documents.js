@@ -148,7 +148,7 @@ async function migrateDocument(document, clientsById, root, bucket) {
 }
 
 async function main() {
-  if (!supabase) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.');
+  if (!supabase) throw new Error('SUPABASE_URL and SUPABASE_SECRET_KEY are required.');
   const bucket = getStorageBucket();
   if (!bucket) throw new Error('SUPABASE_STORAGE_BUCKET is required.');
   const { data: bucketConfig, error: bucketError } = await supabase.storage.getBucket(bucket);

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const express = require('express');
 
 process.env.SUPABASE_URL = 'https://account-deletion-test.supabase.co';
-process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
+process.env.SUPABASE_SECRET_KEY = 'sb_secret_test_key_for_unit_tests';
 
 const database = require('../db/supabase');
 const authRouter = require('../routes/auth');

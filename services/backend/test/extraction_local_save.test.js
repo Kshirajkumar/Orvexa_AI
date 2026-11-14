@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 process.env.SUPABASE_URL = '';
-process.env.SUPABASE_SERVICE_ROLE_KEY = '';
+process.env.SUPABASE_SECRET_KEY = '';
 
 const express = require('express');
 const extractionRouter = require('../routes/extraction');

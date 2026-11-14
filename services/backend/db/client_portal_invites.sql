@@ -78,6 +78,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, auth, pg_temp
 AS $$
+#variable_conflict use_column
 DECLARE
   v_invite public.client_portal_invites%ROWTYPE;
   v_client public.clients%ROWTYPE;
@@ -134,7 +135,7 @@ BEGIN
 
   SELECT * INTO v_access
   FROM public.client_portal_access
-  WHERE client_id = v_client.id
+  WHERE public.client_portal_access.client_id = v_client.id
   FOR UPDATE;
 
   IF FOUND THEN

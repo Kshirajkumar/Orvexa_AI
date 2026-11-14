@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const express = require('express');
 
 process.env.SUPABASE_URL = 'https://whatsapp-validation-tests.supabase.co';
-process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-only-placeholder';
+process.env.SUPABASE_SECRET_KEY = 'sb_secret_test_key_for_unit_tests';
 process.env.WHATSAPP_ACCESS_TOKEN = 'your_test_token';
 process.env.WHATSAPP_PHONE_NUMBER_ID = 'test-phone-number-id';
 

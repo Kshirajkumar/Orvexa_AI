@@ -73,7 +73,7 @@ To set up or refresh your Supabase database:
 
 ### Existing local-document migration
 
-Before deploying the cloud-only document routes, apply `services/backend/db/migrate_cloud_document_storage.sql` to the same Supabase project. Configure `SUPABASE_STORAGE_BUCKET=taxflow-intake`, and run `npm run migrate:storage` from `services/backend` with valid `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `VAULT_PATH`. The migration script uploads metadata-linked local files, verifies each cloud copy by SHA-256, and records the private object path. It does not delete local source files. Review each result and verify all files before removing any legacy copies. Files outside the configured legacy vault or larger than the bucket's 20 MiB limit are reported and left untouched.
+Before deploying the cloud-only document routes, apply `services/backend/db/migrate_cloud_document_storage.sql` to the same Supabase project. Configure `SUPABASE_STORAGE_BUCKET=taxflow-intake`, and run `npm run migrate:storage` from `services/backend` with valid `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `VAULT_PATH`. The migration script uploads metadata-linked local files, verifies each cloud copy by SHA-256, and records the private object path. It does not delete local source files. Review each result and verify all files before removing any legacy copies. Files outside the configured legacy vault or larger than the bucket's 20 MiB limit are reported and left untouched.
 
 ## Getting started
 
@@ -96,8 +96,8 @@ Edit `services/backend/.env` with your credentials:
 ```ini
 PORT=5000
 SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
-SUPABASE_ANON_KEY=your-supabase-anon-key
+SUPABASE_SECRET_KEY=your-supabase-secret-key
+SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
 SUPABASE_STORAGE_BUCKET=taxflow-intake
 CLIENT_PORTAL_URL=https://taxflowaiwebsite.vercel.app
 GEMINI_API_KEY=your-google-gemini-api-key

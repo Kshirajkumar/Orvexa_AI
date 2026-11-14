@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
 const { requireAuth } = require('../middleware/requireAuth');
+const { getSupabaseConfigurationMessage } = require('../lib/supabaseErrors');
 
 function normalizedBody(body) {
   return typeof body === 'string' ? body.trim() : '';
@@ -43,7 +44,7 @@ router.get('/', requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error('[Templates] Could not list templates:', err.message);
-    res.status(500).json({ success: false, message: 'Private templates could not be loaded.' });
+    res.status(503).json({ success: false, message: getSupabaseConfigurationMessage(err, 'message templates') || 'Private templates could not be loaded.' });
   }
 });
 

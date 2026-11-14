@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const express = require('express');
 
 process.env.SUPABASE_URL = 'https://client-deletion-tests.supabase.co';
-process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-only-placeholder';
+process.env.SUPABASE_SECRET_KEY = 'sb_secret_test_key_for_unit_tests';
 process.env.SUPABASE_STORAGE_BUCKET = 'taxflow-intake';
 
 const database = require('../db/supabase');

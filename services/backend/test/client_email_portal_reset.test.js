@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const express = require('express');
 
 process.env.SUPABASE_URL = 'https://client-email-reset-tests.supabase.co';
-process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-only-placeholder';
+process.env.SUPABASE_SECRET_KEY = 'sb_secret_test_key_for_unit_tests';
 process.env.CLIENT_PORTAL_URL = 'https://portal.example.test';
 
 const database = require('../db/supabase');
@@ -136,10 +136,10 @@ test('changing a client email revokes old invitations, disconnects access, and d
   assert.match(body.data.portalInviteLink, /^https:\/\/portal\.example\.test\/portal#invite=/);
   assert.equal(result.tables.client_portal_access[0].invited_email, 'new-client@example.com');
   assert.equal(result.tables.client_portal_access[0].user_id, null);
-  assert.equal(result.tables.client_portal_access[0].active, true);
+  assert.equal(result.tables.client_portal_access[0].active, false);
   assert.ok(result.tables.client_portal_invites[0].revoked_at);
   assert.equal(result.tables.client_portal_invites.length, 2);
-  assert.equal(result.tables.client_portal_invites[1].token_ciphertext, undefined);
+  assert.ok(result.tables.client_portal_invites[1].token_ciphertext);
   assert.deepEqual(result.deletedUsers, ['old-portal-user']);
 });
 
@@ -191,5 +191,5 @@ test('portal identity deletion failures report a warning while old portal access
   const body = await result.response.json();
   assert.match(body.data.portalAccessWarning, /could not be deleted automatically/i);
   assert.equal(result.tables.client_portal_access[0].user_id, null);
-  assert.equal(result.tables.client_portal_access[0].active, true);
+  assert.equal(result.tables.client_portal_access[0].active, false);
 });

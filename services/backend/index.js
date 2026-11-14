@@ -40,6 +40,9 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ─── Middleware ────────────────────────────────────────────────
+// Render terminates the public connection at a trusted reverse proxy. This keeps
+// req.ip client-specific for portal rate limiting instead of using proxy IPs.
+app.set('trust proxy', 1);
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization', 'X-File-Name', 'X-File-Mime-Type'] }));
 app.use(express.json({ limit: '100mb', verify: captureWhatsAppWebhookBody }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));

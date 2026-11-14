@@ -339,6 +339,7 @@ tr:last-child td{border-bottom:0}
 .ccard.portal-pending,.ccard.portal-expired{border-color:color-mix(in srgb,var(--amber) 72%,var(--line));box-shadow:0 0 0 1px color-mix(in srgb,var(--amber) 18%,transparent),0 12px 30px color-mix(in srgb,var(--amber) 10%,transparent)}
 .ccard.portal-expired{border-color:color-mix(in srgb,var(--amber) 52%,var(--line));background:color-mix(in srgb,var(--amber) 4%,var(--card))}
 .portal-card-chip{border:1px solid color-mix(in srgb,var(--amber) 48%,var(--line));background:color-mix(in srgb,var(--amber) 14%,var(--panel));color:var(--amber)}
+.portal-card-link{display:flex;align-items:center;gap:6px;margin:0 0 12px;padding:6px 7px;border:1px solid color-mix(in srgb,var(--cyan) 26%,var(--line));border-radius:9px;background:color-mix(in srgb,var(--cyan) 5%,var(--panel))}.portal-card-link input{min-width:0;flex:1;border:0;background:transparent;color:var(--tx3);font-size:10px;outline:0}.portal-card-link .btn{flex:none}
 .portal-access-skeleton{display:grid;gap:10px;padding:10px 0 4px}
 .portal-access-skeleton span{display:block;height:14px;border-radius:7px;background:linear-gradient(90deg,color-mix(in srgb,var(--line) 72%,var(--panel)),color-mix(in srgb,var(--blue) 18%,var(--panel)),color-mix(in srgb,var(--line) 72%,var(--panel)));background-size:220% 100%;animation:portalSkeleton 1.25s ease-in-out infinite}
 .portal-access-skeleton span:nth-child(1){width:42%}.portal-access-skeleton span:nth-child(2){width:78%}.portal-access-skeleton span:nth-child(3){width:58%}

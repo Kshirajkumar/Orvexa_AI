@@ -1,6 +1,6 @@
 -- Repair Telegram attachment writes for the trusted backend only.
 -- Run in the Supabase project configured by the backend, then redeploy/restart
--- the backend with that project's SUPABASE_SERVICE_ROLE_KEY. Never expose this
+-- the backend with that project's SUPABASE_SECRET_KEY. Never expose this
 -- key to the desktop app.
 
 BEGIN;

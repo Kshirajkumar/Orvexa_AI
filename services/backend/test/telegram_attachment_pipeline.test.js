@@ -4,13 +4,13 @@ const crypto = require('node:crypto');
 const express = require('express');
 
 process.env.SUPABASE_URL = 'https://example.supabase.co';
-process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-only-placeholder';
+process.env.SUPABASE_SECRET_KEY = 'sb_secret_test_key_for_unit_tests';
 const database = require('../db/supabase');
 const { decryptPortalInviteToken, hashInviteToken } = require('../lib/clientPortalInvites');
 const { getStorageObjectKey } = require('../lib/documentStorage');
 const telegramRouter = require('../routes/telegram');
 
-const tables = { clients: [], client_portal_access: [], client_portal_invites: [], telegram_link_tokens: [], telegram_messages: [], documents_metadata: [] };
+const tables = { clients: [], client_portal_access: [], client_portal_invites: [], user_profiles: [], telegram_link_tokens: [], telegram_messages: [], documents_metadata: [] };
 const missingSchemaTables = new Set();
 
 function matches(row, filters) {
@@ -159,6 +159,7 @@ test('Telegram status reports messaging diagnostics without checking portal Stor
 
 test('Telegram media updates receive a private portal link without downloading or storing file bytes', async (t) => {
   const oldFrom = database.supabase.from;
+  const oldGetUserById = database.supabase.auth.admin.getUserById;
   const oldStorageFrom = database.supabase.storage.from;
   const oldFetch = global.fetch;
   const envKeys = ['SUPABASE_STORAGE_BUCKET', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_WEBHOOK_SECRET', 'CLIENT_PORTAL_URL'];
@@ -180,6 +181,11 @@ test('Telegram media updates receive a private portal link without downloading o
     user_id: 'staff-1',
     telegram_chat_id: 'chat-1',
     telegram_user_id: '88',
+  });
+  tables.user_profiles.push({ id: '11752602-62fa-4252-ae1d-23c4fb3b7312', account_category: 'client_user' });
+  database.supabase.auth.admin.getUserById = async (userId) => ({
+    data: { user: { id: userId, email: 'client@example.com', app_metadata: { role: 'client', taxflow_client_portal: true } } },
+    error: null,
   });
   database.supabase.from = (table) => fakeQuery(table);
   database.supabase.storage.from = () => ({
@@ -215,6 +221,7 @@ test('Telegram media updates receive a private portal link without downloading o
   t.after(async () => {
     await new Promise((resolve) => server.close(resolve));
     database.supabase.from = oldFrom;
+    database.supabase.auth.admin.getUserById = oldGetUserById;
     database.supabase.storage.from = oldStorageFrom;
     global.fetch = oldFetch;
     for (const [key, value] of Object.entries(oldEnv)) {
@@ -433,7 +440,7 @@ test('Telegram media updates receive a private portal link without downloading o
   tables.client_portal_access.push({
     client_id: 'client-1',
     active: true,
-    user_id: 'portal-user-1',
+    user_id: '11752602-62fa-4252-ae1d-23c4fb3b7312',
     invited_email: 'client@example.com',
   });
   const registeredClientMediaResponse = await fetch(`http://127.0.0.1:${server.address().port}/telegram/webhook`, {

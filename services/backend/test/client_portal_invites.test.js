@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const express = require('express');
 
 process.env.SUPABASE_URL = 'https://portal-invitation-tests.supabase.co';
-process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-only-placeholder';
+process.env.SUPABASE_SECRET_KEY = 'sb_secret_test_key_for_unit_tests';
 process.env.CLIENT_PORTAL_URL = 'https://portal.example.com';
 
 const database = require('../db/supabase');
@@ -191,7 +191,7 @@ test('portal invitation registration checks the exact email and blocks replayed 
         email: 'client@example.com',
         password: 'long-enough-password-123',
         email_confirm: true,
-        app_metadata: { taxflow_client_portal: true },
+        app_metadata: { role: 'client', taxflow_client_portal: true },
       }]);
       assert.deepEqual(markedUsers, []);
       assert.equal(rpcCalls.filter((call) => call.functionName === 'claim_client_portal_invite').length, 1);
@@ -258,7 +258,7 @@ test('portal invitation registration checks the exact email and blocks replayed 
         attributes: {
           password: 'replacement-password-456',
           email_confirm: true,
-          app_metadata: { taxflow_client_portal: true },
+          app_metadata: { role: 'client', taxflow_client_portal: true },
         },
       }]);
 

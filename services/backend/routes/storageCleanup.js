@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
+const { getSupabaseConfigurationMessage } = require('../lib/supabaseErrors');
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 router.get('/', async (req, res) => {
@@ -27,7 +28,7 @@ router.get('/', async (req, res) => {
     });
   } catch (error) {
     console.error('[Storage Cleanup] Could not list jobs:', error.message);
-    return res.status(500).json({ success: false, message: 'Cleanup status could not be loaded.' });
+    return res.status(503).json({ success: false, message: getSupabaseConfigurationMessage(error, 'cloud cleanup tracking') || 'Cleanup status could not be loaded. Please try again shortly.' });
   }
 });
 

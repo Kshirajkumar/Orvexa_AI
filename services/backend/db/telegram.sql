@@ -85,7 +85,7 @@ create policy telegram_messages_owner on public.telegram_messages
   using (exists (select 1 from public.clients c where c.id = client_id and c.user_id = auth.uid()))
   with check (exists (select 1 from public.clients c where c.id = client_id and c.user_id = auth.uid()));
 
--- Remove legacy anon fallback policies. The backend must use SUPABASE_SERVICE_ROLE_KEY.
+-- Remove legacy anon fallback policies. The backend must use SUPABASE_SECRET_KEY.
 drop policy if exists telegram_messages_backend_fallback on public.telegram_messages;
 drop policy if exists telegram_link_tokens_backend_fallback on public.telegram_link_tokens;
 

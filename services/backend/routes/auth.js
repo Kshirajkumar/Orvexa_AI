@@ -72,7 +72,7 @@ function decodeChallengeSub(token) {
   const parts = token.split('.');
   if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
   const [encodedPayload, signature] = parts;
-  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const secret = process.env.SUPABASE_SECRET_KEY;
   if (!secret) return null;
   const expected = crypto.createHmac('sha256', secret).update(encodedPayload).digest();
   let actual;
@@ -431,10 +431,8 @@ router.post('/delete-account/verify', requireAuth, async (req, res) => {
   // Use a low-privilege key for password verification when available.
   const isKeyValid = (key) => typeof key === 'string' && key.trim().length > 20 && !key.trim().startsWith('your_') && !key.trim().includes('placeholder');
   const authKey = [
-    process.env.SUPABASE_ANON_KEY,
-    process.env.SUPABASE_SECRET_KEY,
     process.env.SUPABASE_PUBLISHABLE_KEY,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
+    process.env.SUPABASE_SECRET_KEY
   ].find(isKeyValid);
 
   if (!process.env.SUPABASE_URL || !authKey) {
