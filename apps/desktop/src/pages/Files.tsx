@@ -12,6 +12,7 @@ import {
   fetchStorageCleanupJobs,
   replaceCloudDocumentVersion,
   retryStorageCleanupJob,
+  startStoredDocumentExtraction,
   updateCloudDocumentDetails,
   uploadDocument,
   type DocumentTreeEntry,
@@ -89,6 +90,19 @@ function fileTypeLabel(name: string) {
   return ext === 'XLSX' || ext === 'CSV' ? 'Spreadsheet' : `${ext} document`;
 }
 
+function extractionLabel(status?: string) {
+  switch (status) {
+    case 'approved': return 'Approved';
+    case 'needs_reapproval': return 'Needs re-approval';
+    case 'ai_extracted': return 'Ready for review';
+    case 'processing': return 'Processing';
+    case 'extraction_failed': return 'Extraction failed';
+    case 'in_review': return 'In review';
+    case 'rejected': return 'Rejected';
+    default: return 'Not extracted';
+  }
+}
+
 function countChildren(entry: DocumentTreeEntry) {
   const children = entry.children || [];
   return {
@@ -98,10 +112,11 @@ function countChildren(entry: DocumentTreeEntry) {
 }
 
 function FileCard({ item, onOpen, onDelete }: { item: DocumentTreeEntry; onOpen: () => void; onDelete: () => void }) {
+  const extraction = item.extraction;
   return (
     <FileArtifactCard
       fileName={item.name}
-      detailText={fileTypeLabel(item.name)}
+      detailText={`${fileTypeLabel(item.name)} · ${extractionLabel(extraction?.status)}`}
       sizeText={formatBytes(item.size)}
       modifiedText={fDT(new Date(item.modifiedAt))}
       onOpen={onOpen}
@@ -126,6 +141,7 @@ function TreeNode({ entry, depth, path, expanded, selectedPath, selectedDocument
       <span className={`vault-caret ${open ? 'open' : ''}`}>{folder && <Icon name="chev" size={11} />}</span>
       <span className={folder ? 'vault-folder-icon' : fileClass(entry.name)}><Icon name={folder ? 'folder' : 'file'} size={14} /></span>
       <span className="vault-node-name">{entry.name}</span>
+      {!folder && <span className={`vault-extraction-badge ${entry.extraction?.status || 'uploaded'}`} title={extractionLabel(entry.extraction?.status)}>{entry.extraction?.status === 'approved' ? '✓' : entry.extraction?.status === 'processing' ? '…' : entry.extraction?.status === 'ai_extracted' ? 'AI' : '!'}</span>}
       {folder && <span className="vault-node-count" aria-label={`${counts?.folders || 0} folders, ${counts?.files || 0} files`}>
         <span className="vault-count-folder"><Icon name="folder" size={11} />{counts?.folders || 0}</span>
         <span className="vault-count-file"><Icon name="file" size={11} />{counts?.files || 0}</span>
@@ -192,6 +208,7 @@ export function FilesPage() {
   const [cleanupLoading, setCleanupLoading] = useState(false);
   const [cleanupError, setCleanupError] = useState('');
   const [openingFile, setOpeningFile] = useState(false);
+  const [extractingDocumentId, setExtractingDocumentId] = useState('');
   const [activeVaultPreview, setActiveVaultPreview] = useState<{ fileName: string; file: Blob } | null>(null);
   const [openingNativePreview, setOpeningNativePreview] = useState(false);
   const [nativePreviewError, setNativePreviewError] = useState('');
@@ -521,6 +538,35 @@ export function FilesPage() {
     }
   }
 
+  async function startExtractionForSelectedFile() {
+    if (!selected?.entry.documentId || extractingDocumentId) return;
+    const documentId = selected.entry.documentId;
+    setExtractingDocumentId(documentId);
+    setUploadMessage('');
+    try {
+      const result = await startStoredDocumentExtraction(documentId, selected.entry.category);
+      setUploadMessageKind('success');
+      setUploadMessage(`AI extraction completed for ${selected.entry.name}. Version ${result.data?.extraction_version?.version_number || 1} is ready for review.`);
+      if (result.data?.extracted_data && client) {
+        dispatch({ type: 'OPEN_EXTRACTION_REVIEW', payload: {
+          documentId,
+          clientId: client.id,
+          fileName: selected.entry.name,
+          category: selected.entry.category || 'General',
+          extractedData: result.data.extracted_data,
+        }});
+        dispatch({ type: 'GO', page: 'extraction-review' });
+      }
+      setRefresh(value => value + 1);
+    } catch (error) {
+      setUploadMessageKind('error');
+      setUploadMessage(error instanceof Error ? error.message : 'AI extraction could not be completed.');
+      setRefresh(value => value + 1);
+    } finally {
+      setExtractingDocumentId('');
+    }
+  }
+
   async function openVaultPreviewNative() {
     if (!activeVaultPreview) return;
     setOpeningNativePreview(true);
@@ -567,6 +613,7 @@ export function FilesPage() {
     {selected?.entry.type === 'file' && <section className="vault-lifecycle-panel card" aria-label="Document management">
       <div><b>Document management</b><small>Opening downloads a copy. Local edits are not synced; use “Replace version” to upload a new immutable version.</small></div>
       <div className="vault-lifecycle-actions">
+        <button className="btn sm" onClick={() => void startExtractionForSelectedFile()} disabled={!selected.entry.documentId || Boolean(extractingDocumentId) || selected.entry.extraction?.status === 'processing'}><Icon name="spark" size={14} />{extractingDocumentId ? 'Extracting…' : selected.entry.extraction?.status === 'approved' ? 'Re-run AI extraction' : extractionLabel(selected.entry.extraction?.status)}</button>
         <button className="btn sm" onClick={startEditingDetails} disabled={!selected.entry.documentId}>Rename / categorize</button>
         <input ref={replaceInputRef} type="file" className="vault-file-input" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv" onChange={replaceSelectedFile} />
         <button className="btn sm" onClick={() => replaceInputRef.current?.click()} disabled={!selected.entry.documentId || uploading}>{uploading ? 'Uploading…' : 'Replace version'}</button>

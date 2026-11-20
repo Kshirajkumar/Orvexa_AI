@@ -655,6 +655,12 @@ export interface DocumentTreeEntry {
   versionCount?: number;
   size?: number;
   modifiedAt: string;
+  extraction?: {
+    status: string;
+    currentVersion: number | null;
+    approvedVersion: number | null;
+    score: number | null;
+  };
   children?: DocumentTreeEntry[];
 }
 
@@ -749,6 +755,18 @@ export async function fetchClientDocumentTree(clientId: string): Promise<Documen
   try { json = await res.json(); } catch { throw new Error(`Cloud document listing returned an invalid response (HTTP ${res.status}).`); }
   if (!res.ok || !json.success) throw new Error(json.message || `Could not load cloud documents (HTTP ${res.status}).`);
   return json.data;
+}
+
+export async function startStoredDocumentExtraction(documentId: string, category?: string) {
+  const res = await fetch(`${API_BASE_URL}/extraction/process`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ documentId, category }),
+  });
+  let json: any;
+  try { json = await res.json(); } catch { throw new Error(`Extraction returned an invalid response (HTTP ${res.status}).`); }
+  if (!res.ok || !json.success) throw new Error(json.message || `Could not start AI extraction (HTTP ${res.status}).`);
+  return json;
 }
 
 export async function fetchDocumentVersions(documentId: string): Promise<DocumentVersionItem[]> {
@@ -933,12 +951,12 @@ export async function fetchDocumentPreview(documentId: string, signal?: AbortSig
   return res.blob();
 }
 
-export async function verifyDocumentExtraction(documentId: string, verifiedBy = 'CA Admin', correctedData?: Record<string, unknown>) {
+export async function verifyDocumentExtraction(documentId: string, verifiedBy = 'CA Admin', correctedData?: Record<string, unknown>, note = 'Reviewed in TaxFlow.AI') {
   try {
     const res = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/verify`, {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify({ verifiedBy, correctedData })
+      body: JSON.stringify({ verifiedBy, correctedData, note })
     });
     const json = await res.json();
     if (!res.ok || !json.success) throw new Error(json.message || `Could not save the reviewed extraction (HTTP ${res.status}).`);

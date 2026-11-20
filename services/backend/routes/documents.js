@@ -8,6 +8,7 @@ const crypto = require('node:crypto');
 const { supabase, isConnected } = require('../db/supabase');
 const { getOwnedClientIds, assertOwnedClient } = require('../lib/ownership');
 const { validateExtractionData } = require('../lib/extractionSchema');
+const { buildExtractionEnvelope, diffFields } = require('../lib/extractionVersioning');
 const {
   deleteDocument,
   downloadDocument,
@@ -293,13 +294,31 @@ router.post('/', async (req, res) => {
     });
     if (error || !data) throw error || new Error('Document metadata was not saved.');
     reservationId = null;
+    const savedDocument = Array.isArray(data) ? data[0] : data;
+    try {
+      const activityResult = await supabase.from('document_file_activity').insert([{
+        document_id: documentId,
+        client_id: clientId,
+        user_id: req.user.id,
+        operation: 'created',
+        file_name: normalizedFileName,
+        file_size_after_kb: Number((buffer.length / 1024).toFixed(2)),
+        file_sha256: docMeta.file_sha256,
+        storage_bucket: uploadedObject.bucket,
+        storage_object_path: uploadedObject.objectKey,
+        status: 'completed',
+      }]);
+      if (activityResult?.error) console.error('[Documents] File activity audit could not be recorded:', activityResult.error.message);
+    } catch (activityError) {
+      console.error('[Documents] File activity audit could not be recorded:', activityError.message);
+    }
     try {
       const { error: rpcError } = await supabase.rpc('increment_client_docs', { cid: clientId });
       if (rpcError) throw rpcError;
     } catch (rpcError) {
       console.warn('[Documents] Could not increment client document count:', rpcError.message);
     }
-    return res.status(201).json({ success: true, source: 'supabase', message: 'File uploaded securely to private cloud storage.', data: Array.isArray(data) ? data[0] : data });
+    return res.status(201).json({ success: true, source: 'supabase', message: 'File uploaded securely to private cloud storage.', data: savedDocument });
   } catch (err) {
     if (uploadedObject && supabase) {
       try {
@@ -704,6 +723,42 @@ router.post('/:id/verify', async (req, res) => {
           return res.status(400).json({ success: false, message: validationError.message });
         }
       }
+      let extractionVersion = null;
+      if (correctedData !== undefined) {
+        const { data: latestVersion, error: latestVersionError } = await supabase
+          .from('extraction_versions')
+          .select('version_number, data')
+          .eq('document_id', document.id)
+          .order('version_number', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latestVersionError && latestVersionError.code !== 'PGRST116') throw latestVersionError;
+        const envelope = buildExtractionEnvelope({
+          data: correctedData,
+          category: document.category,
+          documentId: document.id,
+          versionKind: 'edit',
+        });
+        const previousFields = latestVersion?.data?.fields || {};
+        const changedFieldPaths = diffFields(previousFields, envelope.fields);
+        const { data: savedVersion, error: versionError } = await supabase.rpc('save_extraction_version', {
+          p_user_id: req.user.id,
+          p_document_id: document.id,
+          p_version_kind: 'edit',
+          p_data: envelope,
+          p_provider_score: envelope.overall_score.provider_score,
+          p_computed_score: envelope.overall_score.computed_score,
+          p_schema_version: envelope.schema_version,
+          p_base_version: latestVersion?.version_number || null,
+          p_note: typeof req.body.note === 'string' ? req.body.note.slice(0, 2000) : 'Reviewed in TaxFlow.AI',
+          p_changed_field_paths: changedFieldPaths,
+        });
+        if (versionError) {
+          if (versionError.code === '40001') return res.status(409).json({ success: false, message: versionError.message });
+          throw versionError;
+        }
+        extractionVersion = savedVersion;
+      }
       const updatePayload = {
         status: 'Verified',
         verified_by: req.user.email || req.user.id || verifiedBy || 'CA Admin',
@@ -714,7 +769,15 @@ router.post('/:id/verify', async (req, res) => {
       const { data, error } = await supabase
         .from('documents_metadata').update(updatePayload).eq('id', document.id).eq('client_id', document.client_id).select().single();
       if (error) throw error;
-      return res.json({ success: true, source: 'supabase', data });
+      if (extractionVersion?.version_number) {
+        const { error: approvalError } = await supabase.rpc('approve_extraction_version', {
+          p_user_id: req.user.id,
+          p_document_id: document.id,
+          p_version_number: extractionVersion.version_number,
+        });
+        if (approvalError) throw approvalError;
+      }
+      return res.json({ success: true, source: 'supabase', data, extractionVersion });
     }
 
     const doc = fallbackDocuments.find(d => d.id === req.params.id);

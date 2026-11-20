@@ -33,13 +33,23 @@ function addCloudDocumentToTree(entries, document) {
     monthEntry.children.push(documentFolder);
   }
   if (!documentFolder.children.some(entry => entry.type === 'file' && entry.documentId === document.id)) {
+    const currentVersion = Number(document.current_extraction_version || 0) || null;
+    const approvedVersion = Number(document.approved_extraction_version || 0) || null;
+    const extractionStatus = document.extraction_status
+      || (currentVersion && approvedVersion === currentVersion ? 'approved' : currentVersion ? 'ai_extracted' : 'uploaded');
     documentFolder.children.push({
       name: document.file_name,
       type: 'file',
       documentId: document.id,
       size: Math.max(0, Math.round(Number(document.file_size_kb || 0) * 1024)),
       category: document.category,
-      modifiedAt: document.updated_at || document.created_at
+      modifiedAt: document.updated_at || document.created_at,
+      extraction: {
+        status: extractionStatus,
+        currentVersion,
+        approvedVersion,
+        score: document.confidence_score === null || document.confidence_score === undefined ? null : Number(document.confidence_score),
+      }
     });
   }
 }
@@ -533,7 +543,7 @@ router.get('/:id/documents/tree', async (req, res) => {
     let documents;
     if (isConnected && supabase) {
       const { data, error } = await supabase.from('documents_metadata')
-        .select('id, client_id, source, file_name, file_size_kb, category, created_at, updated_at, storage_bucket, storage_object_path')
+        .select('id, client_id, source, file_name, file_size_kb, category, created_at, updated_at, storage_bucket, storage_object_path, extraction_status, current_extraction_version, approved_extraction_version, confidence_score')
         .eq('client_id', client.id)
         .is('deletion_requested_at', null)
         .neq('source', 'Telegram')

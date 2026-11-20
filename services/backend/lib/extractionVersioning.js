@@ -1,0 +1,146 @@
+const crypto = require('node:crypto');
+
+const FIELD_ALIASES = {
+  Form16: {
+    'gross salary': 'salary.gross_salary',
+    'gross pay': 'salary.gross_salary',
+    'total salary': 'salary.gross_salary',
+    'employee name': 'taxpayer.name',
+    'taxpayer name': 'taxpayer.name',
+    'name of employee': 'taxpayer.name',
+    'pan no': 'taxpayer.pan',
+    'pan number': 'taxpayer.pan',
+    'permanent account number': 'taxpayer.pan',
+    'tax deducted': 'tax.tds_deducted',
+    'tds deducted': 'tax.tds_deducted',
+    'tds': 'tax.tds_deducted',
+  },
+  BankStatement: {
+    'account number': 'account.account_number',
+    'a/c number': 'account.account_number',
+    'account no': 'account.account_number',
+    'account holder': 'account.holder_name',
+    'account holder name': 'account.holder_name',
+    'opening balance': 'balances.opening_balance',
+    'closing balance': 'balances.closing_balance',
+    'interest earned': 'income.interest',
+    'savings interest': 'income.interest',
+  },
+  IncomeTax: {
+    'taxpayer name': 'taxpayer.name',
+    'name of taxpayer': 'taxpayer.name',
+    'pan no': 'taxpayer.pan',
+    'pan number': 'taxpayer.pan',
+    'gross total income': 'income.gross_total_income',
+    'total income': 'income.gross_total_income',
+    'tds deducted': 'tax.tds_deducted',
+  },
+};
+
+function normalizeLabel(label) {
+  return String(label || '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[()\[\]{}:.,#]/g, ' ')
+    .replace(/\b(number|no\.)\b/g, 'no')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function canonicalizeFields(data, category) {
+  const aliases = FIELD_ALIASES[category] || {};
+  const fields = {};
+  const extraFields = {};
+  const normalizationEvents = [];
+
+  for (const [rawKey, value] of Object.entries(data || {})) {
+    const normalized = normalizeLabel(rawKey);
+    const canonicalPath = aliases[normalized] || rawKey;
+    const entry = {
+      value,
+      normalized_value: value,
+      raw_label: rawKey,
+      raw_text: typeof value === 'string' ? value : null,
+      confidence: null,
+      page: null,
+      status: value === null ? 'not_present' : 'found',
+      normalization_rule: canonicalPath === rawKey ? null : `${category}.aliases.v1`,
+    };
+
+    if (canonicalPath === rawKey || canonicalPath.includes('.')) {
+      if (fields[canonicalPath]) {
+        extraFields[rawKey] = value;
+        normalizationEvents.push({ raw_label: rawKey, canonical_path: null, status: 'ambiguous' });
+      } else {
+        fields[canonicalPath] = entry;
+        normalizationEvents.push({ raw_label: rawKey, canonical_path: canonicalPath, status: 'mapped' });
+      }
+    } else {
+      extraFields[rawKey] = value;
+      normalizationEvents.push({ raw_label: rawKey, canonical_path: null, status: 'extra' });
+    }
+  }
+
+  return { fields, extra_fields: extraFields, normalization_events: normalizationEvents };
+}
+
+function calculateExtractionScore(envelope) {
+  const values = Object.values(envelope.fields || {});
+  const found = values.filter(field => field.status === 'found').length;
+  const presentRatio = values.length ? found / values.length : 0;
+  const warningPenalty = Math.min(0.25, (envelope.warnings || []).length * 0.03);
+  const computedScore = Math.max(0, Math.min(1, presentRatio - warningPenalty));
+  const providerScores = values.map(field => Number(field.confidence)).filter(Number.isFinite);
+  const providerScore = providerScores.length
+    ? providerScores.reduce((sum, score) => sum + score, 0) / providerScores.length
+    : null;
+  return {
+    provider_score: providerScore,
+    computed_score: Number(computedScore.toFixed(4)),
+    review_score: null,
+    score_basis: ['field_presence', 'format_checks', 'source_evidence'],
+  };
+}
+
+function buildExtractionEnvelope({ data, category, documentId, assessmentYear, versionNumber = 1, versionKind = 'ai', providerScore = null, providerRaw = null, fieldConfidence = {} }) {
+  const canonical = canonicalizeFields(data, category);
+  const envelope = {
+    document_id: documentId,
+    jurisdiction: 'IN',
+    return_type: category === 'IncomeTax' ? 'ITR-1/ITR-2' : null,
+    document_type: category,
+    assessment_year: assessmentYear || null,
+    schema_version: `${String(category || 'General').toLowerCase()}-v1`,
+    version_number: versionNumber,
+    version_kind: versionKind,
+    fields: canonical.fields,
+    extra_fields: canonical.extra_fields,
+    warnings: [],
+    provider_raw: providerRaw,
+    normalization_events: canonical.normalization_events,
+  };
+  for (const [path, confidence] of Object.entries(fieldConfidence || {})) {
+    if (envelope.fields[path] && Number.isFinite(Number(confidence))) envelope.fields[path].confidence = Math.max(0, Math.min(1, Number(confidence)));
+  }
+  envelope.overall_score = calculateExtractionScore(envelope);
+  if (Number.isFinite(Number(providerScore))) envelope.overall_score.provider_score = Number(providerScore);
+  return envelope;
+}
+
+function contentHash(value) {
+  return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+function diffFields(before, after) {
+  const paths = new Set([...Object.keys(before || {}), ...Object.keys(after || {})]);
+  return [...paths].filter(path => JSON.stringify(before?.[path]) !== JSON.stringify(after?.[path]));
+}
+
+module.exports = {
+  buildExtractionEnvelope,
+  calculateExtractionScore,
+  canonicalizeFields,
+  contentHash,
+  diffFields,
+  normalizeLabel,
+};

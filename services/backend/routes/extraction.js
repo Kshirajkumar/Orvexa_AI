@@ -22,6 +22,34 @@ const { TAXFLOW_SYSTEM_PROMPT } = require('../lib/systemPrompt');
 const { getOwnedClientIds } = require('../lib/ownership');
 const { downloadDocument, isOwnedDocumentObject } = require('../lib/documentStorage');
 const { saveInvoiceExport } = require('../lib/invoiceExport');
+const { buildExtractionEnvelope } = require('../lib/extractionVersioning');
+
+async function saveExtractionVersion({ userId, document, data, category, versionKind = 'ai', baseVersion = null, note = null, providerScore = null, providerRaw = null, fieldConfidence = {} }) {
+  const envelope = buildExtractionEnvelope({
+    data,
+    category,
+    documentId: document.id,
+    assessmentYear: document.assessment_year,
+    versionKind,
+    providerScore,
+    providerRaw,
+    fieldConfidence,
+  });
+  const { data: version, error } = await supabase.rpc('save_extraction_version', {
+    p_user_id: userId,
+    p_document_id: document.id,
+    p_version_kind: versionKind,
+    p_data: envelope,
+    p_provider_score: envelope.overall_score.provider_score,
+    p_computed_score: envelope.overall_score.computed_score,
+    p_schema_version: envelope.schema_version,
+    p_base_version: baseVersion,
+    p_note: note,
+    p_changed_field_paths: [],
+  });
+  if (error) throw error;
+  return { envelope, version };
+}
 
 /**
  * POST /api/v1/extraction/process
@@ -56,6 +84,11 @@ router.post('/process', async (req, res) => {
     if (doc.source === 'Telegram') {
       return res.status(404).json({ success: false, message: 'Telegram files are not available for extraction. Use the secure client portal for document uploads.' });
     }
+
+    await supabase.from('documents_metadata')
+      .update({ extraction_status: 'processing', updated_at: new Date().toISOString() })
+      .eq('id', documentId)
+      .eq('client_id', doc.client_id);
 
     // Step 2: Read only from this user's private object namespace.
     if (!doc.storage_bucket || !doc.storage_object_path || !isOwnedDocumentObject({
@@ -137,8 +170,11 @@ router.post('/process', async (req, res) => {
       throw emptyResponseError;
     }
     const jsonText = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    let providerPayload;
     try {
-      extractedData = validateExtractionData(JSON.parse(jsonText), docCategory);
+      providerPayload = JSON.parse(jsonText);
+      const candidateData = docCategory === 'GST' ? providerPayload : (providerPayload.data || providerPayload);
+      extractedData = validateExtractionData(candidateData, docCategory);
     } catch {
       const invalidOutputError = new Error('The AI extraction provider returned data that did not match the required format. Please retry.');
       invalidOutputError.status = 502;
@@ -150,10 +186,25 @@ router.post('/process', async (req, res) => {
     const duration = Date.now() - startTime;
     const confidenceScore = null;
 
-    // Step 4: Save extracted data + update status in Supabase
+    // Step 4: Save an immutable extraction version. Keep the flat mirror temporarily
+    // because the existing review screen and GST workflow still consume it.
+    const versionResult = doc.category === 'GST' ? null : await saveExtractionVersion({
+      userId: req.user.id,
+      document: doc,
+      data: extractedData,
+      category: docCategory,
+      versionKind: doc.current_extraction_version ? 'ai_rerun' : 'ai',
+      providerScore: providerPayload?.accuracy_score || providerPayload?.confidence_score,
+      providerRaw: providerPayload,
+      fieldConfidence: providerPayload?.field_confidence,
+    });
     const { data: updatedDoc, error: updateErr } = await supabase
       .from('documents_metadata')
-      .update({ status: 'Extracted', extracted_data: extractedData, confidence_score: confidenceScore })
+      .update({
+        status: 'Extracted',
+        extracted_data: extractedData,
+        confidence_score: versionResult?.envelope.overall_score.computed_score ?? confidenceScore,
+      })
       .eq('id', documentId).select().single();
     if (updateErr) throw updateErr;
 
@@ -176,10 +227,23 @@ router.post('/process', async (req, res) => {
     res.json({
       success: true, source: 'supabase',
       message: 'Document extracted. Review all values before use.',
-      data: updatedDoc
+      data: {
+        ...updatedDoc,
+        extraction_version: versionResult?.version || null,
+        extraction_envelope: versionResult?.envelope || null,
+      }
     });
 
   } catch (err) {
+    if (documentId && supabase) {
+      try {
+        await supabase.from('documents_metadata')
+          .update({ extraction_status: 'extraction_failed', updated_at: new Date().toISOString() })
+          .eq('id', documentId);
+      } catch (statusError) {
+        console.warn('[Extraction] Could not record failed extraction status:', statusError.message);
+      }
+    }
     console.error('[Extraction] Error:', err.message);
     res.status(Number.isInteger(err.status) ? err.status : 500).json({ success: false, message: err.message });
   }
@@ -235,9 +299,27 @@ router.post('/save', async (req, res) => {
       return res.status(404).json({ success: false, message: 'This document was not found or is not available for extraction.' });
     }
 
+    const { data: documentWithOwnership, error: ownershipError } = await supabase
+      .from('documents_metadata')
+      .select('id, client_id, client_name, file_name, source, created_at, assessment_year')
+      .eq('id', document.id)
+      .eq('client_id', document.client_id)
+      .single();
+    if (ownershipError) throw ownershipError;
+    const versionResult = document.category === 'GST' ? null : await saveExtractionVersion({
+      userId: req.user.id,
+      document: documentWithOwnership,
+      data: extractedData,
+      category,
+      providerScore: req.body.providerScore,
+    });
     const { data: updatedDocument, error: updateError } = await supabase
       .from('documents_metadata')
-      .update({ status: 'Extracted', extracted_data: extractedData, confidence_score: null })
+      .update({
+        status: 'Extracted',
+        extracted_data: extractedData,
+        confidence_score: versionResult?.envelope.overall_score.computed_score ?? null,
+      })
       .eq('id', document.id)
       .eq('client_id', document.client_id)
       .select()
@@ -276,7 +358,11 @@ router.post('/save', async (req, res) => {
       success: true,
       source: 'supabase',
       message: 'Document extracted with your local OpenRouter key.',
-      data: updatedDocument,
+      data: {
+        ...updatedDocument,
+        extraction_version: versionResult?.version || null,
+        extraction_envelope: versionResult?.envelope || null,
+      },
     });
   } catch (error) {
     console.error('[Extraction] Could not save local-key results:', error.message);
