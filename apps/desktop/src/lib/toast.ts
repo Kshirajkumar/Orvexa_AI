@@ -8,6 +8,7 @@ export interface ToastPayload {
   entityType?: string | null;
   entityId?: string | null;
   persisted?: boolean;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ToastItem extends ToastPayload {

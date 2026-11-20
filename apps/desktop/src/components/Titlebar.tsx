@@ -128,13 +128,19 @@ export function Titlebar() {
               const isDeleted = notification.event_type === 'client.deleted';
               const isDocument = notification.event_type === 'document.received';
               const isError = /error|failed|failure|timeout|denied/i.test(notification.event_type || '');
+              const telegramClientName = typeof notification.metadata?.client_name === 'string'
+                ? notification.metadata.client_name
+                : notification.title.replace(/^Telegram from\s+/i, '').trim();
+              const telegramPreview = String(notification.message || '').replace(/\s+/g, ' ').trim().slice(0, 180) || 'New message received in Telegram.';
+              const toastEntityId = notification.entity_id || (typeof notification.metadata?.client_id === 'string' ? notification.metadata.client_id : null);
               emitToast({
                 kind: isError ? 'error' : isDeleted ? 'warning' : isTelegram || isDocument ? 'info' : 'success',
-                title: notification.title,
-                message: notification.message,
+                title: isTelegram ? `New message from ${telegramClientName || 'Client'}` : notification.title,
+                message: isTelegram ? telegramPreview : notification.message,
                 eventType: notification.event_type,
                 entityType: notification.entity_type,
-                entityId: notification.entity_id,
+                entityId: toastEntityId,
+                metadata: notification.metadata,
                 persisted: true,
               });
             });

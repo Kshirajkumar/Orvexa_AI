@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Icon } from './Icon';
 import { useDispatch } from '../state/store';
 import { TOAST_EVENT, type ToastItem, type ToastPayload } from '../lib/toast';
@@ -50,13 +50,24 @@ function ToastCard({ item, onRemove }: { item: ToastItem; onRemove: (id: string)
     }
   }
 
+  const isActionable = item.eventType === 'telegram.message_received' && Boolean(item.entityId);
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (isActionable && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      openRelatedNotification();
+    }
+  }
+
   return <article
-    className={`toast-card toast-${item.kind}${leaving ? ' is-leaving' : ''}${paused ? ' is-paused' : ''}`}
+    className={`toast-card toast-${item.kind}${leaving ? ' is-leaving' : ''}${paused ? ' is-paused' : ''}${isActionable ? ' is-actionable' : ''}`}
     role={item.kind === 'error' ? 'alert' : 'status'}
     aria-live={item.kind === 'error' ? 'assertive' : 'polite'}
+    tabIndex={isActionable ? 0 : undefined}
+    aria-label={isActionable ? `${item.title}. Open client conversation.` : undefined}
     onMouseEnter={() => setPaused(true)}
     onMouseLeave={() => setPaused(false)}
     onClick={openRelatedNotification}
+    onKeyDown={handleKeyDown}
   >
     <span className="toast-icon"><Icon name={toastIcon(item.kind)} size={15} /></span>
     <span className="toast-copy"><b>{item.title}</b><span>{item.message}</span></span>
