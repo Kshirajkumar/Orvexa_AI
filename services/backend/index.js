@@ -79,6 +79,17 @@ app.use('/api/v1/deadlines', requireAuth, deadlinesRouter);
 app.use('/api/v1/generate', requireAuth, generateRouter);
 app.use('/api/v1/chat', requireAuth, chatRouter);
 
+// Render's default health check probes the service root. Keep this response
+// lightweight and independent of Supabase so platform checks only verify that
+// the HTTP process is accepting traffic.
+app.get('/', (_req, res) => {
+  res.json({
+    success: true,
+    service: 'TaxFlow.AI Backend API',
+    health: '/api/v1/health'
+  });
+});
+
 // ─── Health & System Status ────────────────────────────────────
 app.get('/api/v1/health', async (req, res) => {
   let dbStatus = 'demo_mode';
