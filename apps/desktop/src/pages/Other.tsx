@@ -5,6 +5,7 @@ import { allTasks, missing } from '../lib/domain';
 import { money, sum } from '../lib/format';
 import { createClient, deleteClient, fetchClientPortalAccess, fetchStorageCleanupJob, fetchStorageCleanupJobs, inviteClientToPortal, retryStorageCleanupJob, revokeClientPortalAccess, sendClientPortalLinkToTelegram, updateClient, updateClientPortalAccess, type StorageCleanupJob } from '../lib/api';
 import { ClientFormCard, type ClientFormValues } from '../components/ClientFormCard';
+import { emitToast } from '../lib/toast';
 import { FilingTypePicker } from '../components/FilingTypePicker';
 import {
   deleteOpenRouterApiKey,
@@ -213,7 +214,8 @@ export function ClientsPage() {
       setPortalCardStates(previous => ({ ...previous, [saved.id]: { status: saved.portalInvitation?.link ? 'invitation_pending' : 'not_started', link: saved.portalInvitation?.link || null } }));
       dispatch({ type: 'ADD_CLIENT', client: { id: saved.id, name: saved.name, entityType: saved.entity_type || form.entityType, short: saved.name.slice(0, 3).toUpperCase(), city: 'Local', country: saved.country_name || 'Selected country', countryId: saved.country_id || form.countryId, cur: saved.currency_code || 'INR', gstin: saved.gstin || '', pan: saved.pan || '', svc: saved.filing_types || form.filingTypes, filingTypes: saved.filing_types || form.filingTypes, contact: saved.email || '', phone: saved.phone || '', fee: 0, tone: 'blue', alias: [] } });
       setShowAdd(false); setForm({ name: '', entityType: 'Individual', pan: '', gstin: '', phone: '', email: '', countryId: '', filingTypes: [] });
-    } catch (err: any) { setError(err.message || 'Could not save client.'); }
+      emitToast({ kind: 'success', title: 'Client created', message: `${saved.name} was added to your practice.`, eventType: 'client.created', entityType: 'client', entityId: saved.id });
+    } catch (err: any) { setError(err.message || 'Could not save client.'); emitToast({ kind: 'error', title: 'Client could not be saved', message: err.message || 'Could not save client.', eventType: 'client.create_failed' }); }
     finally { setSaving(false); }
   }
   function startEditing() {
@@ -251,8 +253,10 @@ export function ClientsPage() {
       setDeleteConfirm(false);
       setEditingClient(false);
       setSelectedClient(null);
+      emitToast({ kind: 'success', title: 'Client deleted', message: `${deleted.name} was removed. Cloud cleanup is tracked separately.`, eventType: 'client.deleted', entityType: 'client', entityId: deleted.id });
     } catch (err: any) {
       setDeleteError(err.message || 'Could not delete this client. Nothing was removed.');
+      emitToast({ kind: 'error', title: 'Client could not be deleted', message: err.message || 'Nothing was removed.', eventType: 'client.delete_failed', entityType: 'client', entityId: selectedClient?.id || null });
     } finally {
       setDeleteSaving(false);
     }
@@ -309,7 +313,12 @@ export function ClientsPage() {
       }
       setPortalError(saved.portalAccessWarning || '');
       setEditingClient(false);
-    } catch (err: any) { setEditError(err.message || 'Could not update client.'); }
+      emitToast({ kind: 'success', title: 'Client updated', message: `${updated.name} was updated successfully.`, eventType: 'client.updated', entityType: 'client', entityId: updated.id });
+    } catch (err: any) {
+      const message = err.message || 'Could not update client.';
+      setEditError(message);
+      emitToast({ kind: 'error', title: 'Client could not be updated', message, eventType: 'client.update_failed', entityType: 'client', entityId: selectedClient?.id || null });
+    }
     finally { setEditSaving(false); }
   }
   return (

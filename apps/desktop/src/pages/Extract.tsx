@@ -3,15 +3,19 @@ import { Icon } from '../components/Icon';
 import { useAppState, useDispatch } from '../state/store';
 import { fetchClientDocuments, processDocumentExtraction, uploadDocument, type DocumentItem } from '../lib/api';
 import { isUsingLocalOpenRouterKey, validateOpenRouterExtractionFile, type OpenRouterFallbackProgress } from '../lib/openRouter';
+import { emitToast } from '../lib/toast';
 
 type RunStep = 'idle' | 'uploading' | 'extracting' | 'saving' | 'done' | 'error';
+type ConnectionState = 'online' | 'offline' | 'reconnecting';
 const CATEGORIES = [['GST', 'GST invoice'], ['Form16', 'Form 16'], ['IncomeTax', 'Income tax'], ['BankStatement', 'Bank statement'], ['Notice', 'Tax notice'], ['General', 'Other document']];
 
-function fileToBase64(file: File): Promise<string> {
+function fileToBase64(file: File, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error('The selected file could not be read. Please try again.'));
+    reader.onerror = () => reject(new Error('Permission denied: TaxFlow could not read this file. Check the file permissions or choose a copy from a folder you can access.'));
+    reader.onabort = () => reject(new DOMException('The file read was canceled.', 'AbortError'));
+    signal?.addEventListener('abort', () => reader.abort(), { once: true });
     reader.readAsDataURL(file);
   });
 }
@@ -41,9 +45,28 @@ export function ExtractPage() {
   const [clientFiles, setClientFiles] = useState<DocumentItem[]>([]);
   const [clientFilesLoading, setClientFilesLoading] = useState(false);
   const [clientFilesError, setClientFilesError] = useState('');
+  const [progress, setProgress] = useState(0);
+  const [connectionState, setConnectionState] = useState<ConnectionState>(navigator.onLine ? 'online' : 'offline');
+  const requestController = useRef<AbortController | null>(null);
+  const cancelRequested = useRef(false);
+  const timeoutReached = useRef(false);
   const client = useMemo(() => s.clients.find((item) => item.id === clientId), [clientId, s.clients]);
   const isBusy = step === 'uploading' || step === 'extracting' || step === 'saving';
   const resultEntries = extracted ? Object.entries(extracted) : [];
+
+  useEffect(() => {
+    const markOffline = () => setConnectionState('offline');
+    const markOnline = () => {
+      setConnectionState('reconnecting');
+      window.setTimeout(() => setConnectionState('online'), 900);
+    };
+    window.addEventListener('offline', markOffline);
+    window.addEventListener('online', markOnline);
+    return () => {
+      window.removeEventListener('offline', markOffline);
+      window.removeEventListener('online', markOnline);
+    };
+  }, []);
 
   useEffect(() => { if (!clientId && s.clients[0]) setClientId(s.clients[0].id); }, [clientId, s.clients]);
 
@@ -64,24 +87,47 @@ export function ExtractPage() {
   function chooseFile(nextFile?: File) {
     const selected = nextFile || inputRef.current?.files?.[0];
     if (!selected) return;
-    if (selected.size > 20 * 1024 * 1024) { setMessage('Files must be 20 MB or smaller.'); setStep('error'); return; }
+    const extension = selected.name.split('.').pop()?.toLowerCase();
+    if (!extension || !['pdf', 'png', 'jpg', 'jpeg', 'webp'].includes(extension)) { setMessage('Validation: choose a PDF, PNG, JPG, JPEG, or WEBP file.'); setStep('error'); return; }
+    if (!selected.size) { setMessage('Validation: the selected file is empty. Choose a file with content and try again.'); setStep('error'); return; }
+    if (selected.size > 20 * 1024 * 1024) { setMessage('Validation: files must be 20 MB or smaller. Choose a smaller file and try again.'); setStep('error'); return; }
     setFile(selected); setMessage(''); setStep('idle'); setExtracted(null); setApproved(false);
   }
 
+  function cancelExtraction() {
+    if (!isBusy) return;
+    cancelRequested.current = true;
+    requestController.current?.abort();
+    setProgress(0);
+    setStep(documentId ? 'error' : 'idle');
+    setMessage(documentId
+      ? 'Partial success: the original file was uploaded securely, but processing was canceled. Retry extraction when ready.'
+      : 'Upload canceled. Choose a file whenever you are ready.');
+  }
+
   async function startExtraction() {
-    if (!client || !file || isBusy) return;
+    if (!client || !file || isBusy || connectionState === 'offline') return;
     setMessage(''); setExtracted(null); setApproved(false);
     setFallbackProgress(null);
+    setProgress(0);
+    cancelRequested.current = false;
+    const controller = new AbortController();
+    requestController.current = controller;
+    timeoutReached.current = false;
+    const timeoutId = window.setTimeout(() => { timeoutReached.current = true; controller.abort(); }, 90_000);
+    let uploadedId = '';
     try {
       const useLocalOpenRouter = isUsingLocalOpenRouterKey();
       if (useLocalOpenRouter) validateOpenRouterExtractionFile(file);
       setStep('uploading');
-      const upload = await uploadDocument({ clientId: client.id, fileName: file.name, fileType: normalizedFileType(file), category, fileBase64: await fileToBase64(file), source: 'Upload' });
+      const upload = await uploadDocument({ clientId: client.id, fileName: file.name, fileType: normalizedFileType(file), category, fileBase64: await fileToBase64(file, controller.signal), source: 'Upload', signal: controller.signal });
       const id = upload.data?.id;
       if (!id) throw new Error('The file was saved, but no document ID was returned for extraction.');
-      setDocumentId(id); setStep('extracting');
-      const result = await processDocumentExtraction(id, category, file, setFallbackProgress, client.name, upload.data?.created_at, client.id, useLocalOpenRouter);
+      uploadedId = id;
+      setDocumentId(id); setProgress(35); setStep('extracting');
+      const result = await processDocumentExtraction(id, category, file, (fallback) => { setFallbackProgress(fallback); setProgress(Math.min(84, 35 + Math.round((fallback.attempt / fallback.maxAttempts) * 49))); }, client.name, upload.data?.created_at, client.id, useLocalOpenRouter, controller.signal);
       setStep('saving');
+      setProgress(92);
       await new Promise((resolve) => window.setTimeout(resolve, 450));
       const extractedData = result.data?.extracted_data;
       if (!extractedData || typeof extractedData !== 'object' || Array.isArray(extractedData)) {
@@ -89,9 +135,25 @@ export function ExtractPage() {
       }
       setExtracted(extractedData);
       setMessage(result.message || 'Draft fields saved for review. They are not approved invoice data.');
+      setProgress(100);
       setStep('done');
-    } catch (error) { setStep('error'); setMessage(error instanceof Error ? error.message : 'Something went wrong while processing this file.'); }
-    finally { setFallbackProgress(null); }
+      emitToast({ kind: 'success', title: 'Extraction complete', message: `${file.name} is ready for human review.`, eventType: 'extraction.completed', entityType: 'document', entityId: uploadedId });
+    } catch (error) {
+      if (cancelRequested.current || (error instanceof DOMException && error.name === 'AbortError' && !timeoutReached.current)) return;
+      const detail = error instanceof Error ? error.message : 'Something went wrong while processing this file.';
+      const isConnectivity = /unavailable|could not be reached|connection|timed out|timeout/i.test(detail);
+      if (!navigator.onLine || isConnectivity) setConnectionState(navigator.onLine ? 'reconnecting' : 'offline');
+      setStep('error');
+      const statusMessage = timeoutReached.current
+        ? 'Timeout: processing took longer than 90 seconds. The original file is safe in private storage; retry when the service is available.'
+        : /maintenance|temporarily unavailable|HTTP 503/i.test(detail)
+          ? `Maintenance: the extraction service is temporarily unavailable. ${uploadedId ? 'Your original file is safe in private storage. ' : ''}Please retry shortly.`
+          : uploadedId
+            ? `Partial success: the original file is safe in private storage, but processing did not finish. ${detail} Retry extraction when the service is available.`
+            : detail;
+      setMessage(statusMessage);
+      emitToast({ kind: timeoutReached.current ? 'warning' : 'error', title: timeoutReached.current ? 'Extraction timed out' : 'Extraction could not finish', message: statusMessage, eventType: timeoutReached.current ? 'extraction.timeout' : 'extraction.failed', entityType: uploadedId ? 'document' : null, entityId: uploadedId || null });
+    } finally { window.clearTimeout(timeoutId); requestController.current = null; setFallbackProgress(null); }
   }
 
   async function approveExtraction() {
@@ -101,7 +163,9 @@ export function ExtractPage() {
   }
 
   return <div className="extract-workspace">
+    {isBusy && <div className="extract-progress" role="status" aria-live="polite"><div className="extract-progress-head"><b>{file?.name}</b><span>{(file ? file.size / 1024 / 1024 : 0).toFixed(2)} MB · {progress}%</span></div><progress max="100" value={progress} aria-label={`Upload and processing progress: ${progress}%`} /><div className="extract-progress-foot"><span>{step === 'uploading' ? 'Uploading securely' : step === 'extracting' ? 'Processing document' : 'Saving structured result'}</span><button className="btn gh sm" onClick={cancelExtraction}>Cancel</button></div></div>}
     <div className="ph extract-header"><div><div className="eyebrow"><span className="eyebrow-dot" />AI DOCUMENT WORKSPACE</div><h1>Extract with confidence</h1><p>Upload a document and choose whether to use the TaxFlow AI service or your local OpenRouter key in Settings.</p></div><div className="extract-header-status"><span className="status-pulse" />Cloud &amp; AI ready</div></div>
+    {connectionState !== 'online' && <div className={`extract-connectivity ${connectionState}`} role="status" aria-live="polite"><Icon name={connectionState === 'offline' ? 'globe' : 'refresh'} size={14} className={connectionState === 'reconnecting' ? 'ic spin' : 'ic'} /><div><b>{connectionState === 'offline' ? 'You are offline' : 'Reconnecting to TaxFlow'}</b><span>{connectionState === 'offline' ? 'Uploads and cloud processing are paused. Check your network; your local file selection is still available.' : 'We are restoring the connection. Keep this page open and retry when the status returns online.'}</span></div></div>}
     {!s.clients.length ? <section className="card extract-no-client-state" aria-labelledby="extract-empty-title">
       <div className="extract-no-client-visual"><div className="pipeline-orb"><Icon name="spark" size={27} /></div><span><Icon name="folder" size={13} /></span><span><Icon name="file" size={13} /></span></div>
       <div className="extract-no-client-copy"><span className="eyebrow"><span className="eyebrow-dot" />READY WHEN YOU ARE</span><h2 id="extract-empty-title">Add a client before extracting</h2><p>Every document is linked to a client workspace first. Create one to keep files, extracted fields, and review history organized and private.</p><button className="btn pri" onClick={() => dispatch({ type: 'GO', page: 'clients' })}><Icon name="users" size={14} />Go to Clients</button></div>

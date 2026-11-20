@@ -20,6 +20,7 @@ import {
 } from '../lib/api';
 import { openWithDefaultApp, supportsNativeFileOpen } from '../lib/nativeFiles';
 import { fDT } from '../lib/format';
+import { emitToast } from '../lib/toast';
 
 function formatBytes(bytes = 0) {
   if (bytes < 1024) return `${bytes} B`;
@@ -347,10 +348,13 @@ export function FilesPage() {
       }
       setUploadMessageKind('success');
       setUploadMessage(`${file.name} uploaded to private cloud storage.`);
+      emitToast({ kind: 'success', title: 'File uploaded', message: `${file.name} is stored in private cloud storage.`, eventType: 'document.uploaded', entityType: 'document', entityId: uploadedDocument.id });
       setRefresh(value => value + 1);
     } catch (err) {
       setUploadMessageKind('error');
-      setUploadMessage(err instanceof Error ? err.message : 'The file could not be uploaded.');
+      const message = err instanceof Error ? err.message : 'The file could not be uploaded.';
+      setUploadMessage(message);
+      emitToast({ kind: 'error', title: 'File could not be uploaded', message, eventType: 'document.upload_failed', entityType: 'client', entityId: client.id });
     } finally {
       setUploading(false);
     }

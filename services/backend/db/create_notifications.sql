@@ -46,7 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_unread
   ON public.notifications (user_id, read_at)
   WHERE read_at IS NULL;
 
--- 1. Trigger for Client Changes (INSERT / DELETE)
+-- 1. Trigger for Client Changes (INSERT / UPDATE / DELETE)
 CREATE OR REPLACE FUNCTION public.create_client_notification()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -68,6 +68,13 @@ BEGIN
     notification_type := 'client.created';
     notification_title := 'New client added';
     notification_message := format('%s was added to your client registry.', NEW.name);
+  ELSIF TG_OP = 'UPDATE' THEN
+    client_name := NEW.name;
+    notification_user_id := NEW.user_id;
+    notification_client_id := NEW.id;
+    notification_type := 'client.updated';
+    notification_title := 'Client updated';
+    notification_message := format('%s was updated in your client registry.', NEW.name);
   ELSIF TG_OP = 'DELETE' THEN
     client_name := OLD.name;
     notification_user_id := OLD.user_id;
@@ -108,7 +115,7 @@ $$;
 
 DROP TRIGGER IF EXISTS trg_clients_create_notification ON public.clients;
 CREATE TRIGGER trg_clients_create_notification
-  AFTER INSERT OR DELETE ON public.clients
+  AFTER INSERT OR UPDATE OR DELETE ON public.clients
   FOR EACH ROW
   EXECUTE FUNCTION public.create_client_notification();
 

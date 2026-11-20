@@ -19,6 +19,7 @@ import { ClientsPage, SettingsPage } from './pages/Other';
 import { ProfilePage } from './pages/Profile';
 import { SubscriptionsPage } from './pages/Subscriptions';
 import { AppTour, markTourWelcomeSeen, shouldShowTourWelcome, TourWelcome } from './components/AppTour';
+import { ToastHost } from './components/ToastHost';
 
 function Shell() {
   const s = useAppState();
@@ -173,6 +174,7 @@ export default function App() {
   return (
     <AppProvider>
       <AuthDeepLinkHandler />
+      <ToastHost />
       <Shell />
     </AppProvider>
   );

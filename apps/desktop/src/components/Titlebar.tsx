@@ -6,6 +6,7 @@ import { useAppState, useDispatch } from '../state/store';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { fetchNotifications, markNotificationsRead, searchTelegramMessages, searchCloudDocuments, type NotificationItem, type TelegramSearchResult, type CloudDocumentSearchResult } from '../lib/api';
 import type { Page } from '../types';
+import { emitToast, TOAST_EVENT, type ToastPayload } from '../lib/toast';
 
 interface WorkspaceSearchResult {
   id: string;
@@ -46,6 +47,9 @@ export function Titlebar() {
   const [vaultSearchError, setVaultSearchError] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
+  const knownNotificationIds = useRef<Set<string> | null>(null);
+  const recentActivityKeys = useRef<Set<string>>(new Set());
+  const localNotifications = useRef<NotificationItem[]>([]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -115,8 +119,30 @@ export function Titlebar() {
       try {
         const result = await fetchNotifications();
         if (!cancelled) {
-          setNotifications(result.data);
-          setUnreadNotifications(result.unreadCount);
+          const knownIds = knownNotificationIds.current;
+          if (knownIds) {
+            result.data.filter(notification => !knownIds.has(notification.id)).reverse().forEach(notification => {
+              const activityKey = `${notification.event_type}:${notification.entity_id || ''}`;
+              if (recentActivityKeys.current.has(activityKey)) return;
+              const isTelegram = notification.event_type === 'telegram.message_received';
+              const isDeleted = notification.event_type === 'client.deleted';
+              const isDocument = notification.event_type === 'document.received';
+              const isError = /error|failed|failure|timeout|denied/i.test(notification.event_type || '');
+              emitToast({
+                kind: isError ? 'error' : isDeleted ? 'warning' : isTelegram || isDocument ? 'info' : 'success',
+                title: notification.title,
+                message: notification.message,
+                eventType: notification.event_type,
+                entityType: notification.entity_type,
+                entityId: notification.entity_id,
+                persisted: true,
+              });
+            });
+          }
+          knownNotificationIds.current = new Set(result.data.map(notification => notification.id));
+          const localItems = localNotifications.current.filter(notification => !result.data.some(item => item.id === notification.id));
+          setNotifications([...result.data, ...localItems].slice(0, 20));
+          setUnreadNotifications(result.unreadCount + localItems.filter(notification => !notification.read_at).length);
         }
       } catch (error) {
         if (!cancelled) console.warn('[NOTIFICATIONS] Could not load notifications:', error);
@@ -126,6 +152,31 @@ export function Titlebar() {
     const timer = window.setInterval(() => void loadNotifications(), 15000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [s.currentUser?.id]);
+
+  useEffect(() => {
+    function addLocalNotification(event: Event) {
+      const payload = (event as CustomEvent<ToastPayload>).detail;
+      if (!payload?.title || !payload.message || payload.persisted) return;
+      const item: NotificationItem = {
+        id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        event_type: payload.eventType || 'app.activity',
+        title: payload.title,
+        message: payload.message,
+        entity_type: payload.entityType,
+        entity_id: payload.entityId,
+        created_at: new Date().toISOString(),
+        read_at: null,
+      };
+      const activityKey = `${item.event_type}:${item.entity_id || ''}`;
+      recentActivityKeys.current.add(activityKey);
+      window.setTimeout(() => recentActivityKeys.current.delete(activityKey), 30_000);
+      localNotifications.current = [item, ...localNotifications.current].slice(0, 20);
+      setNotifications(previous => [item, ...previous].slice(0, 20));
+      setUnreadNotifications(previous => previous + 1);
+    }
+    window.addEventListener(TOAST_EVENT, addLocalNotification);
+    return () => window.removeEventListener(TOAST_EVENT, addLocalNotification);
+  }, []);
 
   // Close search dropdown on outside click
   useEffect(() => {
@@ -366,6 +417,9 @@ export function Titlebar() {
             const nextOpen = !notificationsOpen;
             setNotificationsOpen(nextOpen);
             if (nextOpen && unreadNotifications > 0) {
+              const now = new Date().toISOString();
+              localNotifications.current = localNotifications.current.map(notification => ({ ...notification, read_at: notification.read_at || now }));
+              setNotifications(previous => previous.map(notification => ({ ...notification, read_at: notification.read_at || now })));
               void markNotificationsRead().then(() => setUnreadNotifications(0)).catch((error) => console.warn('[NOTIFICATIONS] Could not mark read:', error));
             }
           }} title="Notifications" aria-label="Notifications" aria-expanded={notificationsOpen}>

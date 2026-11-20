@@ -886,13 +886,16 @@ export async function uploadDocument(payload: {
   assessmentYear?: string;
   fileBase64?: string;
   source?: string;
+  signal?: AbortSignal;
 }): Promise<DocumentUploadResponse> {
+  const { signal, ...requestBody } = payload;
   let res: Response;
   try {
     res = await fetch(`${API_BASE_URL}/documents`, {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify(payload)
+      body: JSON.stringify(requestBody),
+      signal,
     });
   } catch {
     throw new Error('The TaxFlow.AI backend is unavailable. Start the backend and try again.');
@@ -1019,6 +1022,7 @@ export async function processDocumentExtraction(
   createdAt?: string,
   clientId?: string,
   useLocalKey = isUsingLocalOpenRouterKey(),
+  signal?: AbortSignal,
 ) {
   if (useLocalKey) {
     if (!file) {
@@ -1035,6 +1039,7 @@ export async function processDocumentExtraction(
       {
         method: 'POST',
         headers: authHeaders(),
+        signal,
         body: JSON.stringify({
           documentId,
           category,
@@ -1067,6 +1072,7 @@ export async function processDocumentExtraction(
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ documentId, category }),
+      signal,
     });
   } catch {
     throw new Error('The extraction service is unavailable. The uploaded file is still safe in private Supabase Storage.');

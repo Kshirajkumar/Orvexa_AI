@@ -8,6 +8,7 @@ import {
   verifyDocumentExtraction,
   type InvoiceDuplicate,
 } from '../lib/api';
+import { emitToast } from '../lib/toast';
 
 const NUMERIC_FIELDS = new Set([
   'taxable_value', 'cgst_rate', 'cgst_amount', 'sgst_rate', 'sgst_amount',
@@ -53,6 +54,8 @@ export function ExtractionReviewPage() {
   const [duplicate, setDuplicate] = useState<InvoiceDuplicate | null>(null);
   const [duplicateExact, setDuplicateExact] = useState(false);
   const [retryTargetId, setRetryTargetId] = useState<string | undefined>();
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [confirmLeavePage, setConfirmLeavePage] = useState<'extract' | 'files'>('extract');
   const client = s.clients.find(item => item.id === review.clientId);
   const entries = useMemo(() => Object.entries(fields), [fields]);
   const hasFieldErrors = Object.keys(fieldErrors).length > 0;
@@ -159,6 +162,7 @@ export function ExtractionReviewPage() {
         setApproved(true);
         setPendingSave(false);
         setMessage(result.message || 'Invoice and review history saved successfully.');
+        emitToast({ kind: 'success', title: 'Review approved', message: result.message || 'Invoice data and review history were saved successfully.', eventType: 'extraction.review_approved', entityType: 'document', entityId: review.documentId });
         window.setTimeout(() => {
           dispatch({ type: 'CLEAR_EXTRACTION_REVIEW' });
           dispatch({ type: 'GO', page: 'extract' });
@@ -170,12 +174,14 @@ export function ExtractionReviewPage() {
       if (!result?.success) throw new Error('The reviewed extraction could not be saved.');
       setApproved(true);
       setMessage('Reviewed data saved to the client record.');
+      emitToast({ kind: 'success', title: 'Review saved', message: 'Reviewed data was saved to the client record.', eventType: 'extraction.review_approved', entityType: 'document', entityId: review.documentId });
       window.setTimeout(() => {
         dispatch({ type: 'CLEAR_EXTRACTION_REVIEW' });
         dispatch({ type: 'GO', page: 'extract' });
       }, 650);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Approval failed. Please try again.');
+      emitToast({ kind: 'error', title: 'Review could not be saved', message: error instanceof Error ? error.message : 'Approval failed. Please try again.', eventType: 'extraction.review_failed', entityType: 'document', entityId: review.documentId });
       if (error instanceof InvoiceReviewError && error.retryable) {
         setPendingSave(true);
         setRetryTargetId(existingInvoiceId || retryTargetId);
@@ -187,6 +193,16 @@ export function ExtractionReviewPage() {
 
   function leaveReview(page: 'extract' | 'files' = 'extract') {
     if (saving) return;
+    if (!approved && differs(fields, review.extractedData)) {
+      setConfirmLeavePage(page);
+      setConfirmLeave(true);
+      return;
+    }
+    finishLeavingReview(page);
+  }
+
+  function finishLeavingReview(page: 'extract' | 'files' = 'extract') {
+    setConfirmLeave(false);
     dispatch({ type: 'CLEAR_EXTRACTION_REVIEW' });
     dispatch({ type: 'GO', page });
   }
@@ -206,6 +222,7 @@ export function ExtractionReviewPage() {
   }
 
   return <div className="review-page">
+    {confirmLeave && <div className="review-confirm" role="alertdialog" aria-modal="true" aria-labelledby="review-confirm-title"><div className="review-confirm-card"><Icon name="bell" size={20} /><h2 id="review-confirm-title">Discard unsaved changes?</h2><p>Your edited extraction fields have not been saved. Leaving now will discard those changes.</p><div className="review-confirm-actions"><button className="btn gh" onClick={() => setConfirmLeave(false)}>Keep editing</button><button className="btn pri" onClick={() => finishLeavingReview(confirmLeavePage)}>Discard and leave</button></div></div></div>}
     <div className="ph review-header">
       <div><div className="eyebrow review-eyebrow"><span className="review-orange-dot" />QUALITY CONTROL · AI EXTRACTION</div><h1>Review invoice data</h1><p>Compare every value with the original before approving it for the client record.</p></div>
       <div className="review-header-actions">
