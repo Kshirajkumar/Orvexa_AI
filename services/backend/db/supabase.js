@@ -28,17 +28,25 @@ function isUsableSupabaseKey(value) {
   }
 }
 
-const SUPABASE_SERVER_KEY = String(process.env.SUPABASE_SECRET_KEY || '').trim();
+// SUPABASE_SECRET_KEY is the canonical name. Keep the legacy service-role
+// variable as a compatibility fallback for existing Render services, but only
+// accept it when it passes the same server-key validation below. Never fall
+// back to the publishable/anon key for backend work.
+const configuredSecretKey = String(process.env.SUPABASE_SECRET_KEY || '').trim();
+const configuredLegacyServiceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+const SUPABASE_SERVER_KEY = isUsableSupabaseKey(configuredSecretKey)
+  ? configuredSecretKey
+  : configuredLegacyServiceRoleKey;
 
 if (!SUPABASE_URL || !isUsableSupabaseKey(SUPABASE_SERVER_KEY) || SUPABASE_URL.includes('YOUR_PROJECT_ID')) {
   const reason = !SUPABASE_URL
     ? 'SUPABASE_URL is missing'
     : SUPABASE_URL.includes('YOUR_PROJECT_ID')
       ? 'SUPABASE_URL is still a placeholder'
-      : 'SUPABASE_SECRET_KEY is missing or not a valid server key';
+    : 'SUPABASE_SECRET_KEY (or the legacy SUPABASE_SERVICE_ROLE_KEY) is missing or not a valid server key';
   logger.warn('SUPABASE', 'cloud database disabled; running in demo mode', {
     reason,
-    fix: 'Set SUPABASE_URL and SUPABASE_SECRET_KEY in services/backend/.env'
+    fix: 'Set SUPABASE_URL and the server-only SUPABASE_SECRET_KEY in services/backend/.env'
   });
 }
 

@@ -94,6 +94,7 @@ app.get('/', (_req, res) => {
 app.get('/api/v1/health', async (req, res) => {
   let dbStatus = 'demo_mode';
   let totalClients = 0;
+  let cleanupTrackingStatus = 'not_checked';
 
   if (isConnected) {
     try {
@@ -102,6 +103,21 @@ app.get('/api/v1/health', async (req, res) => {
       dbStatus = 'connected';
     } catch {
       dbStatus = 'error';
+    }
+
+    try {
+      const { error } = await supabase.from('storage_cleanup_jobs').select('id', { count: 'exact', head: true });
+      if (!error) {
+        cleanupTrackingStatus = 'connected';
+      } else if (error.code === 'PGRST205' || error.code === '42P01') {
+        cleanupTrackingStatus = 'missing_schema';
+      } else if (error.code === '42501') {
+        cleanupTrackingStatus = 'permission_denied';
+      } else {
+        cleanupTrackingStatus = 'error';
+      }
+    } catch {
+      cleanupTrackingStatus = 'error';
     }
   }
 
@@ -118,6 +134,10 @@ app.get('/api/v1/health', async (req, res) => {
       provider: 'Supabase Storage',
       status: isConnected && process.env.SUPABASE_STORAGE_BUCKET ? 'configured' : 'not_configured',
       bucket: process.env.SUPABASE_STORAGE_BUCKET || null
+    },
+    cleanupTracking: {
+      status: cleanupTrackingStatus,
+      migration: 'document_lifecycle.sql'
     },
     ai: {
       provider: 'Google Gemini',
