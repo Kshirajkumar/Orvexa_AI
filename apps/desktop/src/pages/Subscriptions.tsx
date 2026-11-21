@@ -34,7 +34,6 @@ export function SubscriptionsPage() {
       <div className="ph" data-tour="subscriptions-intro">
         <div>
           <span className="eyebrow">ACCOUNT &amp; PLAN</span>
-          <h1>Subscriptions</h1>
           <p>Review the proposed Taxflow plans and the subscription details available for this workspace.</p>
         </div>
       </div>

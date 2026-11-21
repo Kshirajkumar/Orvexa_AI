@@ -14,7 +14,7 @@ export function DeadlinesPage() {
 
   return (
     <>
-      <div className="ph" data-tour="deadlines-intro"><div><h1>Deadlines</h1><p>Track every filing for every client. Tick steps as work gets done.</p></div></div>
+      <div className="ph" data-tour="deadlines-intro"><div><p>Track every filing for every client. Tick steps as work gets done.</p></div></div>
       {!s.clients.length ? <div className="card workspace-empty workspace-empty-calendar" data-tour="deadlines-empty">
         <div className="workspace-empty-visual"><span className="workspace-empty-ring ring-one" /><span className="workspace-empty-ring ring-two" /><span className="workspace-empty-orb"><Icon name="cal" size={30} /></span><span className="workspace-empty-float float-one"><Icon name="check" size={14} /></span><span className="workspace-empty-float float-two"><Icon name="clock" size={14} /></span></div>
         <div className="workspace-empty-copy"><span className="eyebrow">A CALENDAR THAT FOLLOWS THE WORK</span><h2>Your compliance timeline starts here</h2><p>Add a client and their filing schedule will become a clear, trackable timeline with progress and due-date signals.</p><button className="btn pri" onClick={() => dispatch({ type: 'GO', page: 'clients' })}><Icon name="plus" size={14} />Add your first client</button></div>

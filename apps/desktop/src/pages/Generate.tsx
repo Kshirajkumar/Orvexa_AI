@@ -74,7 +74,7 @@ export function GeneratePage() {
   if (!c) {
     return (
       <>
-        <div className="ph" data-tour="generator-intro"><div><h1>File generator</h1><p>Pick a client and the files you need.</p></div></div>
+        <div className="ph" data-tour="generator-intro"><div><p>Pick a client and the files you need.</p></div></div>
         <div className="card workspace-empty workspace-empty-generator" data-tour="generator-empty">
           <div className="workspace-empty-visual"><span className="workspace-empty-ring ring-one" /><span className="workspace-empty-ring ring-two" /><span className="workspace-empty-orb"><Icon name="file" size={30} /></span><span className="workspace-empty-float float-one"><Icon name="spark" size={14} /></span><span className="workspace-empty-float float-two"><Icon name="check" size={14} /></span></div>
           <div className="workspace-empty-copy"><span className="eyebrow">GENERATE FROM APPROVED WORK</span><h2>Your first filing workspace is one client away</h2><p>Choose a client first, then generate the filing outputs configured for their country and services.</p><button className="btn pri" onClick={() => dispatch({ type: 'GO', page: 'clients' })}><Icon name="users" size={14} />Add your first client</button></div>
@@ -136,7 +136,7 @@ export function GeneratePage() {
 
   return (
     <>
-      <div className="ph" data-tour="generator-intro"><div><h1>File generator</h1><p>Pick a client and the files you need. Built from approved invoice data with fixed calculation rules.</p></div></div>
+      <div className="ph" data-tour="generator-intro"><div><p>Pick a client and the files you need. Built from approved invoice data with fixed calculation rules.</p></div></div>
       <div className="ggrid">
         <div className="card" data-tour="generator-setup">
           <div className="card-h"><h2>What do you need?</h2></div>

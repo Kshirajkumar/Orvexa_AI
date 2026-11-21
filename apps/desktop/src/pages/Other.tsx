@@ -323,7 +323,7 @@ export function ClientsPage() {
   }
   return (
     <>
-      <div className="ph" data-tour="clients-intro"><div><h1>Clients</h1><p>Everyone you file for, with their services and current workload.</p></div><button className="btn pri" onClick={() => setShowAdd(true)}>+ Add client</button></div>
+      <div className="ph" data-tour="clients-intro"><div><p>Everyone you file for, with their services and current workload.</p></div><button className="btn pri" onClick={() => setShowAdd(true)}>+ Add client</button></div>
       {portalNotice && <div className="ob-error" role="status">{portalNotice}</div>}
       {(cleanupJobs.length > 0 || cleanupError) && <div className="vault-lifecycle-panel card" aria-label="Client cleanup jobs">
         <div><b>Client cloud cleanup</b><small>Deletion is queued in Supabase; it retries automatically if Storage is temporarily unavailable.</small></div>
@@ -752,7 +752,7 @@ export function SettingsPage({ onStartTour }: { onStartTour?: () => void } = {})
 
   return (
     <>
-      <div className="ph" data-tour="settings-intro"><div><h1>Settings</h1><p>Connections, automation rules and security.</p></div></div>
+      <div className="ph" data-tour="settings-intro"><div><p>Connections, automation rules and security.</p></div></div>
       <OpenRouterSettings />
       <div className="card" data-tour="automation-settings">
         <div className="card-b">

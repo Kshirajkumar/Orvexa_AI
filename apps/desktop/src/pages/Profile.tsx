@@ -119,7 +119,7 @@ export function ProfilePage() {
   return (
     <div className="profile-page">
       <div className="ph profile-page-head" data-tour="profile-intro">
-        <div><span className="eyebrow"><span className="eyebrow-dot" />ACCOUNT CENTRE</span><h1>Profile</h1><p>Manage your identity, practice details, and workspace access in one place.</p></div>
+        <div><span className="eyebrow"><span className="eyebrow-dot" />ACCOUNT CENTRE</span><p>Manage your identity, practice details, and workspace access in one place.</p></div>
         <span className="profile-live-chip"><i />Account active</span>
       </div>
 

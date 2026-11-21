@@ -921,7 +921,7 @@ export function WhatsAppPage() {
   if (!c) {
     return (
       <div className="inbox-page">
-        <div className="ph inbox-page-head" data-tour="inbox-intro"><div><span className="eyebrow">MESSAGES</span><h1>Client Inbox</h1><p>Your WhatsApp and Telegram conversations.</p></div><label className="wa-channel-control"><span>Channel</span><select id="inbox-channel-empty" className="sel" value={channel} onChange={(e) => setChannel(e.target.value as 'whatsapp' | 'telegram')}><option value="telegram">Telegram</option><option value="whatsapp">WhatsApp</option></select></label></div>
+        <div className="ph inbox-page-head" data-tour="inbox-intro"><div><span className="eyebrow">MESSAGES</span><p>Your WhatsApp and Telegram conversations.</p></div><label className="wa-channel-control"><span>Channel</span><select id="inbox-channel-empty" className="sel" value={channel} onChange={(e) => setChannel(e.target.value as 'whatsapp' | 'telegram')}><option value="telegram">Telegram</option><option value="whatsapp">WhatsApp</option></select></label></div>
         <div className="card workspace-empty workspace-empty-inbox" data-tour="inbox-empty">
           <div className="workspace-empty-visual"><span className="workspace-empty-ring ring-one" /><span className="workspace-empty-ring ring-two" /><span className="workspace-empty-orb"><Icon name="chat" size={30} /></span><span className="workspace-empty-float float-one"><Icon name="send" size={14} /></span><span className="workspace-empty-float float-two"><Icon name="bell" size={14} /></span></div>
           <div className="workspace-empty-copy"><span className="eyebrow">A QUIET INBOX IS A CLEAN START</span><h2>Your client conversations will appear here</h2><p>Once a client is added, chats, reminders, and approved message templates will stay together in one focused workspace.</p><button className="btn pri" onClick={() => dispatch({ type: 'GO', page: 'clients' })}><Icon name="users" size={14} />Add your first client</button></div>
@@ -1170,7 +1170,7 @@ export function WhatsAppPage() {
   return (
     <div className="inbox-page">
       <div className="ph inbox-page-head" data-tour="inbox-intro">
-        <div><span className="eyebrow">MESSAGES</span><h1>Client Inbox</h1><p>Conversations, files, and follow-ups in one focused workspace.</p></div>
+        <div><span className="eyebrow">MESSAGES</span><p>Conversations, files, and follow-ups in one focused workspace.</p></div>
         <button className="btn sm" onClick={() => setShowSchedule(true)}><Icon name="plus" size={14} />Schedule reminder</button>
       </div>
 

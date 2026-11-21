@@ -214,7 +214,7 @@ export function ExtractionReviewPage() {
   if (!review.documentId) {
     return <div className="review-page">
       <div className="ph review-header">
-        <div><div className="eyebrow review-eyebrow"><span className="review-orange-dot" />QUALITY CONTROL · AI EXTRACTION</div><h1>AI Data Extraction Review</h1><p>Open a completed extraction from the Extraction page to begin review.</p></div>
+        <div><div className="eyebrow review-eyebrow"><span className="review-orange-dot" />QUALITY CONTROL · AI EXTRACTION</div><p>Open a completed extraction from the Extraction page to begin review.</p></div>
         <button className="btn pri" onClick={() => leaveReview()}><Icon name="scan" size={14} />Open Extraction</button>
       </div>
       <div className="card review-empty review-empty-card"><Icon name="table" size={24} /><b>No extraction is waiting for review</b><span>Run AI extraction first, then compare its editable values with the original file.</span></div>
@@ -224,7 +224,7 @@ export function ExtractionReviewPage() {
   return <div className="review-page">
     {confirmLeave && <div className="review-confirm" role="alertdialog" aria-modal="true" aria-labelledby="review-confirm-title"><div className="review-confirm-card"><Icon name="bell" size={20} /><h2 id="review-confirm-title">Discard unsaved changes?</h2><p>Your edited extraction fields have not been saved. Leaving now will discard those changes.</p><div className="review-confirm-actions"><button className="btn gh" onClick={() => setConfirmLeave(false)}>Keep editing</button><button className="btn pri" onClick={() => finishLeavingReview(confirmLeavePage)}>Discard and leave</button></div></div></div>}
     <div className="ph review-header">
-      <div><div className="eyebrow review-eyebrow"><span className="review-orange-dot" />QUALITY CONTROL · AI EXTRACTION</div><h1>Review invoice data</h1><p>Compare every value with the original before approving it for the client record.</p></div>
+      <div><div className="eyebrow review-eyebrow"><span className="review-orange-dot" />QUALITY CONTROL · AI EXTRACTION</div><p>Compare every value with the original before approving it for the client record.</p></div>
       <div className="review-header-actions">
         <span className={'chip ' + (approved ? 'green' : 'amber')}>{approved ? <><Icon name="check" size={12} />Human verified</> : <><span className="warning-dot" />Review required</>}</span>
         <button className="btn gh" onClick={() => leaveReview()} disabled={saving || pendingSave}><Icon name="chev" size={14} className="review-back-icon" />Back to extraction</button>
