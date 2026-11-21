@@ -17,13 +17,14 @@ export function Dashboard() {
   const missingClients = s.clients.filter((c) => missing(s.checks, c.id).length);
   const cnt = (k: string) => s.docs.filter((d) => d.status === k).length;
   const tot = s.docs.length || 1;
+  const todayLabel = new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date());
 
   return (
     <>
       <div className="ph" data-tour="dashboard-intro">
         <div>
           <h1>Good morning</h1>
-          <p>Saturday, 19 Sep 2026 · {over + week} filings need attention in the next 7 days</p>
+          <p>{todayLabel} · {over + week} filings need attention in the next 7 days</p>
         </div>
       </div>
 

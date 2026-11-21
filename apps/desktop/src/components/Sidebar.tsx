@@ -121,6 +121,7 @@ export function Sidebar() {
                 onClick={() => dispatch({ type: 'GO', page: id })}
                 title={collapsed ? `${label}${b ? ` (${b.n})` : ''}` : undefined}
                 aria-label={label}
+                aria-current={isActive ? 'page' : undefined}
               >
                 <span className="nav-icon">
                   <Icon name={icon} size={18} />
@@ -136,7 +137,7 @@ export function Sidebar() {
       ))}
 
       {/* User Profile */}
-      <div className="me" data-tour="profile-card" title={collapsed ? 'Open your profile' : 'Open your profile'} onClick={() => dispatch({ type: 'GO', page: 'profile' })} role="button" tabIndex={0} aria-label="Open your profile" onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') dispatch({ type: 'GO', page: 'profile' }); }}>
+      <div className={`me${s.page === 'profile' ? ' active' : ''}`} data-tour="profile-card" title="Open your profile" onClick={() => dispatch({ type: 'GO', page: 'profile' })} role="button" tabIndex={0} aria-label="Open your profile" onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); dispatch({ type: 'GO', page: 'profile' }); } }}>
         <div className="me-avatar-wrap">
           <span className="av" style={{ ['--t' as any]: '#4C8DFF' }}>
             {initials}

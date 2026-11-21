@@ -13,6 +13,11 @@
   outline-offset: 3px;
 }
 
+.me.active {
+  background: var(--card2);
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+
 .page-title-badge {
   min-width: 92px;
   text-align: center;
