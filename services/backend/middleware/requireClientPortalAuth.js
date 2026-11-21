@@ -42,6 +42,20 @@ async function requireClientPortalAuth(req, res, next) {
         message: 'Your client portal access is no longer active. Your practice may have revoked access. You have been signed out; contact your CA if you need access again.'
       });
     }
+
+    const { data: deletionState, error: deletionStateError } = await supabase
+      .from('clients')
+      .select('deletion_requested_at')
+      .eq('id', access.client_id)
+      .maybeSingle();
+    if (deletionStateError) throw deletionStateError;
+    if (deletionState?.deletion_requested_at) {
+      return res.status(403).json({
+        success: false,
+        code: 'client_deleted',
+        message: 'This client portal has been permanently closed. You have been signed out; contact your CA if you need assistance.'
+      });
+    }
     if (access.access_status === 'paused' || access.active !== true) {
       return res.status(403).json({
         success: false,

@@ -23,6 +23,8 @@ router.get('/', async (req, res) => {
         ...job,
         message: job.status === 'failed'
           ? 'Cloud cleanup needs a manual retry.'
+          : job.status === 'auth_cleanup_pending'
+            ? 'Client files were removed; portal account cleanup is finishing.'
           : `The ${job.target_type} deletion is queued for cloud cleanup.`
       }))
     });
@@ -52,6 +54,8 @@ router.get('/:id', async (req, res) => {
         ...data,
         message: data.status === 'completed'
           ? 'Cloud cleanup is complete.'
+          : data.status === 'auth_cleanup_pending'
+            ? 'Client files were removed; portal account cleanup is finishing.'
           : data.status === 'failed'
             ? 'Cloud cleanup needs a retry.'
             : 'Cloud cleanup is queued and will retry automatically if Storage is unavailable.'

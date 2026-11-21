@@ -1,6 +1,5 @@
 const { supabase, isConnected } = require('../db/supabase');
 const { isOwnedDocumentObject } = require('./documentStorage');
-const { isClientAccount } = require('./accountRoles');
 
 const POLL_INTERVAL_MS = 15_000;
 const STORAGE_PAGE_SIZE = 100;
@@ -33,28 +32,17 @@ async function collectStorageObjects(storage, bucket, folder, objects, visited) 
   }
 }
 
-async function removeClientPortalIdentity(job) {
-  const { data: access, error: accessError } = await supabase.from('client_portal_access')
-    .select('user_id, active')
-    .eq('client_id', job.client_id)
-    .maybeSingle();
-  if (accessError) throw accessError;
-  if (!access?.user_id) return;
+async function removeClientPortalAuthUser(job) {
+  if (!job.portal_user_id) return false;
 
-  const { data: userData, error: userError } = await supabase.auth.admin.getUserById(access.user_id);
-  if (userError && userError.status !== 404 && userError.code !== 'user_not_found') throw userError;
-  const portalUser = userData?.user;
-  if (!portalUser || !isClientAccount(portalUser)) return;
-
-  const { data: otherAccess, error: otherAccessError } = await supabase.from('client_portal_access')
-    .select('client_id')
-    .eq('user_id', portalUser.id)
-    .eq('active', true);
-  if (otherAccessError) throw otherAccessError;
-  if ((otherAccess || []).some(row => row.client_id !== job.client_id)) return;
-
-  const { error: deleteError } = await supabase.auth.admin.deleteUser(portalUser.id);
-  if (deleteError && deleteError.status !== 404 && deleteError.code !== 'user_not_found') throw deleteError;
+  // Supabase's admin signOut endpoint accepts a session JWT, not a user ID.
+  // The portal middleware therefore revokes access through the database state
+  // check immediately, and the Auth user is deleted here as the final phase.
+  const { error: deleteError } = await supabase.auth.admin.deleteUser(job.portal_user_id);
+  if (deleteError && deleteError.status !== 404 && deleteError.code !== 'user_not_found') {
+    throw deleteError;
+  }
+  return true;
 }
 
 async function removeJobObjects(job) {
@@ -87,16 +75,52 @@ async function removeJobObjects(job) {
 }
 
 async function processStorageCleanupJob(job) {
+  if (job.target_type === 'client' && job.status === 'auth_cleanup_pending') {
+    try {
+      const deleted = await removeClientPortalAuthUser(job);
+      const { data: completed, error } = await supabase.rpc('complete_client_cleanup_job', { p_job_id: job.id });
+      if (error) throw error;
+      if (!completed) throw new Error('The client Auth cleanup job could not be finalized.');
+      console.info(`[Storage Cleanup] Completed portal account cleanup ${job.id}; auth account deleted=${deleted}.`);
+    } catch (error) {
+      console.error(`[Storage Cleanup] Portal account cleanup ${job.id} failed:`, error.message);
+      const { error: retryError } = await supabase.rpc('retry_client_auth_cleanup_job', {
+        p_job_id: job.id,
+        p_error: error.message
+      });
+      if (retryError) console.error(`[Storage Cleanup] Could not record Auth cleanup failure for ${job.id}:`, retryError.message);
+    }
+    return;
+  }
+
+  let databaseFinalized = false;
   try {
     const removedCount = await removeJobObjects(job);
-    if (job.target_type === 'client') await removeClientPortalIdentity(job);
 
     const { data: completed, error } = await supabase.rpc('complete_storage_cleanup_job', { p_job_id: job.id });
     if (error) throw error;
     if (!completed) throw new Error('The cleanup job could not be finalized.');
-    console.info(`[Storage Cleanup] Completed ${job.target_type} cleanup ${job.id}; removed ${removedCount} cloud objects.`);
+    databaseFinalized = job.target_type === 'client';
+
+    if (job.target_type === 'client') {
+      const deleted = await removeClientPortalAuthUser(job);
+      const { data: authCompleted, error: authError } = await supabase.rpc('complete_client_cleanup_job', { p_job_id: job.id });
+      if (authError) throw authError;
+      if (!authCompleted) throw new Error('The client Auth cleanup job could not be finalized.');
+      console.info(`[Storage Cleanup] Completed client cleanup ${job.id}; removed ${removedCount} cloud objects; auth account deleted=${deleted}.`);
+    } else {
+      console.info(`[Storage Cleanup] Completed ${job.target_type} cleanup ${job.id}; removed ${removedCount} cloud objects.`);
+    }
   } catch (error) {
     console.error(`[Storage Cleanup] ${job.target_type} cleanup ${job.id} failed:`, error.message);
+    if (job.target_type === 'client' && databaseFinalized) {
+      const { error: retryError } = await supabase.rpc('retry_client_auth_cleanup_job', {
+        p_job_id: job.id,
+        p_error: error.message
+      });
+      if (retryError) console.error(`[Storage Cleanup] Could not record Auth cleanup failure for ${job.id}:`, retryError.message);
+      return;
+    }
     const { data: status, error: failError } = await supabase.rpc('fail_storage_cleanup_job', {
       p_job_id: job.id,
       p_error: error.message

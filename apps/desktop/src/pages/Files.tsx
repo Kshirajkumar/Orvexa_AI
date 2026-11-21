@@ -9,7 +9,6 @@ import {
   fetchCloudDocumentFile,
   fetchDocumentVersions,
   fetchStorageCleanupJob,
-  fetchStorageCleanupJobs,
   replaceCloudDocumentVersion,
   retryStorageCleanupJob,
   startStoredDocumentExtraction,
@@ -256,16 +255,6 @@ export function FilesPage() {
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [clientId, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchStorageCleanupJobs().then(jobs => {
-      if (!cancelled) setCleanupJobs(jobs);
-    }).catch(error => {
-      if (!cancelled) setCleanupError(error instanceof Error ? error.message : 'Cleanup status could not be loaded.');
-    });
-    return () => { cancelled = true; };
-  }, []);
 
   useEffect(() => {
     if (!pendingOpenFile || loadedClientId !== pendingOpenFile.clientId || !client) return;

@@ -677,7 +677,7 @@ export interface DocumentVersionItem {
 export interface StorageCleanupJob {
   id: string;
   target_type: 'client' | 'document';
-  status: 'pending' | 'processing' | 'retrying' | 'failed' | 'completed';
+  status: 'pending' | 'processing' | 'retrying' | 'auth_cleanup_pending' | 'failed' | 'completed';
   attempt_count: number;
   created_at: string;
   completed_at: string | null;
