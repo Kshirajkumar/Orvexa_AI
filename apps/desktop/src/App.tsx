@@ -20,6 +20,7 @@ import { ProfilePage } from './pages/Profile';
 import { SubscriptionsPage } from './pages/Subscriptions';
 import { AppTour, markTourWelcomeSeen, shouldShowTourWelcome, TourWelcome } from './components/AppTour';
 import { ToastHost } from './components/ToastHost';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 function Shell() {
   const s = useAppState();
@@ -119,6 +120,18 @@ function AuthDeepLinkHandler() {
     const handledUrls = new Set<string>();
 
     const handleUrls = async (urls: string[]) => {
+      const passwordResetUrl = urls.find((url) => url.startsWith('taxflow://auth/password-reset-success'));
+      if (passwordResetUrl && !disposed && !handledUrls.has(passwordResetUrl)) {
+        handledUrls.add(passwordResetUrl);
+        window.dispatchEvent(new CustomEvent('taxflow:password-reset-complete'));
+        try {
+          await getCurrentWindow().show();
+          await getCurrentWindow().setFocus();
+        } catch {
+          // The protocol activation still brings the app forward on supported platforms.
+        }
+        return;
+      }
       const callbackUrl = urls.find((url) => url.startsWith('taxflow://auth/callback'));
       if (!callbackUrl || disposed || handledUrls.has(callbackUrl)) return;
       handledUrls.add(callbackUrl);

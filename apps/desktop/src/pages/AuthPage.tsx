@@ -146,6 +146,7 @@ export function AuthPage() {
   const [forgotError, setForgotError] = useState<string | null>(null);
   const [forgotSending, setForgotSending] = useState(false);
   const [forgotCooldown, setForgotCooldown] = useState(0);
+  const [passwordResetHandoffOpen, setPasswordResetHandoffOpen] = useState(false);
 
   useEffect(() => {
     if (forgotCooldown <= 0) return;
@@ -154,6 +155,17 @@ export function AuthPage() {
     }, 1000);
     return () => window.clearInterval(timer);
   }, [forgotCooldown]);
+
+  useEffect(() => {
+    const onPasswordResetComplete = () => {
+      setAuthMode('login');
+      setPasswordResetHandoffOpen(true);
+      setErrorMessage(null);
+      setSuccessMessage(null);
+    };
+    window.addEventListener('taxflow:password-reset-complete', onPasswordResetComplete);
+    return () => window.removeEventListener('taxflow:password-reset-complete', onPasswordResetComplete);
+  }, []);
 
   // Rate Limiting & Cooldown state
   const [lockoutSeconds, setLockoutSeconds] = useState(0);
@@ -1026,6 +1038,20 @@ export function AuthPage() {
           </div>
         </section>
       </main>
+
+      {passwordResetHandoffOpen && (
+        <div className="password-reset-handoff-overlay" role="dialog" aria-modal="true" aria-labelledby="password-reset-handoff-title">
+          <div className="password-reset-handoff-card">
+            <div className="password-reset-handoff-orbit" aria-hidden="true"><Icon name="check" size={25} /></div>
+            <span className="auth-modal-kicker">SECURE RECOVERY COMPLETE</span>
+            <h3 id="password-reset-handoff-title">Your password was reset successfully</h3>
+            <p>Your account is ready. Sign in to continue to your TaxFlow AI workspace.</p>
+            <button type="button" className="auth-primary-btn" onClick={() => setPasswordResetHandoffOpen(false)}>
+              Continue to login <span aria-hidden="true">→</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Forgot Password Modal */}
       {forgotModalOpen && (
