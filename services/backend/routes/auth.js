@@ -1,12 +1,12 @@
 /**
  * TaxFlow.AI — Authentication Routes (Production Grade)
  *
- * All auth flows are exclusively handled through Supabase.
- * - Signup  → supabase.auth.signUp  → trigger auto-creates user_profiles row
+ * Supabase remains the identity provider; transactional delivery is split by flow.
+ * - Signup  → admin.createUser (unconfirmed) → Resend six-digit OTP → admin confirmation
  * - Login   → supabase.auth.signInWithPassword → fetches profile + onboarding status
  * - /me     → supabase.auth.getUser(token) → validates JWT + returns profile
  * - Onboarding → stores completion status in the Supabase profile
- * - Forgot  → supabase.auth.resetPasswordForEmail → real email via Supabase SMTP
+ * - Forgot  → supabase.auth.resetPasswordForEmail → Supabase Auth email provider
  *
  * Security:
  * - Rate limiting (5 failed attempts → 60 sec lockout) per IP+email
@@ -263,8 +263,8 @@ function requireSupabase(res) {
 
 // ──────────────────────────────────────────────────────────
 // POST /api/v1/auth/signup
-// Creates a real Supabase Auth account.
-// If Supabase requires email confirmation, returns needsEmailConfirmation: true.
+// Creates a real, initially unconfirmed Supabase Auth account and sends a
+// server-generated six-digit verification code through Resend.
 // A DB trigger auto-creates the user_profiles row.
 // ──────────────────────────────────────────────────────────
 router.post('/signup', async (req, res) => {
@@ -512,7 +512,7 @@ router.post('/refresh', async (req, res) => {
 });
 
 // POST /api/v1/auth/forgot-password
-// Sends a real password reset email via Supabase
+// Sends a password reset email through Supabase Auth's configured email provider.
 // ──────────────────────────────────────────────────────────
 router.post('/forgot-password', async (req, res) => {
   if (!requireSupabase(res)) return;
