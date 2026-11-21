@@ -3,6 +3,7 @@ import { Icon } from '../components/Icon';
 import { BrandLogo } from '../components/BrandLogo';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { apiLogin, apiSignup, apiForgotPassword, apiResendEmailOtp, apiVerifyEmailOtp, AuthUser } from '../lib/api';
+import '../styles/forgot-password.css';
 import { useDispatch } from '../state/store';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -142,6 +143,17 @@ export function AuthPage() {
   const [forgotModalOpen, setForgotModalOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotNotice, setForgotNotice] = useState<string | null>(null);
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [forgotSending, setForgotSending] = useState(false);
+  const [forgotCooldown, setForgotCooldown] = useState(0);
+
+  useEffect(() => {
+    if (forgotCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setForgotCooldown((previous) => Math.max(0, previous - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [forgotCooldown]);
 
   // Rate Limiting & Cooldown state
   const [lockoutSeconds, setLockoutSeconds] = useState(0);
@@ -1037,17 +1049,44 @@ export function AuthPage() {
             </p>
 
             {forgotNotice ? (
-              <div className="auth-alert auth-alert-success">
-                <Icon name="check" size={15} />
-                <span>{forgotNotice}</span>
+              <div className="forgot-success-state" role="status" aria-live="polite">
+                <div className="forgot-success-orbit" aria-hidden="true"><Icon name="check" size={22} /></div>
+                <h4>Password reset email sent</h4>
+                <p>{forgotNotice}</p>
+                <p className="forgot-success-hint">Check your inbox and spam folder. The link will open a secure page where you can choose a new password.</p>
+                <div className="forgot-cooldown-note">
+                  <span className="forgot-cooldown-dot" aria-hidden="true" />
+                  {forgotCooldown > 0 ? `You can request another email in ${forgotCooldown}s.` : 'You can request another email if needed.'}
+                </div>
+                <button
+                  type="button"
+                  className="btn gh forgot-done-btn"
+                  onClick={() => {
+                    setForgotModalOpen(false);
+                    setForgotNotice(null);
+                    setForgotError(null);
+                  }}
+                >
+                  Done
+                </button>
               </div>
             ) : (
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  if (!forgotEmail) return;
-                  const res = await apiForgotPassword(forgotEmail);
-                  setForgotNotice(res.message);
+                  if (!forgotEmail.trim() || forgotSending || forgotCooldown > 0) return;
+                  setForgotSending(true);
+                  setForgotError(null);
+                  try {
+                    const res = await apiForgotPassword(forgotEmail.trim());
+                    if (!res.success) throw new Error(res.message || 'The reset email could not be sent.');
+                    setForgotNotice(res.message || 'If an account exists for that email, a password reset link has been sent.');
+                    setForgotCooldown(180);
+                  } catch (error) {
+                    setForgotError(error instanceof Error ? error.message : 'The reset email could not be sent. Please try again.');
+                  } finally {
+                    setForgotSending(false);
+                  }
                 }}
               >
                 <div className="field-group" style={{ marginBottom: 14 }}>
@@ -1060,6 +1099,12 @@ export function AuthPage() {
                     required
                   />
                 </div>
+                {forgotError && (
+                  <div className="auth-alert auth-alert-error forgot-form-error" role="alert">
+                    <Icon name="x" size={15} />
+                    <span>{forgotError}</span>
+                  </div>
+                )}
                 <div className="modal-btn-row">
                   <button
                     type="button"
@@ -1068,8 +1113,8 @@ export function AuthPage() {
                   >
                     Cancel
                   </button>
-                  <button type="submit" className="auth-primary-btn" style={{ width: 'auto', padding: '0 18px' }}>
-                    Send Reset Link
+                  <button type="submit" className="auth-primary-btn forgot-submit-btn" style={{ width: 'auto', padding: '0 18px' }} disabled={forgotSending || forgotCooldown > 0}>
+                    {forgotSending ? <><i className="spin" /> Sending…</> : forgotCooldown > 0 ? `Try again in ${forgotCooldown}s` : 'Send reset email'}
                   </button>
                 </div>
               </form>
