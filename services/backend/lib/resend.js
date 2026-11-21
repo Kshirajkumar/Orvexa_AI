@@ -236,6 +236,29 @@ async function sendDocumentUploadNotificationEmail({ to, clientName, fileName, c
   });
 }
 
+/** Send the one-time code used to confirm a new CA/staff account. */
+async function sendEmailVerificationCode({ to, code, expiresInMinutes = 10 }) {
+  const safeCode = escapeHtml(code);
+  const title = 'Confirm your TaxFlow.AI account';
+  const html = wrapHtmlEmail({
+    title,
+    preheader: 'Your TaxFlow.AI verification code',
+    contentHtml: `
+      <p>Use this verification code to confirm your TaxFlow.AI practice account:</p>
+      <div class="card" style="text-align:center; letter-spacing:12px; font-size:32px; font-weight:700; color:#F8FAFC;">${safeCode}</div>
+      <p>This code expires in <strong>${expiresInMinutes} minutes</strong> and can be used only once.</p>
+      <p style="font-size:13px;color:#94A3B8;">If you did not create this account, you can safely ignore this email.</p>
+    `,
+    footerNote: 'TaxFlow.AI will never ask you to share this verification code.'
+  });
+  return sendEmail({
+    to,
+    subject: `${code} is your TaxFlow.AI verification code`,
+    html,
+    text: `Your TaxFlow.AI verification code is ${code}. It expires in ${expiresInMinutes} minutes. Never share this code.`
+  });
+}
+
 /**
  * Send Tax & Compliance Deadline Reminder Email
  */
@@ -314,6 +337,7 @@ module.exports = {
   sendEmail,
   sendPortalInviteEmail,
   sendDocumentUploadNotificationEmail,
+  sendEmailVerificationCode,
   sendDeadlineReminderEmail,
   testResendConnection
 };

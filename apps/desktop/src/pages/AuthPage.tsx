@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Icon } from '../components/Icon';
 import { BrandLogo } from '../components/BrandLogo';
 import { ThemeToggle } from '../components/ThemeToggle';
-import { apiLogin, apiSignup, apiForgotPassword, AuthUser } from '../lib/api';
+import { apiLogin, apiSignup, apiForgotPassword, apiResendEmailOtp, apiVerifyEmailOtp, AuthUser } from '../lib/api';
 import { useDispatch } from '../state/store';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -122,6 +122,11 @@ export function AuthPage() {
   const [signupConfirm, setSignupConfirm] = useState('');
   const [signupAgree, setSignupAgree] = useState(true);
   const [signupConfirmedEmail, setSignupConfirmedEmail] = useState<string | null>(null);
+  const [signupVerificationId, setSignupVerificationId] = useState('');
+  const [signupOtp, setSignupOtp] = useState('');
+  const [otpState, setOtpState] = useState<'idle' | 'verifying' | 'success'>('idle');
+  const [otpResendSeconds, setOtpResendSeconds] = useState(0);
+  const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [showSignupPass, setShowSignupPass] = useState(false);
 
   // Form states - Login
@@ -251,6 +256,18 @@ export function AuthPage() {
     return () => clearInterval(timer);
   }, [lockoutSeconds]);
 
+  useEffect(() => {
+    if (otpResendSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setOtpResendSeconds((previous) => Math.max(0, previous - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [otpResendSeconds]);
+
+  useEffect(() => {
+    if (signupConfirmedEmail) focusOtpBox(0);
+  }, [signupConfirmedEmail]);
+
   // Password strength calculation
   const getPasswordStrength = (pass: string) => {
     if (!pass) return { score: 0, label: '', color: 'transparent' };
@@ -307,9 +324,13 @@ export function AuthPage() {
       });
 
       if (res.success) {
-        if (res.needsEmailConfirmation) {
-          // Email confirmation required — replace signup form with confirmation screen
-          setSignupConfirmedEmail(signupEmail.trim());
+        if (res.needsEmailConfirmation && res.verificationId) {
+          setSignupConfirmedEmail(res.email || signupEmail.trim().toLowerCase());
+          setSignupVerificationId(res.verificationId);
+          setSignupOtp('');
+          setOtpState('idle');
+          setOtpResendSeconds(60);
+          setSuccessMessage('Account created. Your six-digit verification code is on its way.');
         } else if (res.user && res.token) {
           // Auto-confirmed — go straight in
           setSuccessMessage('Practice account created! Launching your workspace...');
@@ -322,6 +343,71 @@ export function AuthPage() {
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'An unexpected error occurred during signup.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const focusOtpBox = (index: number) => {
+    window.requestAnimationFrame(() => otpInputRefs.current[Math.max(0, Math.min(5, index))]?.focus());
+  };
+
+  const completeEmailVerification = async (code: string) => {
+    if (code.length !== 6 || !signupVerificationId || otpState === 'verifying' || otpState === 'success') return;
+    setOtpState('verifying');
+    setErrorMessage(null);
+    try {
+      await apiVerifyEmailOtp(signupVerificationId, code);
+      setOtpState('success');
+      setSuccessMessage('Email confirmed. Preparing your secure practice workspace…');
+      const login = await apiLogin(signupEmail.trim(), signupPassword);
+      if (!login.success || !login.user || !login.token) throw new Error(login.message || 'Your account was verified, but sign-in could not be completed. Please sign in manually.');
+      window.setTimeout(() => dispatch({ type: 'LOGIN', user: login.user!, token: login.token!, refreshToken: login.refreshToken }), 950);
+    } catch (err: any) {
+      setOtpState('idle');
+      setErrorMessage(err.message || 'That code could not be verified. Please try again.');
+    }
+  };
+
+  const handleOtpInput = (index: number, rawValue: string) => {
+    const digits = rawValue.replace(/\D/g, '');
+    if (!digits) {
+      setSignupOtp((previous) => previous.slice(0, index) + previous.slice(index + 1));
+      return;
+    }
+    const next = signupOtp.split('');
+    digits.slice(0, 6 - index).split('').forEach((digit, offset) => { next[index + offset] = digit; });
+    const code = next.join('').slice(0, 6);
+    setSignupOtp(code);
+    focusOtpBox(Math.min(index + digits.length, 5));
+    if (code.length === 6) void completeEmailVerification(code);
+  };
+
+  const handleOtpKeyDown = (event: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+    if (event.key === 'Backspace' && !signupOtp[index] && index > 0) {
+      event.preventDefault();
+      const next = signupOtp.slice(0, index - 1) + signupOtp.slice(index);
+      setSignupOtp(next);
+      focusOtpBox(index - 1);
+    }
+    if (event.key === 'ArrowLeft' && index > 0) focusOtpBox(index - 1);
+    if (event.key === 'ArrowRight' && index < 5) focusOtpBox(index + 1);
+  };
+
+  const resendSignupOtp = async () => {
+    if (!signupVerificationId || !signupConfirmedEmail || otpResendSeconds > 0) return;
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const result = await apiResendEmailOtp(signupVerificationId, signupConfirmedEmail);
+      if (result.verificationId) setSignupVerificationId(result.verificationId);
+      setSignupOtp('');
+      setOtpState('idle');
+      setOtpResendSeconds(60);
+      focusOtpBox(0);
+      setSuccessMessage('A fresh verification code has been sent.');
+    } catch (err: any) {
+      setErrorMessage(err.message || 'A new verification code could not be sent.');
     } finally {
       setIsLoading(false);
     }
@@ -613,51 +699,49 @@ export function AuthPage() {
                 {/* ────────── CARD 1: SIGN UP (Default) ────────── */}
                 <div className="auth-form-card signup-card">
                   {signupConfirmedEmail ? (
-                    <div className="auth-confirmed-center">
+                    <div className={`auth-confirmed-center otp-stage-${otpState}`}>
+                      <div className="otp-success-orbit" aria-hidden="true">
+                        {Array.from({ length: 6 }).map((_, index) => <span key={index} className="otp-orbit-node" />)}
+                      </div>
                       <div className="confirmed-icon-aura">
                         <div className="confirmed-icon-ring" />
                         <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#34D399" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                          <polyline points="22 4 12 14.01 9 11.01" />
+                          <path d="M4 4h16v16H4z" /><path d="m4 6 8 6 8-6" />
                         </svg>
                       </div>
-
-                      <h2 className="confirmed-title">Check Your Inbox</h2>
-                      <p className="confirmed-subtitle">A verification email has been sent to:</p>
-
-                      <div className="confirmed-email-pill">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                          <polyline points="22,6 12,13 2,6" />
-                        </svg>
-                        <span>{signupConfirmedEmail}</span>
+                      <h2 className="confirmed-title">Confirm your practice email</h2>
+                      <p className="confirmed-subtitle">We sent a six-digit code to</p>
+                      <div className="confirmed-email-pill"><span>{signupConfirmedEmail}</span></div>
+                      <div className="otp-boxes" role="group" aria-label="Six digit email verification code">
+                        {Array.from({ length: 6 }).map((_, index) => {
+                          const digit = signupOtp[index] || '';
+                          return <input
+                            key={index}
+                            ref={(element) => { otpInputRefs.current[index] = element; }}
+                            className={`otp-box ${digit && Number(digit) > 5 ? 'otp-digit-high' : 'otp-digit-low'}`}
+                            value={digit}
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={1}
+                            autoComplete={index === 0 ? 'one-time-code' : 'off'}
+                            aria-label={`Verification digit ${index + 1}`}
+                            disabled={otpState !== 'idle'}
+                            onChange={(event) => handleOtpInput(index, event.currentTarget.value)}
+                            onKeyDown={(event) => handleOtpKeyDown(event, index)}
+                            onPaste={(event) => {
+                              event.preventDefault();
+                              handleOtpInput(index, event.clipboardData.getData('text'));
+                            }}
+                          />;
+                        })}
                       </div>
-
-                      <p className="confirmed-instructions">
-                        Please check your inbox and click the activation link to verify your email. Once confirmed, you can sign in to your workspace.
-                      </p>
-
-                      <div className="confirmed-tip">
-                        <Icon name="info" size={14} />
-                        <span>Can&apos;t find the email? Check your <b>Spam</b> or <b>Promotions</b> folder.</span>
+                      <div className="otp-status" aria-live="polite">
+                        {otpState === 'success' ? 'Verified. Opening your workspace…' : otpState === 'verifying' ? 'Checking your code…' : 'Enter the code to confirm your account'}
                       </div>
-
-                      <button
-                        type="button"
-                        className="auth-primary-btn confirmed-action-btn"
-                        onClick={() => {
-                          setAuthMode('login');
-                          setLoginEmail(signupConfirmedEmail);
-                        }}
-                      >
-                        <span>Proceed to Sign In →</span>
+                      <button type="button" className="confirmed-action-btn otp-resend-btn" onClick={() => void resendSignupOtp()} disabled={isLoading || otpResendSeconds > 0 || otpState !== 'idle'}>
+                        {otpResendSeconds > 0 ? `Resend code in ${otpResendSeconds}s` : 'Resend verification code'}
                       </button>
-
-                      <button
-                        type="button"
-                        className="confirmed-back-btn"
-                        onClick={() => setSignupConfirmedEmail(null)}
-                      >
+                      <button type="button" className="confirmed-back-btn" onClick={() => { setSignupConfirmedEmail(null); setSignupVerificationId(''); setSignupOtp(''); setOtpState('idle'); setErrorMessage(null); }}>
                         ← Register with a different email
                       </button>
                     </div>

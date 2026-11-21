@@ -2327,6 +2327,89 @@ pre.code{margin:0;background:var(--panel);border:1px solid var(--line);border-ra
 }
 
 /* Demo Dividers & Buttons */
+.otp-stage-success .confirmed-icon-aura {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 10px rgba(52, 211, 153, 0.08), 0 0 46px rgba(52, 211, 153, 0.32);
+}
+
+.otp-success-orbit {
+  position: absolute;
+  width: 244px;
+  height: 244px;
+  border: 1px solid rgba(76, 141, 255, 0.18);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.otp-stage-success .otp-success-orbit {
+  opacity: 1;
+  animation: otpOrbitSpin 2.6s cubic-bezier(.22,.61,.36,1) both;
+}
+
+.otp-orbit-node {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4C8DFF;
+  box-shadow: 0 0 14px rgba(76, 141, 255, 0.9);
+}
+.otp-orbit-node:nth-child(1) { top: -4px; left: calc(50% - 4px); }
+.otp-orbit-node:nth-child(2) { top: 20%; right: 4px; }
+.otp-orbit-node:nth-child(3) { bottom: 20%; right: 4px; }
+.otp-orbit-node:nth-child(4) { bottom: -4px; left: calc(50% - 4px); }
+.otp-orbit-node:nth-child(5) { bottom: 20%; left: 4px; }
+.otp-orbit-node:nth-child(6) { top: 20%; left: 4px; }
+
+.otp-boxes {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  width: min(100%, 330px);
+  margin: 22px auto 10px;
+}
+.otp-boxes::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 8%;
+  right: 8%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(76, 141, 255, .55), transparent);
+  z-index: -1;
+}
+.otp-box {
+  width: 100%;
+  height: 54px;
+  padding: 0;
+  border: 1px solid var(--line2);
+  border-radius: 13px;
+  background: rgba(18, 24, 36, .94);
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 750;
+  text-align: center;
+  outline: none;
+  transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+.otp-box:focus {
+  border-color: #4C8DFF;
+  box-shadow: 0 0 0 4px rgba(76, 141, 255, .14), 0 8px 20px rgba(0,0,0,.16);
+  transform: translateY(-2px);
+}
+.otp-digit-high { animation: otpDigitDown .22s ease both; }
+.otp-digit-low { animation: otpDigitUp .22s ease both; }
+.otp-status { min-height: 22px; color: var(--muted); font-size: 12px; }
+.otp-resend-btn { margin-top: 12px; background: transparent; border: 0; color: #7BA7FF; cursor: pointer; }
+.otp-resend-btn:disabled { opacity: .55; cursor: not-allowed; }
+
+@keyframes otpDigitUp { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes otpDigitDown { from { opacity: 0; transform: translateY(-9px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes otpOrbitSpin { from { transform: rotate(-90deg) scale(.72); opacity: 0; } to { transform: rotate(270deg) scale(1); opacity: 1; } }
+
 .auth-demo-divider {
   display: flex;
   align-items: center;

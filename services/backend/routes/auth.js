@@ -22,9 +22,13 @@ const { supabase, isConnected, SUPABASE_SERVER_KEY } = require('../db/supabase')
 const { ACCOUNT_ROLE, getAccountRole } = require('../lib/accountRoles');
 const { requireAuth } = require('../middleware/requireAuth');
 const { deleteAccountStorage, deleteAccountVaultSecrets } = require('../lib/accountDeletion');
+const { isResendConfigured, sendEmailVerificationCode } = require('../lib/resend');
 const ALLOWED_PRACTICE_TYPES = new Set(['Chartered Accountant (CA)', 'Individual']);
 const ACCOUNT_DELETE_CONFIRMATION = 'DELETE MY ACCOUNT';
 const ACCOUNT_DELETE_CHALLENGE_LIFETIME_SECONDS = 5 * 60;
+const EMAIL_OTP_LIFETIME_MINUTES = 10;
+const EMAIL_OTP_MAX_ATTEMPTS = 5;
+const EMAIL_OTP_RESEND_COOLDOWN_SECONDS = 60;
 
 function signAccountDeletionChallenge(payload) {
   const secret = SUPABASE_SERVER_KEY;
@@ -134,6 +138,73 @@ function clearRateLimit(key) {
   loginAttempts.delete(key);
 }
 
+function hashEmailOtp(code) {
+  const pepper = String(process.env.AUTH_OTP_PEPPER || SUPABASE_SERVER_KEY || '').trim();
+  return crypto.createHmac('sha256', pepper).update(String(code)).digest('hex');
+}
+
+function generateEmailOtp() {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+async function issueEmailOtp({ userId, email, challengeId } = {}) {
+  if (!isResendConfigured()) throw new Error('Transactional email delivery is not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL on the backend.');
+
+  const code = generateEmailOtp();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + EMAIL_OTP_LIFETIME_MINUTES * 60 * 1000).toISOString();
+  let challenge;
+
+  if (challengeId) {
+    const { data: current, error: lookupError } = await supabase
+      .from('auth_email_verification_challenges')
+      .select('id, user_id, email, last_sent_at, consumed_at, expires_at')
+      .eq('id', challengeId)
+      .eq('email', email)
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!current || current.consumed_at) throw Object.assign(new Error('This verification request is no longer active. Start signup again.'), { status: 409 });
+    const elapsed = Math.floor((Date.now() - new Date(current.last_sent_at).getTime()) / 1000);
+    if (elapsed < EMAIL_OTP_RESEND_COOLDOWN_SECONDS) {
+      throw Object.assign(new Error(`Please wait ${EMAIL_OTP_RESEND_COOLDOWN_SECONDS - elapsed} seconds before requesting another code.`), { status: 429 });
+    }
+    const { data: updated, error: updateError } = await supabase
+      .from('auth_email_verification_challenges')
+      .update({ code_hash: hashEmailOtp(code), attempts: 0, expires_at: expiresAt, last_sent_at: now.toISOString() })
+      .eq('id', current.id)
+      .select('id, expires_at')
+      .single();
+    if (updateError) throw updateError;
+    challenge = updated;
+  } else {
+    await supabase
+      .from('auth_email_verification_challenges')
+      .update({ consumed_at: now.toISOString() })
+      .eq('user_id', userId)
+      .is('consumed_at', null);
+    const { data: created, error: createError } = await supabase
+      .from('auth_email_verification_challenges')
+      .insert({
+        user_id: userId,
+        email,
+        code_hash: hashEmailOtp(code),
+        max_attempts: EMAIL_OTP_MAX_ATTEMPTS,
+        expires_at: expiresAt,
+        last_sent_at: now.toISOString()
+      })
+      .select('id, expires_at')
+      .single();
+    if (createError) throw createError;
+    challenge = created;
+  }
+
+  const delivery = await sendEmailVerificationCode({ to: email, code, expiresInMinutes: EMAIL_OTP_LIFETIME_MINUTES });
+  if (!delivery?.success || delivery.source === 'simulated') {
+    throw new Error(delivery?.error || 'Verification email could not be delivered.');
+  }
+  return challenge;
+}
+
 // ──────────────────────────────────────────────────────────
 // Helper: fetch user_profile row from Supabase
 // Uses service-role key (bypasses RLS) so backend can always read
@@ -199,6 +270,7 @@ function requireSupabase(res) {
 router.post('/signup', async (req, res) => {
   if (!requireSupabase(res)) return;
 
+  let createdUserId = '';
   try {
     const { name, email, password, practiceType, membershipNo } = req.body;
 
@@ -218,16 +290,18 @@ router.post('/signup', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Practice category must be Chartered Accountant (CA) or Individual.' });
     }
 
-    const { data: supaAuth, error: supaErr } = await supabase.auth.signUp({
+    if (!isResendConfigured()) {
+      return res.status(503).json({ success: false, message: 'Email verification is temporarily unavailable. Ask the administrator to configure Resend on the backend.' });
+    }
+
+    const { data: supaAuth, error: supaErr } = await supabase.auth.admin.createUser({
       email: cleanEmail,
       password,
-      options: {
-        emailRedirectTo: 'taxflow://auth/callback',
-        data: {
-          full_name: name.trim(),
-          practice_type: cleanPracticeType,
-          membership_no: membershipNo ? membershipNo.trim() : null
-        }
+      email_confirm: false,
+      user_metadata: {
+        full_name: name.trim(),
+        practice_type: cleanPracticeType,
+        membership_no: membershipNo ? membershipNo.trim() : null
       }
     });
 
@@ -237,6 +311,7 @@ router.post('/signup', async (req, res) => {
     }
 
     if (supaAuth.user) {
+      createdUserId = supaAuth.user.id;
       const { error: roleError } = await supabase.auth.admin.updateUserById(supaAuth.user.id, {
         app_metadata: { role: ACCOUNT_ROLE.STAFF },
       });
@@ -246,30 +321,85 @@ router.post('/signup', async (req, res) => {
       }
     }
 
-    // Email confirmation required (default Supabase behaviour)
-    if (supaAuth.user && !supaAuth.session) {
-      return res.status(201).json({
-        success: true,
-        needsEmailConfirmation: true,
-        message: 'Account created! Please check your email inbox and click the confirmation link to activate your account.',
-        userId: supaAuth.user.id
-      });
-    }
-
-    // Auto-confirmed (if Supabase email confirmation is disabled)
-    const profile = await fetchUserProfile(supaAuth.user.id);
+    const challenge = await issueEmailOtp({ userId: supaAuth.user.id, email: cleanEmail });
     return res.status(201).json({
       success: true,
-      needsEmailConfirmation: false,
-      message: 'Practice account created successfully. Welcome to TaxFlow.AI!',
-      token: supaAuth.session.access_token,
-      refreshToken: supaAuth.session.refresh_token,
-      user: buildUserResponse(supaAuth.user, profile)
+      needsEmailConfirmation: true,
+      verificationId: challenge.id,
+      expiresIn: EMAIL_OTP_LIFETIME_MINUTES * 60,
+      email: cleanEmail,
+      message: 'Account created. We sent a six-digit verification code to your email.'
     });
 
   } catch (err) {
     console.error('[AUTH] Signup exception:', err);
-    return res.status(500).json({ success: false, message: 'Server error during registration. Please try again.' });
+    if (createdUserId) {
+      const { error: rollbackError } = await supabase.auth.admin.deleteUser(createdUserId);
+      if (rollbackError) console.error('[AUTH] Signup rollback failed:', rollbackError.message);
+    }
+    return res.status(err.status || 500).json({ success: false, message: err.status ? err.message : 'Server error during registration. Please try again.' });
+  }
+});
+
+router.post('/verify-email-otp', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const verificationId = typeof req.body?.verificationId === 'string' ? req.body.verificationId.trim() : '';
+  const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+  if (!/^[0-9a-f-]{36}$/i.test(verificationId) || !/^\d{6}$/.test(code)) {
+    return res.status(400).json({ success: false, message: 'Enter the six-digit verification code from your email.' });
+  }
+
+  try {
+    const { data: challenge, error: lookupError } = await supabase
+      .from('auth_email_verification_challenges')
+      .select('id, user_id, email, code_hash, attempts, max_attempts, expires_at, consumed_at')
+      .eq('id', verificationId)
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!challenge || challenge.consumed_at || new Date(challenge.expires_at).getTime() <= Date.now()) {
+      return res.status(400).json({ success: false, message: 'This verification code has expired. Request a new code.' });
+    }
+    if (challenge.attempts >= challenge.max_attempts) {
+      return res.status(429).json({ success: false, message: 'Too many incorrect codes. Request a new verification code.' });
+    }
+
+    const expected = Buffer.from(challenge.code_hash, 'hex');
+    const received = Buffer.from(hashEmailOtp(code), 'hex');
+    if (expected.length !== received.length || !crypto.timingSafeEqual(expected, received)) {
+      await supabase.from('auth_email_verification_challenges')
+        .update({ attempts: challenge.attempts + 1 })
+        .eq('id', challenge.id);
+      return res.status(400).json({ success: false, message: 'That code is incorrect. Check the email and try again.' });
+    }
+
+    const { error: confirmError } = await supabase.auth.admin.updateUserById(challenge.user_id, { email_confirm: true });
+    if (confirmError) throw confirmError;
+    const { error: consumeError } = await supabase.from('auth_email_verification_challenges')
+      .update({ consumed_at: new Date().toISOString() })
+      .eq('id', challenge.id)
+      .is('consumed_at', null);
+    if (consumeError) throw consumeError;
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ success: true, message: 'Email verified. Your practice account is ready.', email: challenge.email });
+  } catch (err) {
+    console.error('[AUTH] Email OTP verification failed:', err.message);
+    return res.status(500).json({ success: false, message: 'Email verification is temporarily unavailable. Please try again.' });
+  }
+});
+
+router.post('/resend-email-otp', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const verificationId = typeof req.body?.verificationId === 'string' ? req.body.verificationId.trim() : '';
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  if (!/^[0-9a-f-]{36}$/i.test(verificationId) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ success: false, message: 'A valid verification request and email address are required.' });
+  }
+  try {
+    const challenge = await issueEmailOtp({ challengeId: verificationId, email });
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ success: true, verificationId: challenge.id, expiresIn: EMAIL_OTP_LIFETIME_MINUTES * 60, message: 'A new verification code has been sent.' });
+  } catch (err) {
+    return res.status(err.status || 500).json({ success: false, message: err.status ? err.message : 'A new verification code could not be sent. Please try again.' });
   }
 });
 

@@ -37,6 +37,9 @@ export interface AuthResponse {
   refreshToken?: string;
   user?: AuthUser;
   needsEmailConfirmation?: boolean;
+  verificationId?: string;
+  expiresIn?: number;
+  email?: string;
   rateLimited?: boolean;
   secondsLeft?: number;
   remainingAttempts?: number;
@@ -370,6 +373,22 @@ export async function apiLogin(email: string, password: string): Promise<AuthRes
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password })
+  });
+}
+
+export async function apiVerifyEmailOtp(verificationId: string, code: string): Promise<{ success: boolean; message?: string; email?: string }> {
+  return authRequest<{ success: boolean; message?: string; email?: string }>(`${API_BASE_URL}/auth/verify-email-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ verificationId, code })
+  });
+}
+
+export async function apiResendEmailOtp(verificationId: string, email: string): Promise<{ success: boolean; message?: string; verificationId?: string; expiresIn?: number }> {
+  return authRequest<{ success: boolean; message?: string; verificationId?: string; expiresIn?: number }>(`${API_BASE_URL}/auth/resend-email-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ verificationId, email })
   });
 }
 
