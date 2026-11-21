@@ -149,6 +149,14 @@ export function ProfilePage() {
         <aside className="profile-side-column">
           <section className="card profile-status-card"><div className="card-h"><h2>Account status</h2><span className="profile-status-dot" /></div><div className="card-b"><div className="profile-status-row"><span>Workspace</span><b>Ready</b></div><div className="profile-status-row"><span>Onboarding</span><b>{user.onboardingComplete ? 'Complete' : 'In progress'}</b></div><div className="profile-status-row"><span>Document storage</span><b>Private cloud</b></div></div></section>
           <section className="card profile-about-card"><div className="card-h"><h2>About TaxFlow</h2><Icon name="spark" size={15} /></div><div className="card-b"><p>TaxFlow keeps client records, documents, extraction review, deadlines, and practice workflows connected in one focused workspace.</p><div className="profile-about-line"><Icon name="check" size={14} /><span>Your profile belongs only to your signed-in account.</span></div></div></section>
+          <section className="card profile-legal-card">
+            <div className="card-h"><div><span className="eyebrow">LEGAL &amp; TRUST</span><h2>Policies</h2></div><Icon name="shield" size={15} /></div>
+            <div className="card-b profile-legal-links">
+              <p>Review how TaxFlow handles workspace data, client documents, privacy, and responsible use.</p>
+              <a href="https://taxflowaiwebsite.vercel.app/terms" target="_blank" rel="noreferrer"><span>Terms and Conditions</span><Icon name="arrow" size={14} /></a>
+              <a href="https://taxflowaiwebsite.vercel.app/privacy" target="_blank" rel="noreferrer"><span>Privacy Policy</span><Icon name="arrow" size={14} /></a>
+            </div>
+          </section>
         </aside>
       </div>
 

@@ -48,7 +48,7 @@ const TOUR_STEPS: TourStep[] = [
   { page: 'subscriptions', target: 'nav-subscriptions', title: 'Next: subscription information', body: 'Click Subscriptions to review the plan information available for this workspace.', navigation: true },
   { page: 'subscriptions', target: 'subscriptions-intro', title: 'Review workspace plan details', body: 'This page shows the current workspace status and proposed plans. Plan purchasing is not connected yet.' },
   { page: 'subscriptions', target: 'subscription-plans', title: 'Compare proposed plans', body: 'Review the indicative plan limits and features. These are planning details only; subscriptions cannot be purchased here yet.' },
-  { page: 'profile', target: 'nav-profile', title: 'Next: your profile', body: 'Click Profile to manage your account and practice details.', navigation: true },
+  { page: 'profile', target: 'profile-card', title: 'Next: your profile', body: 'Click your account card at the bottom of the sidebar to manage your profile and practice details.', navigation: true },
   { page: 'profile', target: 'profile-intro', title: 'Manage your account', body: 'Update your name and practice information here, and check your account and cloud document storage.' },
   { page: 'profile', target: 'profile-details', title: 'Keep your practice details current', body: 'Your profile identifies the account owner and shows the workspace and cloud-storage status.' },
   { page: 'settings', target: 'nav-settings', title: 'Next: settings', body: 'Click Settings for your AI connection, automation preferences, and the option to replay this guide.', navigation: true },

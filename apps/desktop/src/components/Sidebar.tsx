@@ -23,7 +23,6 @@ const NAV: Array<{ g: string; items: Array<[Page, string, string]> }> = [
     items: [
       ['clients', 'Clients', 'users'],
       ['subscriptions', 'Subscriptions', 'spark'],
-      ['profile', 'Profile', 'users'],
       ['settings', 'Settings', 'sliders'],
     ],
   },
@@ -137,7 +136,7 @@ export function Sidebar() {
       ))}
 
       {/* User Profile */}
-      <div className="me" title={collapsed ? (s.currentUser?.name || 'Personal workspace') : undefined} onClick={() => dispatch({ type: 'GO', page: 'profile' })} role="button" tabIndex={0} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') dispatch({ type: 'GO', page: 'profile' }); }}>
+      <div className="me" data-tour="profile-card" title={collapsed ? 'Open your profile' : 'Open your profile'} onClick={() => dispatch({ type: 'GO', page: 'profile' })} role="button" tabIndex={0} aria-label="Open your profile" onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') dispatch({ type: 'GO', page: 'profile' }); }}>
         <div className="me-avatar-wrap">
           <span className="av" style={{ ['--t' as any]: '#4C8DFF' }}>
             {initials}

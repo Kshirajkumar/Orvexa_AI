@@ -32,6 +32,20 @@ const SEARCH_PAGES: Array<{ title: string; page: Page; keywords: string }> = [
   { title: 'Settings', page: 'settings', keywords: 'preferences integrations' },
 ];
 
+const PAGE_TITLES: Record<Page, string> = {
+  dashboard: 'Dashboard',
+  extract: 'Invoice Extraction',
+  'extraction-review': 'Data Extraction Review',
+  whatsapp: 'Client Inbox',
+  files: 'Client Folders',
+  deadlines: 'Deadlines',
+  generate: 'File Generator',
+  clients: 'Clients',
+  subscriptions: 'Subscriptions',
+  profile: 'Profile',
+  settings: 'Settings',
+};
+
 export function Titlebar() {
   const s = useAppState();
   const dispatch = useDispatch();
@@ -333,7 +347,7 @@ export function Titlebar() {
       {/* Brand */}
       <div className="brand" data-tauri-drag-region>
         <BrandLogo className="titlebar-brand-logo" />
-        <small className="brand-badge">CA Suite</small>
+        <small className="brand-badge page-title-badge" aria-live="polite">{PAGE_TITLES[s.page] || 'Workspace'}</small>
       </div>
 
       {/* Search Bar */}

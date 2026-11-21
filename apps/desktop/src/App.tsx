@@ -20,6 +20,7 @@ import { ProfilePage } from './pages/Profile';
 import { SubscriptionsPage } from './pages/Subscriptions';
 import { AppTour, markTourWelcomeSeen, shouldShowTourWelcome, TourWelcome } from './components/AppTour';
 import { ToastHost } from './components/ToastHost';
+import './styles/navigation.css';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 function Shell() {
@@ -101,7 +102,9 @@ function Shell() {
       <div className="shell">
         <Sidebar />
         <main className={`main${s.page === 'whatsapp' ? ' main-inbox' : ''}`}>
-          {s.page === 'settings' ? <SettingsPage onStartTour={startTour} /> : <Page />}
+          <div key={s.page} className="page-transition">
+            {s.page === 'settings' ? <SettingsPage onStartTour={startTour} /> : <Page />}
+          </div>
         </main>
         <Chat />
       </div>
