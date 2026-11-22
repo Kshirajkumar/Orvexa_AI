@@ -25,7 +25,7 @@
 ## Not verified in this baseline
 
 - No production or staging Supabase migration was run from this checkout.
-- No live database counts, function definitions, RLS policies, grants, or extension placement were queried.
+- A read-only inspection of the connected Taxflow-Ai Supabase project confirmed migration drift; see `docs/engineering/extraction/STAGING_VERIFICATION.md`.
 - No real client documents or provider credentials were used.
 - Provider retry behavior and data-quality checks were verified with deterministic unit tests; behavior against the real Gemini service remains unverified.
 - Full extraction accuracy, field-level evidence, background processing, shared schema registry, and golden-document evaluation remain separate workstreams.
