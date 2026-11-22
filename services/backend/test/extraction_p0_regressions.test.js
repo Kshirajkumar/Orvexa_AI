@@ -63,3 +63,9 @@ test('Gemini extraction delegates timeout cleanup to the shared provider helper'
   assert.match(routeSource, /fetchWithRetry\(/);
   assert.doesNotMatch(routeSource, /clearTimeout\(timeout\)/);
 });
+
+test('unsupported MIME types are rejected before a durable extraction run starts', () => {
+  const mimeCheck = routeSource.indexOf("AI extraction currently supports PDF, PNG, JPEG, and WEBP documents.");
+  const runStart = routeSource.indexOf('extractionRunId = await startExtractionRun');
+  assert.ok(mimeCheck >= 0 && mimeCheck < runStart);
+});

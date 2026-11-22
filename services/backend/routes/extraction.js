@@ -122,6 +122,11 @@ router.post('/process', async (req, res) => {
     let inputTokens = 0, outputTokens = 0;
     let aiSuccess = false;
     const geminiConfig = await getGeminiConfig(req.user.id);
+    const base64Content = fileBuffer.toString('base64');
+    const mimeType = doc.mime_type || getMimeType(doc.file_type || 'PDF');
+    if (!['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(mimeType)) {
+      return res.status(415).json({ success: false, message: 'AI extraction currently supports PDF, PNG, JPEG, and WEBP documents.' });
+    }
     extractionRunId = await startExtractionRun({
       userId: req.user.id,
       document: doc,
@@ -130,11 +135,6 @@ router.post('/process', async (req, res) => {
       schemaVersion: `${docCategory.toLowerCase()}-v1`,
       usageSource: 'provider_response',
     });
-    const base64Content = fileBuffer.toString('base64');
-    const mimeType = doc.mime_type || getMimeType(doc.file_type || 'PDF');
-    if (!['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(mimeType)) {
-      return res.status(415).json({ success: false, message: 'AI extraction currently supports PDF, PNG, JPEG, and WEBP documents.' });
-    }
     const geminiPayload = {
       systemInstruction: { parts: [{ text: TAXFLOW_SYSTEM_PROMPT }] },
       contents: [{
