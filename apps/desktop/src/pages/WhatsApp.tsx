@@ -311,7 +311,10 @@ export function WhatsAppPage() {
   const [telegramConnecting, setTelegramConnecting] = useState(false);
   const [telegramSending, setTelegramSending] = useState(false);
   const [telegramTemplatesOpen, setTelegramTemplatesOpen] = useState(false);
-  const [composerExpanded, setComposerExpanded] = useState(true);
+  // Keep the compact launcher visible on every newly opened conversation. The
+  // full composer is an intentional user action, so loading a chat cannot
+  // make the primary compose affordance appear/disappear by itself.
+  const [composerExpanded, setComposerExpanded] = useState(false);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateError, setTemplateError] = useState('');
@@ -1334,6 +1337,7 @@ export function WhatsAppPage() {
             <div
               id="wa-thread"
               ref={threadRef}
+              aria-busy={channel === 'telegram' && isTelegramConversationLoading}
               onScroll={(event) => {
                 const element = event.currentTarget;
                 shouldFollowThreadRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 96;
