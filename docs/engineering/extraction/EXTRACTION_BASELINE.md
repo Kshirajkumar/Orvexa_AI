@@ -45,6 +45,7 @@
 - Partial extraction is now accepted when returned fields are a strict known-field subset, and an explicit provider confidence of `0` is preserved instead of being replaced by a fallback score.
 - Provider JSON parsing is bounded and accepts only an object, with support for fenced output and short surrounding commentary; it does not rewrite malformed field values.
 - Unsupported MIME types are rejected before a durable extraction run is created, preventing stranded `processing` run records.
+- Null provider and field confidence values remain null through score calculation; explicit zero remains a meaningful zero.
 
 These changes are repository-verified only. They do not yet prove extraction accuracy against a golden-document set, validate provider-specific response quality, or prove the new RPCs against a staging database.
 

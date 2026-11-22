@@ -112,7 +112,7 @@ function calculateExtractionScore(envelope) {
   const presentRatio = values.length ? found / values.length : 0;
   const warningPenalty = Math.min(0.25, (envelope.warnings || []).length * 0.03);
   const computedScore = Math.max(0, Math.min(1, presentRatio - warningPenalty));
-  const providerScores = values.map(field => Number(field.confidence)).filter(Number.isFinite);
+  const providerScores = values.map(field => toFiniteNumber(field.confidence)).filter(score => score !== null);
   const providerScore = providerScores.length
     ? providerScores.reduce((sum, score) => sum + score, 0) / providerScores.length
     : null;
@@ -122,6 +122,12 @@ function calculateExtractionScore(envelope) {
     review_score: null,
     score_basis: ['field_presence', 'format_checks', 'source_evidence'],
   };
+}
+
+function toFiniteNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function buildExtractionEnvelope({ data, category, documentId, assessmentYear, versionNumber = 1, versionKind = 'ai', providerScore = null, providerRaw = null, fieldConfidence = {}, fieldEvidence = {}, validationWarnings = [] }) {
@@ -143,7 +149,8 @@ function buildExtractionEnvelope({ data, category, documentId, assessmentYear, v
     normalization_events: canonical.normalization_events,
   };
   for (const [path, confidence] of Object.entries(fieldConfidence || {})) {
-    if (envelope.fields[path] && Number.isFinite(Number(confidence))) envelope.fields[path].confidence = Math.max(0, Math.min(1, Number(confidence)));
+    const numericConfidence = toFiniteNumber(confidence);
+    if (envelope.fields[path] && numericConfidence !== null) envelope.fields[path].confidence = Math.max(0, Math.min(1, numericConfidence));
   }
   for (const [path, evidence] of Object.entries(fieldEvidence || {})) {
     if (!envelope.fields[path] || !evidence || typeof evidence !== 'object') continue;
@@ -152,7 +159,8 @@ function buildExtractionEnvelope({ data, category, documentId, assessmentYear, v
     if (typeof quote === 'string' && quote.trim()) envelope.fields[path].raw_text = quote.trim().slice(0, 2000);
   }
   envelope.overall_score = calculateExtractionScore(envelope);
-  if (Number.isFinite(Number(providerScore))) envelope.overall_score.provider_score = Number(providerScore);
+  const numericProviderScore = toFiniteNumber(providerScore);
+  if (numericProviderScore !== null) envelope.overall_score.provider_score = numericProviderScore;
   return envelope;
 }
 

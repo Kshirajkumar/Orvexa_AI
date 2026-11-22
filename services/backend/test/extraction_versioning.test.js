@@ -70,6 +70,18 @@ test('preserves an explicit zero provider score', () => {
   assert.equal(envelope.overall_score.provider_score, 0);
 });
 
+test('does not turn null provider confidence into zero', () => {
+  const envelope = buildExtractionEnvelope({
+    data: { invoice_number: 'INV-1' },
+    category: 'GST',
+    documentId: 'doc-1',
+    providerScore: null,
+    fieldConfidence: { invoice_number: null },
+  });
+  assert.equal(envelope.overall_score.provider_score, null);
+  assert.equal(envelope.fields.invoice_number.confidence, null);
+});
+
 test('computes changed field paths', () => {
   assert.deepEqual(diffFields({ a: 1, b: 2 }, { a: 1, b: 3, c: 4 }), ['b', 'c']);
 });
