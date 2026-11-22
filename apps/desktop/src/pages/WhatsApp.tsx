@@ -158,7 +158,7 @@ function getTemplateIcon(template: MessageTemplate) {
 }
 
 function fillTpl(body: string, name: string, portalLink?: string) {
-  const link = portalLink || 'https://taxflowaiwebsite.vercel.app/portal';
+  const link = portalLink || 'https://orvvexa.vercel.app/portal';
   return body.replace(/\{(\w+)\}/g, (_, k) => {
     if (k === 'name') return name;
     if (k === 'period') return 'August 2026';
@@ -172,7 +172,7 @@ function fillTpl(body: string, name: string, portalLink?: string) {
 
 async function fillPortalTemplate(template: MessageTemplate, client: { id: string; contact: string }) {
   const clientName = client.contact ? client.contact.split(' ')[0] : 'Client';
-  const defaultPortalUrl = 'https://taxflowaiwebsite.vercel.app/portal';
+  const defaultPortalUrl = 'https://orvvexa.vercel.app/portal';
   let portalLink = defaultPortalUrl;
 
   // Only the specific 1-on-1 "portal_invite" needs an invitation token generated:

@@ -16,7 +16,7 @@ We built **TaxFlow.AI** with a different philosophy:
 Built specifically for Chartered Accountants, tax consultants, and modern accounting firms.
 
 Make room for the work that matters.
-🔗 Waitlist: https://taxflowaiwebsite.vercel.app/
+🔗 Waitlist: https://orvvexa.vercel.app/
 
 ---
 
@@ -34,7 +34,7 @@ Introducing **TaxFlow.AI** — the connected practice automation platform built 
 No fake "1-click auto-filing" gimmicks. AI prepares; you decide.
 
 Watch the film: [brag.mp4]
-Join the waitlist: https://taxflowaiwebsite.vercel.app/
+Join the waitlist: https://orvvexa.vercel.app/
 
 ---
 
@@ -47,5 +47,5 @@ It brings client documents, AI extraction, compliance deadlines, and file genera
 Key principle: The AI extracts the data, but the CA reviews and verifies every number before anything is approved or generated.
 
 Check out the launch video and join our early access waitlist here:
-👉 https://taxflowaiwebsite.vercel.app/
+👉 https://orvvexa.vercel.app/
 

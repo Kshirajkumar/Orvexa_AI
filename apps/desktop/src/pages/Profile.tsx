@@ -153,8 +153,8 @@ export function ProfilePage() {
             <div className="card-h"><div><span className="eyebrow">LEGAL &amp; TRUST</span><h2>Policies</h2></div><Icon name="shield" size={15} /></div>
             <div className="card-b profile-legal-links">
               <p>Review how TaxFlow handles workspace data, client documents, privacy, and responsible use.</p>
-              <a href="https://taxflowaiwebsite.vercel.app/terms" target="_blank" rel="noreferrer"><span>Terms and Conditions</span><Icon name="arrow" size={14} /></a>
-              <a href="https://taxflowaiwebsite.vercel.app/privacy" target="_blank" rel="noreferrer"><span>Privacy Policy</span><Icon name="arrow" size={14} /></a>
+              <a href="https://orvvexa.vercel.app/terms" target="_blank" rel="noreferrer"><span>Terms and Conditions</span><Icon name="arrow" size={14} /></a>
+              <a href="https://orvvexa.vercel.app/privacy" target="_blank" rel="noreferrer"><span>Privacy Policy</span><Icon name="arrow" size={14} /></a>
             </div>
           </section>
         </aside>

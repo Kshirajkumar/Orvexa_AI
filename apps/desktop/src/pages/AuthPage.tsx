@@ -894,7 +894,7 @@ export function AuthPage() {
                           onChange={(e) => setSignupAgree(e.target.checked)}
                         />
                         <span>
-                          I agree to TaxFlow AI’s <a href="https://taxflowaiwebsite.vercel.app/terms" target="_blank" rel="noreferrer">Terms and Conditions</a> and <a href="https://taxflowaiwebsite.vercel.app/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>, including private cloud document storage.
+                          I agree to TaxFlow AI’s <a href="https://orvvexa.vercel.app/terms" target="_blank" rel="noreferrer">Terms and Conditions</a> and <a href="https://orvvexa.vercel.app/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>, including private cloud document storage.
                         </span>
                       </label>
                     </div>

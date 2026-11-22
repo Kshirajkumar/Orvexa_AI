@@ -521,7 +521,7 @@ router.post('/forgot-password', async (req, res) => {
   if (!email) return res.status(400).json({ success: false, message: 'Email address is required.' });
 
   const resetRedirectTo = String(
-    process.env.PASSWORD_RESET_REDIRECT_URL || 'https://taxflowaiwebsite.vercel.app/reset-password'
+    process.env.PASSWORD_RESET_REDIRECT_URL || 'https://orvvexa.vercel.app/reset-password'
   ).trim();
   const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
     redirectTo: resetRedirectTo

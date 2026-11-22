@@ -189,8 +189,8 @@ export function ClientsPage() {
       const result = await updateClientPortalAccess(selectedClient.id, action);
       setPortalAccessEnabled(action === 'resume');
       setPortalStatus(action === 'resume' ? 'account_created' : 'paused');
-      setPortalCardStates(previous => ({ ...previous, [selectedClient.id]: { status: action === 'resume' ? 'account_created' : 'paused', link: action === 'resume' ? 'https://taxflowaiwebsite.vercel.app/portal' : null } }));
-      setPortalInviteLink(action === 'resume' ? 'https://taxflowaiwebsite.vercel.app/portal' : '');
+      setPortalCardStates(previous => ({ ...previous, [selectedClient.id]: { status: action === 'resume' ? 'account_created' : 'paused', link: action === 'resume' ? 'https://orvvexa.vercel.app/portal' : null } }));
+      setPortalInviteLink(action === 'resume' ? 'https://orvvexa.vercel.app/portal' : '');
       setPortalMessage(action === 'pause'
         ? 'Portal access is paused. The client account and documents are preserved; sign-in and uploads are blocked until you resume access.'
         : `Portal access is active again (${result.status}). The client can sign in using the normal portal link.`);
