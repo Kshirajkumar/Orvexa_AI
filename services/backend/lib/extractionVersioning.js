@@ -124,7 +124,7 @@ function calculateExtractionScore(envelope) {
   };
 }
 
-function buildExtractionEnvelope({ data, category, documentId, assessmentYear, versionNumber = 1, versionKind = 'ai', providerScore = null, providerRaw = null, fieldConfidence = {}, validationWarnings = [] }) {
+function buildExtractionEnvelope({ data, category, documentId, assessmentYear, versionNumber = 1, versionKind = 'ai', providerScore = null, providerRaw = null, fieldConfidence = {}, fieldEvidence = {}, validationWarnings = [] }) {
   const canonical = canonicalizeFields(data, category);
   const envelope = {
     document_id: documentId,
@@ -144,6 +144,12 @@ function buildExtractionEnvelope({ data, category, documentId, assessmentYear, v
   };
   for (const [path, confidence] of Object.entries(fieldConfidence || {})) {
     if (envelope.fields[path] && Number.isFinite(Number(confidence))) envelope.fields[path].confidence = Math.max(0, Math.min(1, Number(confidence)));
+  }
+  for (const [path, evidence] of Object.entries(fieldEvidence || {})) {
+    if (!envelope.fields[path] || !evidence || typeof evidence !== 'object') continue;
+    if (Number.isInteger(evidence.page) && evidence.page > 0) envelope.fields[path].page = evidence.page;
+    const quote = evidence.quote ?? evidence.text ?? evidence.raw_text;
+    if (typeof quote === 'string' && quote.trim()) envelope.fields[path].raw_text = quote.trim().slice(0, 2000);
   }
   envelope.overall_score = calculateExtractionScore(envelope);
   if (Number.isFinite(Number(providerScore))) envelope.overall_score.provider_score = Number(providerScore);

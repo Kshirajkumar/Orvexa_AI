@@ -49,6 +49,17 @@ test('builds a scored immutable extraction envelope', () => {
   assert.equal(envelope.fields['salary.gross_salary'].status, 'found');
 });
 
+test('preserves provider page and quote evidence on canonical fields', () => {
+  const envelope = buildExtractionEnvelope({
+    data: { invoice_number: 'INV-1', invoice_date: '2026-11-22', vendor_name: 'Example' },
+    category: 'GST',
+    documentId: 'doc-1',
+    fieldEvidence: { invoice_number: { page: 2, quote: 'Invoice No: INV-1' } },
+  });
+  assert.equal(envelope.fields.invoice_number.page, 2);
+  assert.equal(envelope.fields.invoice_number.raw_text, 'Invoice No: INV-1');
+});
+
 test('computes changed field paths', () => {
   assert.deepEqual(diffFields({ a: 1, b: 2 }, { a: 1, b: 3, c: 4 }), ['b', 'c']);
 });

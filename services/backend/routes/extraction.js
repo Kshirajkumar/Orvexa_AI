@@ -27,7 +27,7 @@ const { startExtractionRun, finishExtractionRun } = require('../lib/extractionRu
 const { validateExtractedDataQuality } = require('../lib/extractionValidation');
 const { fetchWithRetry } = require('../lib/providerRequest');
 
-async function saveExtractionVersion({ userId, document, data, category, versionKind = 'ai', baseVersion = null, note = null, providerScore = null, providerRaw = null, fieldConfidence = {}, validationWarnings = [], extractionRunId = null }) {
+async function saveExtractionVersion({ userId, document, data, category, versionKind = 'ai', baseVersion = null, note = null, providerScore = null, providerRaw = null, fieldConfidence = {}, fieldEvidence = {}, validationWarnings = [], extractionRunId = null }) {
   const envelope = buildExtractionEnvelope({
     data,
     category,
@@ -37,6 +37,7 @@ async function saveExtractionVersion({ userId, document, data, category, version
     providerScore,
     providerRaw,
     fieldConfidence,
+    fieldEvidence,
     validationWarnings,
   });
   if (extractionRunId) envelope.extraction_run_id = extractionRunId;
@@ -216,6 +217,7 @@ router.post('/process', async (req, res) => {
       providerScore: providerPayload?.accuracy_score || providerPayload?.confidence_score,
       providerRaw: providerPayload,
       fieldConfidence: providerPayload?.field_confidence,
+      fieldEvidence: providerPayload?.field_evidence,
       validationWarnings: validateExtractedDataQuality(extractedData, docCategory),
       extractionRunId,
     });
@@ -366,6 +368,7 @@ router.post('/save', async (req, res) => {
       data: extractedData,
       category,
       providerScore: req.body.providerScore,
+      fieldEvidence: req.body.fieldEvidence,
       validationWarnings: validateExtractedDataQuality(extractedData, category),
       extractionRunId,
     });

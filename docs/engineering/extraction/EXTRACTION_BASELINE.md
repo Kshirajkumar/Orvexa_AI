@@ -41,6 +41,7 @@
 - Provider calls now use a bounded two-attempt retry policy for transient HTTP failures and a per-attempt timeout; non-transient client failures are not retried.
 - Extraction results now retain review warnings for malformed PAN, GSTIN, TAN, IFSC, HSN, invalid ISO dates, and inconsistent GST totals without silently altering extracted values.
 - Corrected-data approval now uses the `approve_extraction_data` service-role RPC to create the edit version, mirror source data, and mark the same version approved within one database transaction.
+- Provider page/quote evidence is preserved on canonical version fields when supplied; missing evidence remains visible as missing rather than being fabricated.
 
 These changes are repository-verified only. They do not yet prove extraction accuracy against a golden-document set, validate provider-specific response quality, or prove the new RPCs against a staging database.
 

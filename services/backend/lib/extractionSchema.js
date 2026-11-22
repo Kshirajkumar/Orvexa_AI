@@ -24,7 +24,7 @@ function getExtractionPrompt(category) {
   if (!schema) throw new Error(`The extraction category "${category}" is not supported yet.`);
   const accuracyInstruction = category === 'GST'
     ? 'Return the exact object shape only.'
-    : 'Return {"data": <the object shape above>, "accuracy_score": <number from 0 to 1>, "field_confidence": {"canonical_field_name": <number from 0 to 1>}}.';
+    : 'Return {"data": <the object shape above>, "accuracy_score": <number from 0 to 1>, "field_confidence": {"canonical_field_name": <number from 0 to 1>}, "field_evidence": {"canonical_field_name": {"page": <positive integer>, "quote": <short visible source text>}}}.';
   return `Extract the visible information from this document. ${accuracyInstruction}\n${JSON.stringify(promptShape(schema), null, 2)}\n\nRules: preserve names, identifiers, dates, and amounts as shown; do not calculate, infer, normalize, or invent missing values. Use null for unreadable or absent scalar values and empty arrays/objects when no entries are present. Represent amounts and counts as JSON numbers without separators, and identifiers such as PAN, GSTIN, IFSC, invoice numbers, and HSN codes as strings to preserve leading zeroes. Use YYYY-MM-DD dates only when the full date is unambiguous; otherwise preserve the visible date text. Put each line item in line_items with its visible description and values. Confidence must reflect uncertainty in reading the source, not tax correctness.`;
 }
 
