@@ -10,15 +10,21 @@ Client tax files, uploads, and generated documents are stored in the private Sup
 
 ## Current application capabilities
 
+For the detailed, dated baseline, see [Product Status](docs/product-status.md). “Built” means implemented in the repository; it does not automatically mean production-configured.
+
 | Subsystem / Module | State | Current capability |
 |---|:---:|---|
-| **Desktop application** (Tauri v2, React 18, TypeScript) | Available | Client, files, extraction/review, deadlines, messaging, generation, onboarding, profile, and subscription screens. |
-| **Backend API** (Node.js, Express 5) | Available | Authenticated domain APIs; cloud features require backend and Supabase configuration. |
+| **Desktop application** (Tauri v2, React 18, TypeScript) | Built | Client, files, extraction/review, deadlines, messaging, generation, onboarding, profile, settings, and subscription screens. |
+| **Backend API** (Node.js, Express 5) | Built | Authenticated domain APIs for clients, documents, portal, extraction, review, deadlines, generation, messaging, notifications, and cleanup. |
 | **Client portal and document storage** | Configuration required | Portal invitations and uploads use private Supabase Storage; apply the documented database migrations before enabling them. |
 | **AI extraction and review** | Configuration required | Gemini runs through the backend. The optional Windows OpenRouter-key mode stores its key in Windows Credential Manager and sends extraction images directly from the desktop to OpenRouter. Extraction values are schema-checked and require human review. |
 | **Invoice review** | Configuration required | GST invoice review detects duplicate originals/matches, records approved versions, and saves a versioned JSON export in the private `Extracted` folder. Requires the invoice-review SQL migrations. |
 | **Telegram** | Configuration required | Text messaging, client linking, and scheduled reminders. Telegram is not a document-transfer channel; clients upload through the secure portal. |
-| **WhatsApp** | Configuration required | Backend integration; enablement depends on valid Meta credentials and webhook configuration. |
+| **WhatsApp** | Configuration required | Backend webhook, status, and outbound messaging integration; enablement depends on valid Meta credentials and webhook configuration. |
+
+### Important product boundary
+
+TaxFlow.AI currently manages tax-practice work and prepares/reviews supporting documents. It does not yet generate official GSTR/ITR filing artifacts, submit returns to government portals, provide a complete accounting ledger, or replace Tally/Zoho Books. Those are roadmap capabilities, not current claims.
 
 ---
 
@@ -164,6 +170,8 @@ This is a feature overview, not a complete request/response contract. Route beha
 
 ## 🗺️ Roadmap & Future Phases
 
+The detailed status classification is maintained in [docs/product-status.md](docs/product-status.md). The items below are roadmap work, not shipped functionality:
+
 - [x] Full database-driven message templates with dynamic `{name}` and `{portalLink}` placeholders
 - [x] Row Level Security (RLS) separating system defaults from CA private templates
 - [x] Mid-sized floating modal dialog for template creation and editing
@@ -172,7 +180,10 @@ This is a feature overview, not a complete request/response contract. Route beha
 - [ ] Automated end-to-end integration test suite (the backend currently has Node.js unit tests; `npm test` runs them)
 - [ ] Multi-staff role permissions (Partner, Senior Associate, Article Trainee)
 - [x] Reviewed GST invoice records with private, versioned JSON exports (requires the invoice-review migrations)
-- [ ] Official-schema GSTR-1, GSTR-3B, and ITR filing outputs and government submission
+- [ ] Official-schema GSTR-1, GSTR-3B, and ITR filing outputs and government submission after explicit human approval
+- [ ] Agent-run orchestration with visible plans, live action stream, and review gates across complete filing tasks
+- [ ] Books, inventory, bank reconciliation, e-invoicing/e-way bills, payroll, reporting, and multi-staff permissions
+- [ ] Mobile/web review clients, public API/marketplace, and accounting-system migration parity
 
 ---
 

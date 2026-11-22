@@ -6,6 +6,7 @@
 | **Date** | 14 October 2026 |
 | **Supersedes** | PRD v3.0 (14 October 2026) |
 | **Status** | Vision and requirements. Not a description of what is built today. |
+| **Current implementation baseline** | See [Product Status](product-status.md), reviewed 22 November 2026. The current repository is earlier than the full agent, filing, accounting, and submission vision described below. |
 | **Changes from v3.0** | Additions only. Replacing ledger software such as Tally and Zoho Books becomes a planned goal, and new requirements (Sections 6.4, 7.8 to 7.16 and 8.5, Appendix D) make Taxflow able to do everything those products do, with a design target of matching or exceeding them on accuracy, safety and speed. Nothing else in v3.0 is removed or reworded, except the ledger-software statements in Sections 3.3 and 7.7 and these header rows. |
 | **Changes from v2.0 (carried from v3.0)** | Two changes only. (1) Replacing ledger software such as Tally and Zoho Books is no longer listed as a non-goal. (2) Submission to government portals is decided country by country, according to whether the government provides an API or other authorised submission channel for that filing. All other content is unchanged. |
 | **Inputs** | Product owner's updated vision; the CA Practice Suite demo snapshot in `docs/Claude Context/`; the repository audit dated 12 October 2026 (source document not currently present in this repository); public regulatory sources listed in Appendix B; the product owner's comparison of Taxflow with Tally and Zoho Books (v4.0) |

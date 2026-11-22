@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-TaxFlow.AI is a Tauri desktop application with a React/TypeScript frontend and an Express/Supabase backend. The product currently supports practice management, private document storage, human-reviewed extraction, compliance tracking, and messaging. It does not yet provide certified tax filing or government submission.
+TaxFlow.AI is a Tauri desktop application with a React/TypeScript frontend and an Express/Supabase backend. The product currently supports practice management, private document storage, client-portal uploads, human-reviewed extraction, GST invoice review/export, compliance tracking, document generation helpers, and messaging. It does not yet provide official filing artifacts, certified tax filing, government submission, complete accounting books, or multi-staff permissions. Keep [docs/product-status.md](docs/product-status.md) as the dated current-capability baseline.
 
 ## Development Commands
 
