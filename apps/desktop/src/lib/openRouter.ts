@@ -401,9 +401,8 @@ function matchesExtractionValue(value: unknown, schema: any): boolean {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
     if (schema.additionalProperties) return true;
     const properties = schema.properties || {};
-    return Object.keys(value).length === Object.keys(properties).length
-      && Object.entries(properties).every(([key, child]) => Object.prototype.hasOwnProperty.call(value, key)
-        && matchesExtractionValue((value as Record<string, unknown>)[key], child));
+    return Object.entries(value).every(([key, child]) => Object.prototype.hasOwnProperty.call(properties, key)
+      && matchesExtractionValue(child, properties[key]));
   }
   if (schema?.type === 'number') return typeof value === 'number' && Number.isFinite(value);
   return schema?.type === 'string' && typeof value === 'string';

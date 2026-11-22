@@ -60,6 +60,16 @@ test('preserves provider page and quote evidence on canonical fields', () => {
   assert.equal(envelope.fields.invoice_number.raw_text, 'Invoice No: INV-1');
 });
 
+test('preserves an explicit zero provider score', () => {
+  const envelope = buildExtractionEnvelope({
+    data: { invoice_number: 'INV-1' },
+    category: 'GST',
+    documentId: 'doc-1',
+    providerScore: 0,
+  });
+  assert.equal(envelope.overall_score.provider_score, 0);
+});
+
 test('computes changed field paths', () => {
   assert.deepEqual(diffFields({ a: 1, b: 2 }, { a: 1, b: 3, c: 4 }), ['b', 'c']);
 });

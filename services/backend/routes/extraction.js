@@ -214,7 +214,7 @@ router.post('/process', async (req, res) => {
       data: extractedData,
       category: docCategory,
       versionKind: doc.current_extraction_version ? 'ai_rerun' : 'ai',
-      providerScore: providerPayload?.accuracy_score || providerPayload?.confidence_score,
+      providerScore: providerPayload?.accuracy_score ?? providerPayload?.confidence_score,
       providerRaw: providerPayload,
       fieldConfidence: providerPayload?.field_confidence,
       fieldEvidence: providerPayload?.field_evidence,

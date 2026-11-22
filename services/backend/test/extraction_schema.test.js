@@ -38,6 +38,14 @@ test('GST extraction accepts the structured line-item contract', () => {
   assert.equal(validateExtractionData(invoice, 'GST'), invoice);
 });
 
+test('extraction accepts partial results while preserving strict known-field validation', () => {
+  assert.deepEqual(validateExtractionData({ invoice_number: 'INV-001', grand_total: 118 }, 'GST'), {
+    invoice_number: 'INV-001',
+    grand_total: 118,
+  });
+  assert.throws(() => validateExtractionData({ invoice_number: 'INV-001', made_up_field: 'value' }, 'GST'));
+});
+
 test('GST extraction rejects malformed line items and extra nested fields', () => {
   assert.throws(() => validateExtractionData({
     ...invoice,
