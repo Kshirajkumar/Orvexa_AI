@@ -84,7 +84,25 @@ router.post('/:id/retry', async (req, res) => {
       p_user_id: req.user.id
     });
     if (error) throw error;
-    if (!data) return res.status(409).json({ success: false, message: 'This cleanup job is not failed or does not belong to your account.' });
+    if (!data) {
+      // Older database migrations only allowed manual retry after the worker
+      // exhausted its attempts. Allow the signed-in owner to restart any
+      // unfinished job from the app without requiring SQL Editor access.
+      const { data: job, error: jobError } = await supabase
+        .from('storage_cleanup_jobs')
+        .select('id, status')
+        .eq('id', req.params.id)
+        .eq('user_id', req.user.id)
+        .maybeSingle();
+      if (jobError) throw jobError;
+      if (!job || job.status === 'completed') return res.status(409).json({ success: false, message: 'This cleanup job is already complete or does not belong to your account.' });
+      const { error: resetError } = await supabase
+        .from('storage_cleanup_jobs')
+        .update({ status: 'pending', attempt_count: 0, next_attempt_at: new Date().toISOString(), claimed_at: null, last_error: null, completed_at: null })
+        .eq('id', req.params.id)
+        .eq('user_id', req.user.id);
+      if (resetError) throw resetError;
+    }
     return res.status(202).json({ success: true, source: 'supabase', data: { id: req.params.id, status: 'pending' } });
   } catch (error) {
     console.error(`[Storage Cleanup] Could not retry job ${req.params.id}:`, error.message);

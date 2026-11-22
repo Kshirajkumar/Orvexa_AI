@@ -274,6 +274,10 @@ export function ClientsPage() {
       if (updatedJob.status === 'completed') {
         setCleanupSuccess(updatedJob.message || 'Client data, cloud files, and the portal account were deleted successfully.');
         setCleanupError('');
+        window.setTimeout(() => {
+          setCleanupJobs(previous => previous.filter(job => job.id !== jobId));
+          setCleanupSuccess('');
+        }, 3000);
       } else if (updatedJob.status === 'failed') {
         setCleanupSuccess('');
         setCleanupError(updatedJob.error_message || updatedJob.last_error || updatedJob.message || 'Cloud cleanup failed and needs a retry.');
@@ -301,6 +305,17 @@ export function ClientsPage() {
       setCleanupLoading(false);
     }
   }
+  React.useEffect(() => {
+    const activeJobs = cleanupJobs.filter(job => job.status !== 'completed');
+    if (!activeJobs.length) return undefined;
+    const timer = window.setInterval(() => {
+      activeJobs.forEach(job => {
+        if (job.status === 'failed') void retryCleanupJob(job.id);
+        else void refreshCleanupJob(job.id);
+      });
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [cleanupJobs]);
   async function saveEdit() {
     if (!selectedClient || !editForm.name.trim()) { setEditError('Client name is required.'); return; }
     if (!editForm.countryId) { setEditError('Please select a supported country.'); return; }
@@ -343,7 +358,7 @@ export function ClientsPage() {
           <span><b>{job.message}</b><small>Status: {job.status}</small>{job.error_message && job.status !== 'completed' && <small className="ob-error">Reason: {job.error_message}</small>}</span>
           <div className="vault-lifecycle-actions">
             <button className="btn sm" onClick={() => void refreshCleanupJob(job.id)} disabled={cleanupLoading}>{cleanupLoading ? 'Checking…' : 'Check status'}</button>
-            {job.status === 'failed' && <button className="btn sm" onClick={() => void retryCleanupJob(job.id)} disabled={cleanupLoading}>Retry cleanup</button>}
+            {(job.status === 'failed' || job.status === 'retrying') && <button className="btn sm" onClick={() => void retryCleanupJob(job.id)} disabled={cleanupLoading}>Retry cleanup</button>}
           </div>
         </div>)}
       </div>}
