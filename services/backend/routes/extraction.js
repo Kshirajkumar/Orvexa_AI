@@ -17,7 +17,7 @@ const { isDeepStrictEqual } = require('node:util');
 const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
 const { getGeminiConfig } = require('../lib/aiProvider');
-const { getExtractionPrompt, validateExtractionData, SUPPORTED_EXTRACTION_CATEGORIES } = require('../lib/extractionSchema');
+const { getExtractionPrompt, parseBoundedJsonObject, validateExtractionData, SUPPORTED_EXTRACTION_CATEGORIES } = require('../lib/extractionSchema');
 const { TAXFLOW_SYSTEM_PROMPT } = require('../lib/systemPrompt');
 const { getOwnedClientIds } = require('../lib/ownership');
 const { downloadDocument, isOwnedDocumentObject } = require('../lib/documentStorage');
@@ -188,10 +188,9 @@ router.post('/process', async (req, res) => {
       emptyResponseError.status = 502;
       throw emptyResponseError;
     }
-    const jsonText = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     let providerPayload;
     try {
-      providerPayload = JSON.parse(jsonText);
+      providerPayload = parseBoundedJsonObject(rawText);
       const candidateData = providerPayload?.data && typeof providerPayload.data === 'object'
         && !Array.isArray(providerPayload.data) ? providerPayload.data : providerPayload;
       extractedData = validateExtractionData(candidateData, docCategory);

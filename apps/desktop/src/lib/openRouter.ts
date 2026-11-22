@@ -408,6 +408,26 @@ function matchesExtractionValue(value: unknown, schema: any): boolean {
   return schema?.type === 'string' && typeof value === 'string';
 }
 
+function parseBoundedJsonObject(text: string): Record<string, unknown> {
+  if (text.length > 200_000) throw new Error('The selected model returned an oversized response.');
+  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const candidates = [cleaned];
+  const firstObject = cleaned.indexOf('{');
+  const lastObject = cleaned.lastIndexOf('}');
+  if (firstObject >= 0 && lastObject > firstObject && cleaned.slice(firstObject, lastObject + 1) !== cleaned) {
+    candidates.push(cleaned.slice(firstObject, lastObject + 1));
+  }
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+    } catch {
+      // Try the next bounded candidate without changing any field values.
+    }
+  }
+  throw new Error('The selected model returned invalid structured JSON.');
+}
+
 function promptExtractionShape(schema: any): Record<string, unknown> {
   return Object.fromEntries(Object.entries(schema.properties || {}).map(([key, value]) => [key, promptValueShape(value)]));
 }
@@ -448,8 +468,7 @@ export async function extractWithOpenRouter(
 
   let extractedData: unknown;
   try {
-    const jsonText = result.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-    extractedData = JSON.parse(jsonText);
+    extractedData = parseBoundedJsonObject(result.text);
   } catch {
     throw new Error('OpenRouter did not return valid structured JSON. Retry the extraction or choose another vision model.');
   }

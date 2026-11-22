@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { getExtractionPrompt, validateExtractionData } = require('../lib/extractionSchema');
+const { getExtractionPrompt, parseBoundedJsonObject, validateExtractionData } = require('../lib/extractionSchema');
 
 const invoice = {
   invoice_number: 'INV-001',
@@ -67,4 +67,12 @@ test('GST prompt describes the nested line-item object instead of an empty array
 test('unsupported categories fail explicitly instead of falling back to General', () => {
   assert.throws(() => getExtractionPrompt('TDS'), /not supported yet/i);
   assert.throws(() => validateExtractionData({}, 'Audit'), /not supported yet/i);
+});
+
+test('bounded provider parsing accepts fenced or briefly prefixed JSON without repairing values', () => {
+  assert.deepEqual(parseBoundedJsonObject('Here is the result:\n```json\n{"invoice_number":"INV-1"}\n```'), {
+    invoice_number: 'INV-1',
+  });
+  assert.throws(() => parseBoundedJsonObject('x'.repeat(200_001)));
+  assert.throws(() => parseBoundedJsonObject('{"invoice_number":}'));
 });
