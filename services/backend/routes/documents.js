@@ -723,16 +723,17 @@ router.post('/:id/verify', async (req, res) => {
           return res.status(400).json({ success: false, message: validationError.message });
         }
       }
-      let extractionVersion = null;
+      const { data: latestVersion, error: latestVersionError } = await supabase
+        .from('extraction_versions')
+        .select('version_number, data')
+        .eq('document_id', document.id)
+        .order('version_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestVersionError && latestVersionError.code !== 'PGRST116') throw latestVersionError;
+
+      let extractionVersion = latestVersion;
       if (correctedData !== undefined) {
-        const { data: latestVersion, error: latestVersionError } = await supabase
-          .from('extraction_versions')
-          .select('version_number, data')
-          .eq('document_id', document.id)
-          .order('version_number', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (latestVersionError && latestVersionError.code !== 'PGRST116') throw latestVersionError;
         const envelope = buildExtractionEnvelope({
           data: correctedData,
           category: document.category,
@@ -759,16 +760,17 @@ router.post('/:id/verify', async (req, res) => {
         }
         extractionVersion = savedVersion;
       }
-      const updatePayload = {
-        status: 'Verified',
-        verified_by: req.user.email || req.user.id || verifiedBy || 'CA Admin',
-        verified_at: new Date().toISOString()
-      };
-      if (correctedData) updatePayload.extracted_data = correctedData;
-
-      const { data, error } = await supabase
-        .from('documents_metadata').update(updatePayload).eq('id', document.id).eq('client_id', document.client_id).select().single();
-      if (error) throw error;
+      let data = null;
+      if (correctedData !== undefined) {
+        const { data: updatedData, error } = await supabase
+          .from('documents_metadata')
+          .update({ extracted_data: correctedData })
+          .eq('id', document.id)
+          .eq('client_id', document.client_id)
+          .select().single();
+        if (error) throw error;
+        data = updatedData;
+      }
       if (extractionVersion?.version_number) {
         const { error: approvalError } = await supabase.rpc('approve_extraction_version', {
           p_user_id: req.user.id,
@@ -776,6 +778,27 @@ router.post('/:id/verify', async (req, res) => {
           p_version_number: extractionVersion.version_number,
         });
         if (approvalError) throw approvalError;
+        const { data: approvedData, error: approvedDataError } = await supabase
+          .from('documents_metadata')
+          .select('*')
+          .eq('id', document.id)
+          .eq('client_id', document.client_id)
+          .single();
+        if (approvedDataError) throw approvedDataError;
+        data = approvedData;
+      } else {
+        const { data: verifiedData, error } = await supabase
+          .from('documents_metadata')
+          .update({
+            status: 'Verified',
+            verified_by: req.user.email || req.user.id || verifiedBy || 'CA Admin',
+            verified_at: new Date().toISOString()
+          })
+          .eq('id', document.id)
+          .eq('client_id', document.client_id)
+          .select().single();
+        if (error) throw error;
+        data = verifiedData;
       }
       return res.json({ success: true, source: 'supabase', data, extractionVersion });
     }

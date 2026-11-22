@@ -1,0 +1,60 @@
+{
+  "version": "1",
+  "categories": {
+    "GST": {
+      "type": "object",
+      "properties": {
+        "invoice_number": { "type": "string" }, "invoice_date": { "type": "string" }, "vendor_name": { "type": "string" }, "vendor_gstin": { "type": "string" }, "buyer_gstin": { "type": "string" },
+        "taxable_value": { "type": "number" }, "cgst_rate": { "type": "number" }, "cgst_amount": { "type": "number" }, "sgst_rate": { "type": "number" }, "sgst_amount": { "type": "number" },
+        "igst_rate": { "type": "number" }, "igst_amount": { "type": "number" }, "total_gst": { "type": "number" }, "grand_total": { "type": "number" }, "place_of_supply": { "type": "string" },
+        "hsn_codes": { "type": "array", "items": { "type": "string" } },
+        "line_items": { "type": "array", "items": { "type": "object", "properties": {
+          "description": { "type": "string" }, "hsn_code": { "type": "string" }, "quantity": { "type": "number" }, "unit": { "type": "string" }, "unit_price": { "type": "number" },
+          "taxable_value": { "type": "number" }, "gst_rate": { "type": "number" }, "cgst_amount": { "type": "number" }, "sgst_amount": { "type": "number" }, "igst_amount": { "type": "number" }, "total_amount": { "type": "number" }
+        } } }
+      }
+    },
+    "IncomeTax": {
+      "type": "object",
+      "properties": {
+        "document_type": { "type": "string" }, "assessment_year": { "type": "string" }, "pan": { "type": "string" }, "taxpayer_name": { "type": "string" },
+        "gross_total_income": { "type": "number" }, "deductions_80c": { "type": "number" }, "deductions_80d": { "type": "number" }, "other_deductions": { "type": "number" },
+        "taxable_income": { "type": "number" }, "tax_payable": { "type": "number" }, "tds_deducted": { "type": "number" }, "advance_tax": { "type": "number" }, "refund_due": { "type": "number" }
+      }
+    },
+    "Form16": {
+      "type": "object",
+      "properties": {
+        "employer_name": { "type": "string" }, "employer_tan": { "type": "string" }, "employee_name": { "type": "string" }, "employee_pan": { "type": "string" },
+        "assessment_year": { "type": "string" }, "gross_salary": { "type": "number" }, "hra_exemption": { "type": "number" }, "lta_exemption": { "type": "number" },
+        "standard_deduction": { "type": "number" }, "professional_tax": { "type": "number" }, "section_80c": { "type": "number" }, "section_80d": { "type": "number" },
+        "net_taxable_income": { "type": "number" }, "tax_deducted": { "type": "number" }, "surcharge": { "type": "number" }, "cess": { "type": "number" }, "total_tds": { "type": "number" }
+      }
+    },
+    "BankStatement": {
+      "type": "object",
+      "properties": {
+        "bank_name": { "type": "string" }, "account_holder": { "type": "string" }, "account_number": { "type": "string" }, "ifsc": { "type": "string" },
+        "period_from": { "type": "string" }, "period_to": { "type": "string" }, "opening_balance": { "type": "number" }, "closing_balance": { "type": "number" },
+        "total_credits": { "type": "number" }, "total_debits": { "type": "number" }, "transaction_count": { "type": "number" }
+      }
+    },
+    "Notice": {
+      "type": "object",
+      "properties": {
+        "notice_type": { "type": "string" }, "section": { "type": "string" }, "notice_date": { "type": "string" }, "due_date": { "type": "string" }, "authority": { "type": "string" },
+        "taxpayer_name": { "type": "string" }, "pan": { "type": "string" }, "assessment_year": { "type": "string" }, "demand_amount": { "type": "number" },
+        "reason": { "type": "string" }, "action_required": { "type": "string" }
+      }
+    },
+    "General": {
+      "type": "object",
+      "properties": {
+        "document_type": { "type": "string" }, "document_date": { "type": "string" }, "names": { "type": "array", "items": { "type": "string" } },
+        "identifiers": { "type": "object", "additionalProperties": true }, "amounts": { "type": "object", "additionalProperties": true },
+        "line_items": { "type": "array", "items": { "type": "object", "additionalProperties": true } }, "other_fields": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+        "unreadable_fields": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

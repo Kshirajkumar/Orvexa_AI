@@ -1,4 +1,5 @@
 import { getOpenRouterApiKey } from './secureCredentials';
+import contracts from '../../../../packages/extraction-contracts/contracts.json';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1';
 const USE_LOCAL_KEY_SETTING = 'taxflow_use_local_openrouter_key';
@@ -385,96 +386,46 @@ function fileDataUrl(file: File): Promise<string> {
   });
 }
 
-const STRING_VALUE = '';
-const NUMBER_VALUE = 0;
-const GST_LINE_ITEM_SCHEMA: Record<string, unknown> = {
-  description: STRING_VALUE, hsn_code: STRING_VALUE, quantity: NUMBER_VALUE, unit: STRING_VALUE, unit_price: NUMBER_VALUE,
-  taxable_value: NUMBER_VALUE, gst_rate: NUMBER_VALUE, cgst_amount: NUMBER_VALUE, sgst_amount: NUMBER_VALUE,
-  igst_amount: NUMBER_VALUE, total_amount: NUMBER_VALUE,
-};
-const EXTRACTION_SCHEMAS: Record<string, Record<string, unknown>> = {
-  GST: {
-    invoice_number: STRING_VALUE, invoice_date: STRING_VALUE, vendor_name: STRING_VALUE, vendor_gstin: STRING_VALUE, buyer_gstin: STRING_VALUE,
-    taxable_value: NUMBER_VALUE, cgst_rate: NUMBER_VALUE, cgst_amount: NUMBER_VALUE, sgst_rate: NUMBER_VALUE, sgst_amount: NUMBER_VALUE,
-    igst_rate: NUMBER_VALUE, igst_amount: NUMBER_VALUE, total_gst: NUMBER_VALUE, grand_total: NUMBER_VALUE, place_of_supply: STRING_VALUE,
-    hsn_codes: [STRING_VALUE], line_items: [GST_LINE_ITEM_SCHEMA],
-  },
-  IncomeTax: {
-    document_type: STRING_VALUE, assessment_year: STRING_VALUE, pan: STRING_VALUE, taxpayer_name: STRING_VALUE,
-    gross_total_income: NUMBER_VALUE, deductions_80c: NUMBER_VALUE, deductions_80d: NUMBER_VALUE, other_deductions: NUMBER_VALUE,
-    taxable_income: NUMBER_VALUE, tax_payable: NUMBER_VALUE, tds_deducted: NUMBER_VALUE, advance_tax: NUMBER_VALUE, refund_due: NUMBER_VALUE,
-  },
-  Form16: {
-    employer_name: STRING_VALUE, employer_tan: STRING_VALUE, employee_name: STRING_VALUE, employee_pan: STRING_VALUE,
-    assessment_year: STRING_VALUE, gross_salary: NUMBER_VALUE, hra_exemption: NUMBER_VALUE, lta_exemption: NUMBER_VALUE,
-    standard_deduction: NUMBER_VALUE, professional_tax: NUMBER_VALUE, section_80c: NUMBER_VALUE, section_80d: NUMBER_VALUE,
-    net_taxable_income: NUMBER_VALUE, tax_deducted: NUMBER_VALUE, surcharge: NUMBER_VALUE, cess: NUMBER_VALUE, total_tds: NUMBER_VALUE,
-  },
-  BankStatement: {
-    bank_name: STRING_VALUE, account_holder: STRING_VALUE, account_number: STRING_VALUE, ifsc: STRING_VALUE,
-    period_from: STRING_VALUE, period_to: STRING_VALUE, opening_balance: NUMBER_VALUE, closing_balance: NUMBER_VALUE,
-    total_credits: NUMBER_VALUE, total_debits: NUMBER_VALUE, transaction_count: NUMBER_VALUE,
-  },
-  Notice: {
-    notice_type: STRING_VALUE, section: STRING_VALUE, notice_date: STRING_VALUE, due_date: STRING_VALUE, authority: STRING_VALUE,
-    taxpayer_name: STRING_VALUE, pan: STRING_VALUE, assessment_year: STRING_VALUE, demand_amount: NUMBER_VALUE,
-    reason: STRING_VALUE, action_required: STRING_VALUE,
-  },
-  General: {
-    document_type: STRING_VALUE, document_date: STRING_VALUE, names: [], identifiers: {}, amounts: {},
-    line_items: [], other_fields: [], unreadable_fields: [],
-  },
-};
+const EXTRACTION_SCHEMAS: Record<string, any> = contracts.categories;
 
 function validateExtractionData(data: Record<string, unknown>, category: string): void {
-  const schema = EXTRACTION_SCHEMAS[category] || EXTRACTION_SCHEMAS.General;
-  const keys = Object.keys(schema);
-  if (Object.keys(data).length !== keys.length || keys.some(key => !Object.prototype.hasOwnProperty.call(data, key))) {
-    throw new Error('The extracted result must include exactly the requested fields.');
-  }
-  for (const key of keys) {
-    if (!matchesExtractionValue(data[key], schema[key])) {
-      throw new Error(`The extracted field "${key}" has the wrong value type.`);
-    }
-  }
+  const schema = EXTRACTION_SCHEMAS[category] || null;
+  if (!schema) throw new Error(`The extraction category "${category}" is not supported yet.`);
+  if (!matchesExtractionValue(data, schema)) throw new Error('The extracted result does not match the requested fields and value types.');
 }
 
-function matchesExtractionValue(value: unknown, schema: unknown): boolean {
-  if (value === null) return typeof schema === 'string' || typeof schema === 'number';
-  if (Array.isArray(schema)) {
-    return Array.isArray(value) && (
-      schema.length === 0 || value.every(item => matchesExtractionValue(item, schema[0]))
-    );
-  }
-  if (schema && typeof schema === 'object') {
+function matchesExtractionValue(value: unknown, schema: any): boolean {
+  if (value === null) return true;
+  if (schema?.type === 'array') return Array.isArray(value) && value.every(item => matchesExtractionValue(item, schema.items));
+  if (schema?.type === 'object') {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-    const expected = Object.keys(schema);
-    const actual = Object.keys(value);
-    return expected.length === 0 || (
-      actual.length === expected.length
-      && expected.every(key => Object.prototype.hasOwnProperty.call(value, key)
-        && matchesExtractionValue((value as Record<string, unknown>)[key], (schema as Record<string, unknown>)[key]))
-    );
+    if (schema.additionalProperties) return true;
+    const properties = schema.properties || {};
+    return Object.keys(value).length === Object.keys(properties).length
+      && Object.entries(properties).every(([key, child]) => Object.prototype.hasOwnProperty.call(value, key)
+        && matchesExtractionValue((value as Record<string, unknown>)[key], child));
   }
-  return typeof value === typeof schema && (typeof value !== 'number' || Number.isFinite(value));
+  if (schema?.type === 'number') return typeof value === 'number' && Number.isFinite(value);
+  return schema?.type === 'string' && typeof value === 'string';
 }
 
-function promptExtractionShape(schema: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(schema).map(([key, value]) => [key, promptValueShape(value)]));
+function promptExtractionShape(schema: any): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(schema.properties || {}).map(([key, value]) => [key, promptValueShape(value)]));
 }
 
-function promptValueShape(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.length && value[0] && typeof value[0] === 'object'
-      ? [promptExtractionShape(value[0] as Record<string, unknown>)]
+function promptValueShape(value: any): unknown {
+  if (value?.type === 'array') {
+    return value.items?.type === 'object' && !value.items.additionalProperties
+      ? [promptExtractionShape(value.items)]
       : [];
   }
-  if (value && typeof value === 'object') return promptExtractionShape(value as Record<string, unknown>);
+  if (value?.type === 'object') return value.additionalProperties ? {} : promptExtractionShape(value);
   return null;
 }
 
 function extractionPrompt(category: string): string {
-  const schema = EXTRACTION_SCHEMAS[category] || EXTRACTION_SCHEMAS.General;
+  const schema = EXTRACTION_SCHEMAS[category];
+  if (!schema) throw new Error(`The extraction category "${category}" is not supported yet.`);
   return `Extract visible information from this document and return exactly one JSON object with exactly these keys and value types:\n${JSON.stringify(promptExtractionShape(schema), null, 2)}\n\nRules: preserve names, identifiers, dates, and amounts as shown; do not calculate, infer, normalize, or invent missing values. Use null for unreadable or absent scalar values and empty arrays/objects when no entries are present. Use JSON numbers for amounts and counts without separators; keep identifiers such as PAN, GSTIN, IFSC, invoice numbers, and HSN codes as strings to preserve leading zeroes. Use YYYY-MM-DD dates only when the full date is unambiguous; otherwise preserve the visible date text. Put each line item in line_items with its visible description and values. Return no markdown, commentary, confidence score, or extra keys.`;
 }
 

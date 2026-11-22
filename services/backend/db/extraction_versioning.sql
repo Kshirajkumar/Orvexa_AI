@@ -1,5 +1,5 @@
 -- Immutable AI/review extraction history and file activity ledger.
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 ALTER TABLE public.documents_metadata
   ADD COLUMN IF NOT EXISTS extraction_status text,
   ADD COLUMN IF NOT EXISTS current_extraction_version integer,
@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS public.extraction_versions (
   content_sha256 text NOT NULL,
   previous_sha256 text,
   extraction_run_id uuid,
+  source_data jsonb,
   created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (document_id, version_number),
@@ -144,12 +145,15 @@ BEGIN
   INSERT INTO public.extraction_versions (
     document_id, client_id, version_number, version_kind, data,
     provider_score, computed_score, schema_version, changed_field_count,
-    changed_field_paths, note, base_version, content_sha256, previous_sha256, created_by
+    changed_field_paths, note, base_version, content_sha256, previous_sha256, extraction_run_id, source_data, created_by
   ) VALUES (
     p_document_id, document_row.client_id, next_version, p_version_kind, p_data,
     p_provider_score, p_computed_score, p_schema_version, changed_count,
     COALESCE(p_changed_field_paths, '[]'::jsonb), p_note, p_base_version,
-    encode(digest(p_data::text, 'sha256'), 'hex'), previous_hash, p_user_id
+    encode(
+      extensions.digest(convert_to(p_data::text, 'UTF8'), 'sha256'),
+      'hex'
+    ), previous_hash, NULLIF(p_data->>'extraction_run_id', '')::uuid, p_data->'source_data', p_user_id
   ) RETURNING * INTO version_row;
 
   UPDATE public.documents_metadata
@@ -221,3 +225,66 @@ GRANT EXECUTE ON FUNCTION public.save_extraction_version(uuid, uuid, text, jsonb
 REVOKE ALL ON FUNCTION public.record_document_file_delete() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.approve_extraction_version(uuid, uuid, integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.approve_extraction_version(uuid, uuid, integer) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.restore_extraction_version(
+  p_user_id uuid,
+  p_document_id uuid,
+  p_source_version integer,
+  p_expected_current_version integer,
+  p_note text DEFAULT NULL
+)
+RETURNS public.extraction_versions
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  document_row public.documents_metadata%ROWTYPE;
+  source_row public.extraction_versions%ROWTYPE;
+  restored_row public.extraction_versions%ROWTYPE;
+BEGIN
+  SELECT d.* INTO document_row
+  FROM public.documents_metadata d
+  JOIN public.clients c ON c.id = d.client_id
+  WHERE d.id = p_document_id AND c.user_id = p_user_id
+    AND d.deletion_requested_at IS NULL
+  FOR UPDATE OF d, c;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Document was not found in your workspace.' USING ERRCODE = 'P0002'; END IF;
+
+  IF p_expected_current_version IS NOT NULL
+     AND COALESCE(document_row.current_extraction_version, 0) <> p_expected_current_version THEN
+    RAISE EXCEPTION 'A newer extraction version already exists.' USING ERRCODE = '40001';
+  END IF;
+
+  SELECT * INTO source_row
+  FROM public.extraction_versions
+  WHERE document_id = p_document_id AND version_number = p_source_version;
+  IF NOT FOUND THEN RAISE EXCEPTION 'The extraction version was not found.' USING ERRCODE = 'P0002'; END IF;
+  IF source_row.source_data IS NULL THEN
+    RAISE EXCEPTION 'This legacy extraction version cannot be restored because its source data was not retained.' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT public.save_extraction_version(
+    p_user_id,
+    p_document_id,
+    'restore',
+    source_row.data,
+    source_row.provider_score,
+    source_row.computed_score,
+    source_row.schema_version,
+    document_row.current_extraction_version,
+    COALESCE(p_note, 'Restored from extraction version ' || p_source_version),
+    '[]'::jsonb
+  ) INTO restored_row;
+
+  UPDATE public.documents_metadata
+  SET extracted_data = source_row.source_data,
+      updated_at = now()
+  WHERE id = p_document_id AND client_id = document_row.client_id;
+
+  RETURN restored_row;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.restore_extraction_version(uuid, uuid, integer, integer, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.restore_extraction_version(uuid, uuid, integer, integer, text) TO service_role;

@@ -693,6 +693,42 @@ export interface DocumentVersionItem {
   created_at: string;
 }
 
+export interface ExtractionVersionItem {
+  id: string;
+  version_number: number;
+  version_kind: 'ai' | 'ai_rerun' | 'edit' | 'restore';
+  data: Record<string, unknown>;
+  source_data?: Record<string, unknown> | null;
+  provider_score: number | null;
+  computed_score: number | null;
+  schema_version: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ExtractionHistoryResponse {
+  document: {
+    id: string;
+    client_id: string;
+    category: string;
+    extraction_status: string | null;
+    current_extraction_version: number | null;
+    approved_extraction_version: number | null;
+  };
+  versions: ExtractionVersionItem[];
+}
+
+export interface ExtractionComparison {
+  path: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+}
+
+export interface ExtractionComparisonResult {
+  changedFieldPaths: string[];
+  changes: ExtractionComparison[];
+}
+
 export interface StorageCleanupJob {
   id: string;
   target_type: 'client' | 'document';
@@ -795,6 +831,39 @@ export async function fetchDocumentVersions(documentId: string): Promise<Documen
   if (!res.ok || !json.success || !Array.isArray(json.data)) {
     throw new Error(json.message || `Could not load document versions (HTTP ${res.status}).`);
   }
+  return json.data;
+}
+
+export async function fetchExtractionVersions(documentId: string): Promise<ExtractionHistoryResponse> {
+  const res = await fetch(`${API_BASE_URL}/extraction/versions/${encodeURIComponent(documentId)}`, { headers: authHeaders() });
+  let json: any;
+  try { json = await res.json(); } catch { throw new Error(`Extraction history returned an invalid response (HTTP ${res.status}).`); }
+  if (!res.ok || !json.success || !json.data?.document || !Array.isArray(json.data.versions)) {
+    throw new Error(json.message || `Could not load extraction history (HTTP ${res.status}).`);
+  }
+  return json.data;
+}
+
+export async function compareExtractionVersions(documentId: string, from: number, to: number): Promise<{ comparison: ExtractionComparisonResult; from: ExtractionVersionItem; to: ExtractionVersionItem }> {
+  const params = new URLSearchParams({ from: String(from), to: String(to) });
+  const res = await fetch(`${API_BASE_URL}/extraction/versions/${encodeURIComponent(documentId)}/compare?${params}`, { headers: authHeaders() });
+  let json: any;
+  try { json = await res.json(); } catch { throw new Error(`Extraction comparison returned an invalid response (HTTP ${res.status}).`); }
+  if (!res.ok || !json.success || !json.data?.comparison || !json.data?.from || !json.data?.to) {
+    throw new Error(json.message || `Could not compare extraction versions (HTTP ${res.status}).`);
+  }
+  return json.data;
+}
+
+export async function restoreExtractionVersion(documentId: string, versionNumber: number, expectedCurrentVersion: number, note?: string): Promise<ExtractionVersionItem> {
+  const res = await fetch(`${API_BASE_URL}/extraction/versions/${encodeURIComponent(documentId)}/restore`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ versionNumber, expectedCurrentVersion, note }),
+  });
+  let json: any;
+  try { json = await res.json(); } catch { throw new Error(`Extraction restore returned an invalid response (HTTP ${res.status}).`); }
+  if (!res.ok || !json.success || !json.data) throw new Error(json.message || `Could not restore extraction version (HTTP ${res.status}).`);
   return json.data;
 }
 

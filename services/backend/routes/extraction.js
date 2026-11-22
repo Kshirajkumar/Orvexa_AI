@@ -17,14 +17,15 @@ const { isDeepStrictEqual } = require('node:util');
 const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
 const { getGeminiConfig } = require('../lib/aiProvider');
-const { getExtractionPrompt, validateExtractionData } = require('../lib/extractionSchema');
+const { getExtractionPrompt, validateExtractionData, SUPPORTED_EXTRACTION_CATEGORIES } = require('../lib/extractionSchema');
 const { TAXFLOW_SYSTEM_PROMPT } = require('../lib/systemPrompt');
 const { getOwnedClientIds } = require('../lib/ownership');
 const { downloadDocument, isOwnedDocumentObject } = require('../lib/documentStorage');
 const { saveInvoiceExport } = require('../lib/invoiceExport');
-const { buildExtractionEnvelope } = require('../lib/extractionVersioning');
+const { buildExtractionEnvelope, compareExtractionVersions } = require('../lib/extractionVersioning');
+const { startExtractionRun, finishExtractionRun } = require('../lib/extractionRuns');
 
-async function saveExtractionVersion({ userId, document, data, category, versionKind = 'ai', baseVersion = null, note = null, providerScore = null, providerRaw = null, fieldConfidence = {} }) {
+async function saveExtractionVersion({ userId, document, data, category, versionKind = 'ai', baseVersion = null, note = null, providerScore = null, providerRaw = null, fieldConfidence = {}, extractionRunId = null }) {
   const envelope = buildExtractionEnvelope({
     data,
     category,
@@ -35,6 +36,7 @@ async function saveExtractionVersion({ userId, document, data, category, version
     providerRaw,
     fieldConfidence,
   });
+  if (extractionRunId) envelope.extraction_run_id = extractionRunId;
   const { data: version, error } = await supabase.rpc('save_extraction_version', {
     p_user_id: userId,
     p_document_id: document.id,
@@ -64,6 +66,8 @@ router.post('/process', async (req, res) => {
     return res.status(400).json({ success: false, message: 'documentId is required' });
   }
 
+  let ownedDocument = null;
+  let extractionRunId = null;
   try {
     // Step 1: Fetch document metadata from Supabase (or fallback)
     let doc = null;
@@ -74,6 +78,7 @@ router.post('/process', async (req, res) => {
         .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000']).single();
       if (error) throw new Error(`Document not found in database: ${error.message}`);
       doc = data;
+      ownedDocument = doc;
     } else {
       return res.status(503).json({
         success: false,
@@ -84,11 +89,16 @@ router.post('/process', async (req, res) => {
     if (doc.source === 'Telegram') {
       return res.status(404).json({ success: false, message: 'Telegram files are not available for extraction. Use the secure client portal for document uploads.' });
     }
+    const docCategory = doc.category || category || 'General';
+    if (!SUPPORTED_EXTRACTION_CATEGORIES.includes(docCategory)) {
+      return res.status(422).json({ success: false, message: `The extraction category "${docCategory}" is not supported yet.` });
+    }
 
-    await supabase.from('documents_metadata')
+    const { error: processingError } = await supabase.from('documents_metadata')
       .update({ extraction_status: 'processing', updated_at: new Date().toISOString() })
-      .eq('id', documentId)
+      .eq('id', doc.id)
       .eq('client_id', doc.client_id);
+    if (processingError) throw processingError;
 
     // Step 2: Read only from this user's private object namespace.
     if (!doc.storage_bucket || !doc.storage_object_path || !isOwnedDocumentObject({
@@ -108,7 +118,14 @@ router.post('/process', async (req, res) => {
     let inputTokens = 0, outputTokens = 0;
     let aiSuccess = false;
     const geminiConfig = await getGeminiConfig(req.user.id);
-    const docCategory = doc.category || category || 'GST';
+    extractionRunId = await startExtractionRun({
+      userId: req.user.id,
+      document: doc,
+      provider: 'gemini',
+      model: geminiConfig?.model || 'database-configured',
+      schemaVersion: `${docCategory.toLowerCase()}-v1`,
+      usageSource: 'provider_response',
+    });
     const base64Content = fileBuffer.toString('base64');
     const mimeType = doc.mime_type || getMimeType(doc.file_type || 'PDF');
     if (!['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(mimeType)) {
@@ -173,7 +190,8 @@ router.post('/process', async (req, res) => {
     let providerPayload;
     try {
       providerPayload = JSON.parse(jsonText);
-      const candidateData = docCategory === 'GST' ? providerPayload : (providerPayload.data || providerPayload);
+      const candidateData = providerPayload?.data && typeof providerPayload.data === 'object'
+        && !Array.isArray(providerPayload.data) ? providerPayload.data : providerPayload;
       extractedData = validateExtractionData(candidateData, docCategory);
     } catch {
       const invalidOutputError = new Error('The AI extraction provider returned data that did not match the required format. Please retry.');
@@ -188,7 +206,7 @@ router.post('/process', async (req, res) => {
 
     // Step 4: Save an immutable extraction version. Keep the flat mirror temporarily
     // because the existing review screen and GST workflow still consume it.
-    const versionResult = doc.category === 'GST' ? null : await saveExtractionVersion({
+    const versionResult = await saveExtractionVersion({
       userId: req.user.id,
       document: doc,
       data: extractedData,
@@ -197,6 +215,7 @@ router.post('/process', async (req, res) => {
       providerScore: providerPayload?.accuracy_score || providerPayload?.confidence_score,
       providerRaw: providerPayload,
       fieldConfidence: providerPayload?.field_confidence,
+      extractionRunId,
     });
     const { data: updatedDoc, error: updateErr } = await supabase
       .from('documents_metadata')
@@ -205,17 +224,30 @@ router.post('/process', async (req, res) => {
         extracted_data: extractedData,
         confidence_score: versionResult?.envelope.overall_score.computed_score ?? confidenceScore,
       })
-      .eq('id', documentId).select().single();
+      .eq('id', doc.id)
+      .eq('client_id', doc.client_id)
+      .select().single();
     if (updateErr) throw updateErr;
 
-    // Step 5: Log AI usage to Supabase ai_usage_log
-    await supabase.from('ai_usage_log').insert([{
+    // Step 5: Log AI usage to Supabase ai_usage_log. The usage_source column is
+    // additive; preserve extraction success if an older deployment has not run
+    // the compatibility migration yet.
+    const { error: usageError } = await supabase.from('ai_usage_log').insert([{
       client_id: doc.client_id, document_id: documentId,
       operation: 'extraction', model_used: geminiConfig?.model || 'database-configured',
       input_tokens: inputTokens, output_tokens: outputTokens,
       cost_usd: ((inputTokens * 0.000075 + outputTokens * 0.0003) / 1000),
-      duration_ms: duration, success: aiSuccess
+      duration_ms: duration, success: aiSuccess, usage_source: 'provider_response'
     }]);
+    if (usageError) console.warn('[Extraction] AI usage logging was skipped:', usageError.message);
+    await finishExtractionRun(extractionRunId, {
+      status: 'succeeded',
+      inputTokens,
+      outputTokens,
+      costUsd: ((inputTokens * 0.000075 + outputTokens * 0.0003) / 1000),
+      durationMs: duration,
+      providerRequestId: geminiRes.headers.get('x-request-id'),
+    });
 
     // Step 6: Increment AI call counter for this client
     try {
@@ -235,15 +267,22 @@ router.post('/process', async (req, res) => {
     });
 
   } catch (err) {
-    if (documentId && supabase) {
+    if (ownedDocument && supabase) {
       try {
         await supabase.from('documents_metadata')
           .update({ extraction_status: 'extraction_failed', updated_at: new Date().toISOString() })
-          .eq('id', documentId);
+          .eq('id', ownedDocument.id)
+          .eq('client_id', ownedDocument.client_id);
       } catch (statusError) {
         console.warn('[Extraction] Could not record failed extraction status:', statusError.message);
       }
     }
+    await finishExtractionRun(extractionRunId, {
+      status: 'failed',
+      durationMs: Date.now() - startTime,
+      errorCode: err.status ? String(err.status) : 'EXTRACTION_FAILED',
+      errorMessage: err.message,
+    });
     console.error('[Extraction] Error:', err.message);
     res.status(Number.isInteger(err.status) ? err.status : 500).json({ success: false, message: err.message });
   }
@@ -262,6 +301,7 @@ router.post('/save', async (req, res) => {
   if (!extractedData || typeof extractedData !== 'object' || Array.isArray(extractedData)) {
     return res.status(400).json({ success: false, message: 'Extraction results must be a JSON object.' });
   }
+  let extractionRunId = null;
   try {
     validateExtractionData(extractedData, category);
   } catch (error) {
@@ -290,7 +330,7 @@ router.post('/save', async (req, res) => {
 
     const { data: document, error: documentError } = await supabase
       .from('documents_metadata')
-      .select('id, client_id, client_name, file_name, source, created_at')
+      .select('id, client_id, client_name, file_name, source, category, current_extraction_version, created_at')
       .eq('id', documentId.trim())
       .in('client_id', ownedClientIds)
       .maybeSingle();
@@ -301,17 +341,31 @@ router.post('/save', async (req, res) => {
 
     const { data: documentWithOwnership, error: ownershipError } = await supabase
       .from('documents_metadata')
-      .select('id, client_id, client_name, file_name, source, created_at, assessment_year')
+      .select('id, client_id, client_name, file_name, source, category, current_extraction_version, created_at, assessment_year')
       .eq('id', document.id)
       .eq('client_id', document.client_id)
       .single();
     if (ownershipError) throw ownershipError;
-    const versionResult = document.category === 'GST' ? null : await saveExtractionVersion({
+    localRunDocument = documentWithOwnership;
+    const model = typeof req.body.model === 'string' ? req.body.model.slice(0, 200) : 'OpenRouter';
+    const inputTokens = Number.isSafeInteger(req.body.inputTokens) && req.body.inputTokens >= 0 ? req.body.inputTokens : 0;
+    const outputTokens = Number.isSafeInteger(req.body.outputTokens) && req.body.outputTokens >= 0 ? req.body.outputTokens : 0;
+    const durationMs = Number.isSafeInteger(req.body.durationMs) && req.body.durationMs >= 0 ? req.body.durationMs : 0;
+    extractionRunId = await startExtractionRun({
+      userId: req.user.id,
+      document: documentWithOwnership,
+      provider: 'openrouter_local',
+      model,
+      schemaVersion: `${category.toLowerCase()}-v1`,
+      usageSource: 'client_reported',
+    });
+    const versionResult = await saveExtractionVersion({
       userId: req.user.id,
       document: documentWithOwnership,
       data: extractedData,
       category,
       providerScore: req.body.providerScore,
+      extractionRunId,
     });
     const { data: updatedDocument, error: updateError } = await supabase
       .from('documents_metadata')
@@ -326,11 +380,6 @@ router.post('/save', async (req, res) => {
       .single();
     if (updateError) throw updateError;
 
-    const model = typeof req.body.model === 'string' ? req.body.model.slice(0, 200) : 'OpenRouter';
-    const inputTokens = Number.isSafeInteger(req.body.inputTokens) && req.body.inputTokens >= 0 ? req.body.inputTokens : 0;
-    const outputTokens = Number.isSafeInteger(req.body.outputTokens) && req.body.outputTokens >= 0 ? req.body.outputTokens : 0;
-    const durationMs = Number.isSafeInteger(req.body.durationMs) && req.body.durationMs >= 0 ? req.body.durationMs : 0;
-
     try {
       const { error: usageError } = await supabase.from('ai_usage_log').insert([{
         client_id: document.client_id,
@@ -342,11 +391,18 @@ router.post('/save', async (req, res) => {
         cost_usd: 0,
         duration_ms: durationMs,
         success: true,
+        usage_source: 'client_reported',
       }]);
       if (usageError) throw usageError;
     } catch (usageError) {
       console.warn('[Extraction] Could not record local-key AI usage:', usageError.message);
     }
+    await finishExtractionRun(extractionRunId, {
+      status: 'succeeded',
+      inputTokens,
+      outputTokens,
+      durationMs,
+    });
 
     try {
       await supabase.rpc('increment_client_ai_calls', { cid: document.client_id });
@@ -365,6 +421,11 @@ router.post('/save', async (req, res) => {
       },
     });
   } catch (error) {
+    await finishExtractionRun(extractionRunId, {
+      status: 'failed',
+      errorCode: 'LOCAL_EXTRACTION_SAVE_FAILED',
+      errorMessage: error.message,
+    });
     console.error('[Extraction] Could not save local-key results:', error.message);
     return res.status(500).json({ success: false, message: 'Could not save extraction results. Try again.' });
   }
@@ -488,6 +549,108 @@ router.post('/review', async (req, res) => {
       code: 'INVOICE_REVIEW_PENDING',
       message: 'The invoice is not marked approved yet. Keep this review open and retry the save.'
     });
+  }
+});
+
+async function getOwnedExtractionDocument(userId, documentId) {
+  const ownedClientIds = await getOwnedClientIds(userId);
+  const { data, error } = await supabase
+    .from('documents_metadata')
+    .select('id, client_id, category, extraction_status, current_extraction_version, approved_extraction_version')
+    .eq('id', documentId)
+    .is('deletion_requested_at', null)
+    .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000'])
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * GET /api/v1/extraction/versions/:documentId
+ * Read immutable extraction history, distinct from physical file versions.
+ */
+router.get('/versions/:documentId', async (req, res) => {
+  try {
+    if (!isConnected || !supabase) return res.status(503).json({ success: false, message: 'Extraction history requires the cloud database.' });
+    const document = await getOwnedExtractionDocument(req.user.id, req.params.documentId);
+    if (!document) return res.status(404).json({ success: false, message: 'Document not found.' });
+    const { data, error } = await supabase
+      .from('extraction_versions')
+      .select('*')
+      .eq('document_id', document.id)
+      .order('version_number', { ascending: true });
+    if (error) throw error;
+    return res.json({ success: true, source: 'supabase', data: { document, versions: data || [] } });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Extraction history could not be loaded.' });
+  }
+});
+
+/**
+ * GET /api/v1/extraction/versions/:documentId/compare?from=1&to=2
+ */
+router.get('/versions/:documentId/compare', async (req, res) => {
+  const from = Number(req.query.from);
+  const to = Number(req.query.to);
+  if (!Number.isInteger(from) || from < 1 || !Number.isInteger(to) || to < 1 || from === to) {
+    return res.status(400).json({ success: false, message: 'Choose two different positive extraction version numbers.' });
+  }
+  try {
+    if (!isConnected || !supabase) return res.status(503).json({ success: false, message: 'Extraction comparison requires the cloud database.' });
+    const document = await getOwnedExtractionDocument(req.user.id, req.params.documentId);
+    if (!document) return res.status(404).json({ success: false, message: 'Document not found.' });
+    const { data, error } = await supabase.from('extraction_versions')
+      .select('version_number, version_kind, data, created_by, created_at')
+      .eq('document_id', document.id)
+      .in('version_number', [from, to]);
+    if (error) throw error;
+    const before = (data || []).find(version => version.version_number === from);
+    const after = (data || []).find(version => version.version_number === to);
+    if (!before || !after) return res.status(404).json({ success: false, message: 'One or both extraction versions were not found.' });
+    return res.json({ success: true, source: 'supabase', data: {
+      document,
+      from: before,
+      to: after,
+      comparison: compareExtractionVersions(before.data, after.data),
+    } });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Extraction versions could not be compared.' });
+  }
+});
+
+/**
+ * POST /api/v1/extraction/versions/:documentId/restore
+ * Restore creates a new immutable version; it never overwrites history.
+ */
+router.post('/versions/:documentId/restore', async (req, res) => {
+  const sourceVersion = Number(req.body?.versionNumber);
+  const expectedCurrentVersion = Number(req.body?.expectedCurrentVersion);
+  if (!Number.isInteger(sourceVersion) || sourceVersion < 1) {
+    return res.status(400).json({ success: false, message: 'A positive source extraction version is required.' });
+  }
+  if (!Number.isInteger(expectedCurrentVersion) || expectedCurrentVersion < 1) {
+    return res.status(400).json({ success: false, message: 'The current extraction version is required for safe restore.' });
+  }
+  try {
+    if (!isConnected || !supabase) return res.status(503).json({ success: false, message: 'Extraction restore requires the cloud database.' });
+    const document = await getOwnedExtractionDocument(req.user.id, req.params.documentId);
+    if (!document) return res.status(404).json({ success: false, message: 'Document not found.' });
+    const { data, error } = await supabase.rpc('restore_extraction_version', {
+      p_user_id: req.user.id,
+      p_document_id: document.id,
+      p_source_version: sourceVersion,
+      p_expected_current_version: expectedCurrentVersion,
+      p_note: typeof req.body.note === 'string' ? req.body.note.slice(0, 2000) : null,
+    });
+    if (error) {
+      if (error.code === 'P0002') return res.status(404).json({ success: false, message: error.message });
+      if (error.code === '40001') return res.status(409).json({ success: false, message: error.message });
+      if (error.code === '22023') return res.status(409).json({ success: false, message: error.message });
+      throw error;
+    }
+    return res.json({ success: true, source: 'supabase', message: 'A new restored extraction version was created and the document requires review again.', data });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'The extraction version could not be restored.' });
   }
 });
 

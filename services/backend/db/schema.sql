@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS ai_usage_log (
   duration_ms     INT,
   success         BOOLEAN DEFAULT TRUE,
   error_message   TEXT,
+  usage_source    TEXT NOT NULL DEFAULT 'unknown',
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 

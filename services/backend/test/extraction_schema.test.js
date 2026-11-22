@@ -55,3 +55,8 @@ test('GST prompt describes the nested line-item object instead of an empty array
   assert.match(prompt, /"unit_price": null/);
   assert.match(prompt, /line_items/);
 });
+
+test('unsupported categories fail explicitly instead of falling back to General', () => {
+  assert.throws(() => getExtractionPrompt('TDS'), /not supported yet/i);
+  assert.throws(() => validateExtractionData({}, 'Audit'), /not supported yet/i);
+});

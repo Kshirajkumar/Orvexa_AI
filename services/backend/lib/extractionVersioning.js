@@ -1,6 +1,23 @@
 const crypto = require('node:crypto');
+const contracts = require('../../../packages/extraction-contracts/contracts.json');
 
 const FIELD_ALIASES = {
+  GST: {
+    'invoice no': 'invoice_number',
+    'bill no': 'invoice_number',
+    'invoice date': 'invoice_date',
+    'bill date': 'invoice_date',
+    'supplier name': 'vendor_name',
+    'seller name': 'vendor_name',
+    'supplier gstin': 'vendor_gstin',
+    'seller gstin': 'vendor_gstin',
+    'customer gstin': 'buyer_gstin',
+    'buyer gstin': 'buyer_gstin',
+    'total taxable value': 'taxable_value',
+    'total tax': 'total_gst',
+    'invoice total': 'grand_total',
+    'total invoice value': 'grand_total',
+  },
   Form16: {
     'gross salary': 'salary.gross_salary',
     'gross pay': 'salary.gross_salary',
@@ -37,6 +54,11 @@ const FIELD_ALIASES = {
   },
 };
 
+const KNOWN_FIELDS = Object.fromEntries(Object.entries(contracts.categories).map(([category, schema]) => [
+  category,
+  new Set(Object.keys(schema.properties || {})),
+]));
+
 function normalizeLabel(label) {
   return String(label || '')
     .normalize('NFKC')
@@ -67,17 +89,17 @@ function canonicalizeFields(data, category) {
       normalization_rule: canonicalPath === rawKey ? null : `${category}.aliases.v1`,
     };
 
-    if (canonicalPath === rawKey || canonicalPath.includes('.')) {
+    if (aliases[normalized] || canonicalPath.includes('.') || KNOWN_FIELDS[category]?.has(rawKey)) {
       if (fields[canonicalPath]) {
         extraFields[rawKey] = value;
         normalizationEvents.push({ raw_label: rawKey, canonical_path: null, status: 'ambiguous' });
       } else {
         fields[canonicalPath] = entry;
-        normalizationEvents.push({ raw_label: rawKey, canonical_path: canonicalPath, status: 'mapped' });
+        normalizationEvents.push({ raw_label: rawKey, canonical_path: canonicalPath, status: aliases[normalized] ? 'mapped' : 'canonical' });
       }
     } else {
       extraFields[rawKey] = value;
-      normalizationEvents.push({ raw_label: rawKey, canonical_path: null, status: 'extra' });
+      normalizationEvents.push({ raw_label: rawKey, canonical_path: null, status: 'unmapped' });
     }
   }
 
@@ -113,6 +135,7 @@ function buildExtractionEnvelope({ data, category, documentId, assessmentYear, v
     schema_version: `${String(category || 'General').toLowerCase()}-v1`,
     version_number: versionNumber,
     version_kind: versionKind,
+    source_data: data,
     fields: canonical.fields,
     extra_fields: canonical.extra_fields,
     warnings: [],
@@ -136,11 +159,28 @@ function diffFields(before, after) {
   return [...paths].filter(path => JSON.stringify(before?.[path]) !== JSON.stringify(after?.[path]));
 }
 
+function compareExtractionVersions(before, after) {
+  const beforeFields = before?.fields || {};
+  const afterFields = after?.fields || {};
+  const paths = new Set([...Object.keys(beforeFields), ...Object.keys(afterFields)]);
+  const changes = [...paths]
+    .filter(path => JSON.stringify(beforeFields[path]?.normalized_value) !== JSON.stringify(afterFields[path]?.normalized_value)
+      || beforeFields[path]?.status !== afterFields[path]?.status)
+    .sort()
+    .map(path => ({
+      path,
+      before: beforeFields[path] || null,
+      after: afterFields[path] || null,
+    }));
+  return { changedFieldPaths: changes.map(change => change.path), changes };
+}
+
 module.exports = {
   buildExtractionEnvelope,
   calculateExtractionScore,
   canonicalizeFields,
   contentHash,
   diffFields,
+  compareExtractionVersions,
   normalizeLabel,
 };
