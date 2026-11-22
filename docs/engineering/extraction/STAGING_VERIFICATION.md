@@ -19,6 +19,7 @@
 
 - Supabase reports RLS enabled without policies on `extraction_versions` and `extraction_events`. This is consistent with the current service-role-only backend access model, but must be confirmed after the migration and before any direct client access is introduced.
 - Supabase reports a mutable search path on the existing `update_updated_at_column` function.
+- Supabase performance advisors flag the extraction foreign-key columns as unindexed in the live project. The repository migrations now add covering indexes for extraction version/event ownership and document lookups; verify them after staging application.
 - Supabase reports six existing `SECURITY DEFINER` functions executable by `anon` and `authenticated`, plus leaked-password protection disabled. These are broader existing project findings and are not silently changed by this extraction tranche.
 
 ## Required next step

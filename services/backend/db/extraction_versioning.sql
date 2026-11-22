@@ -33,6 +33,14 @@ CREATE TABLE IF NOT EXISTS public.extraction_versions (
 
 CREATE INDEX IF NOT EXISTS extraction_versions_document_idx
   ON public.extraction_versions (document_id, version_number DESC);
+CREATE INDEX IF NOT EXISTS extraction_versions_client_idx
+  ON public.extraction_versions (client_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS extraction_versions_created_by_idx
+  ON public.extraction_versions (created_by, created_at DESC);
+CREATE INDEX IF NOT EXISTS extraction_events_document_idx
+  ON public.extraction_events (document_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS extraction_events_client_idx
+  ON public.extraction_events (client_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS public.extraction_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

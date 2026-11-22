@@ -29,6 +29,14 @@ CREATE INDEX IF NOT EXISTS extraction_runs_document_idx
   ON public.extraction_runs (document_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS extraction_runs_user_idx
   ON public.extraction_runs (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS extraction_versions_client_idx
+  ON public.extraction_versions (client_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS extraction_versions_created_by_idx
+  ON public.extraction_versions (created_by, created_at DESC);
+CREATE INDEX IF NOT EXISTS extraction_events_document_idx
+  ON public.extraction_events (document_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS extraction_events_client_idx
+  ON public.extraction_events (client_id, created_at DESC);
 
 ALTER TABLE public.extraction_runs ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.extraction_runs FROM anon, authenticated;
