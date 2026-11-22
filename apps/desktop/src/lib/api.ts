@@ -10,12 +10,10 @@ import {
 } from './openRouter';
 import { hasOpenRouterApiKey } from './secureCredentials';
 
-const API_ORIGIN = String(
-  import.meta.env.VITE_API_URL
-    || (import.meta.env.DEV
-      ? 'http://127.0.0.1:5000'
-      : import.meta.env.API_URL || 'https://taxflow-ai.onrender.com')
-).replace(/\/$/, '');
+// The desktop app always uses the deployed backend. Keep this fixed so local
+// Vite/Tauri environment variables cannot silently redirect production app
+// traffic to a different or unavailable backend.
+const API_ORIGIN = 'https://orvexa-ai-8vbc.onrender.com';
 const API_BASE_URL = `${API_ORIGIN}/api/v1`;
 
 // ─── Types ─────────────────────────────────────────────────────
@@ -187,7 +185,7 @@ async function authRequest<T extends { success: boolean; message?: string }>(
     res = await fetch(url, options);
   } catch {
     throw new Error(
-      'The TaxFlow.AI backend could not be reached. Check your connection and try again.',
+      'The Orvexa AI backend could not be reached. Check your connection and try again.',
     );
   }
 
@@ -200,7 +198,7 @@ async function authRequest<T extends { success: boolean; message?: string }>(
           headers: { ...(options.headers as Record<string, string> || {}), ...authHeaders() },
         });
       } catch {
-        throw new Error('The TaxFlow.AI backend could not be reached. Check your connection and try again.');
+        throw new Error('The Orvexa AI backend could not be reached. Check your connection and try again.');
       }
     } else {
       window.dispatchEvent(new CustomEvent('taxflow:session-expired'));
@@ -273,7 +271,7 @@ async function metadataRequest<T>(url: string, signal?: AbortSignal): Promise<T>
   try {
     response = await fetch(url, { headers, signal });
   } catch {
-    throw new Error('The backend is unavailable. Please check that TaxFlow.AI is running and try again.');
+    throw new Error('The backend is unavailable. Please check that Orvexa AI is running and try again.');
   }
 
   let payload: { success?: boolean; message?: string; data?: T };
@@ -415,7 +413,7 @@ export async function apiConfirmAccountDeletion(challenge: string, confirmation:
       body: JSON.stringify({ challenge, confirmation })
     });
   } catch {
-    throw new Error('The TaxFlow.AI backend could not be reached. Check your connection and try again.');
+    throw new Error('The Orvexa AI backend could not be reached. Check your connection and try again.');
   }
   let data: { success: boolean; message?: string };
   try {
@@ -653,7 +651,7 @@ export async function deleteClient(clientId: string): Promise<{ id: string; name
       headers: authHeaders(),
     });
   } catch {
-    throw new Error('The TaxFlow.AI backend is unavailable. Nothing was deleted.');
+    throw new Error('The Orvexa AI backend is unavailable. Nothing was deleted.');
   }
   let json: any;
   try { json = await res.json(); } catch { throw new Error(`The backend returned an invalid response (HTTP ${res.status}).`); }
@@ -1039,7 +1037,7 @@ export async function fetchDocumentPreview(documentId: string, signal?: AbortSig
   return res.blob();
 }
 
-export async function verifyDocumentExtraction(documentId: string, verifiedBy = 'CA Admin', correctedData?: Record<string, unknown>, note = 'Reviewed in TaxFlow.AI') {
+export async function verifyDocumentExtraction(documentId: string, verifiedBy = 'CA Admin', correctedData?: Record<string, unknown>, note = 'Reviewed in Orvexa AI') {
   try {
     const res = await fetch(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/verify`, {
       method: 'POST',
