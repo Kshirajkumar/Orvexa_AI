@@ -126,8 +126,8 @@ export function ProfilePage() {
       <section className="card profile-hero" data-tour="profile-details">
         <div className="profile-hero-glow" />
         <div className="profile-avatar-xl">{initials}<span /></div>
-        <div className="profile-hero-copy"><span className="eyebrow">PERSONAL PROFILE</span><h2>{user.name || 'Your profile'}</h2><p>{accountLabel} · Member since your TaxFlow account was created</p><div className="profile-hero-tags"><span><Icon name="check" size={12} />Verified workspace</span><span><Icon name="folder" size={12} />Private cloud documents</span></div></div>
-        <div className="profile-hero-mark"><Icon name="users" size={20} /><span>TaxFlow<br />workspace</span></div>
+        <div className="profile-hero-copy"><span className="eyebrow">PERSONAL PROFILE</span><h2>{user.name || 'Your profile'}</h2><p>{accountLabel} · Member since your Orvexa account was created</p><div className="profile-hero-tags"><span><Icon name="check" size={12} />Verified workspace</span><span><Icon name="folder" size={12} />Private cloud documents</span></div></div>
+        <div className="profile-hero-mark"><Icon name="users" size={20} /><span>Orvexa<br />workspace</span></div>
       </section>
 
       <div className="profile-layout">
@@ -148,11 +148,11 @@ export function ProfilePage() {
 
         <aside className="profile-side-column">
           <section className="card profile-status-card"><div className="card-h"><h2>Account status</h2><span className="profile-status-dot" /></div><div className="card-b"><div className="profile-status-row"><span>Workspace</span><b>Ready</b></div><div className="profile-status-row"><span>Onboarding</span><b>{user.onboardingComplete ? 'Complete' : 'In progress'}</b></div><div className="profile-status-row"><span>Document storage</span><b>Private cloud</b></div></div></section>
-          <section className="card profile-about-card"><div className="card-h"><h2>About TaxFlow</h2><Icon name="spark" size={15} /></div><div className="card-b"><p>TaxFlow keeps client records, documents, extraction review, deadlines, and practice workflows connected in one focused workspace.</p><div className="profile-about-line"><Icon name="check" size={14} /><span>Your profile belongs only to your signed-in account.</span></div></div></section>
+          <section className="card profile-about-card"><div className="card-h"><h2>About Orvexa</h2><Icon name="spark" size={15} /></div><div className="card-b"><p>Orvexa keeps client records, documents, extraction review, deadlines, and practice workflows connected in one focused workspace.</p><div className="profile-about-line"><Icon name="check" size={14} /><span>Your profile belongs only to your signed-in account.</span></div></div></section>
           <section className="card profile-legal-card">
             <div className="card-h"><div><span className="eyebrow">LEGAL &amp; TRUST</span><h2>Policies</h2></div><Icon name="shield" size={15} /></div>
             <div className="card-b profile-legal-links">
-              <p>Review how TaxFlow handles workspace data, client documents, privacy, and responsible use.</p>
+              <p>Review how Orvexa handles workspace data, client documents, privacy, and responsible use.</p>
               <a href="https://orvvexa.vercel.app/terms" target="_blank" rel="noreferrer"><span>Terms and Conditions</span><Icon name="arrow" size={14} /></a>
               <a href="https://orvvexa.vercel.app/privacy" target="_blank" rel="noreferrer"><span>Privacy Policy</span><Icon name="arrow" size={14} /></a>
             </div>
@@ -160,12 +160,12 @@ export function ProfilePage() {
         </aside>
       </div>
 
-      <section className="profile-detail-strip"><div><span className="profile-detail-icon"><Icon name="users" size={16} /></span><div><b>Your account identity</b><small>This is the person responsible for the TaxFlow workspace.</small></div></div><div><span className="profile-detail-icon"><Icon name="folder" size={16} /></span><div><b>Your private workspace</b><small>Client documents are stored in private cloud storage.</small></div></div><div><span className="profile-detail-icon"><Icon name="check" size={16} /></span><div><b>Safe profile updates</b><small>Only supported account details can be changed here.</small></div></div></section>
+      <section className="profile-detail-strip"><div><span className="profile-detail-icon"><Icon name="users" size={16} /></span><div><b>Your account identity</b><small>This is the person responsible for the Orvexa workspace.</small></div></div><div><span className="profile-detail-icon"><Icon name="folder" size={16} /></span><div><b>Your private workspace</b><small>Client documents are stored in private cloud storage.</small></div></div><div><span className="profile-detail-icon"><Icon name="check" size={16} /></span><div><b>Safe profile updates</b><small>Only supported account details can be changed here.</small></div></div></section>
 
       <section className="card account-danger-zone">
         <div className="card-h"><div><span className="eyebrow">PERMANENT ACTION</span><h2>Delete account</h2></div><span className="account-danger-icon"><Icon name="trash" size={16} /></span></div>
         <div className="card-b">
-          <p>Permanently remove your TaxFlow sign-in, profile, owned database records, and private cloud files. This cannot be undone.</p>
+          <p>Permanently remove your Orvexa sign-in, profile, owned database records, and private cloud files. This cannot be undone.</p>
           <div className="account-danger-retention"><Icon name="info" size={14} /><span>Your private cloud documents are permanently deleted with your account. Download any files you need before confirming.</span></div>
           <button className="btn danger" onClick={() => { setDeleteAccountOpen(true); setDeleteAccountError(''); }}>
             <Icon name="trash" size={14} />Delete account
@@ -187,7 +187,7 @@ export function ProfilePage() {
               <div className="account-delete-step"><span className={deleteAccountStep === 'password' ? 'active' : 'complete'}>1</span><i /><span className={deleteAccountStep === 'confirm' ? 'active' : ''}>2</span></div>
               {deleteAccountStep === 'password' ? (
                 <form onSubmit={event => void verifyDeleteAccountPassword(event)}>
-                  <p>First, verify your identity with your current account password. Your password is sent only to the TaxFlow backend for Supabase reauthentication.</p>
+                  <p>First, verify your identity with your current account password. Your password is sent only to the Orvexa backend for Supabase reauthentication.</p>
                   <label className="f">Current password<input className="modal-input" type="password" autoComplete="current-password" value={deleteAccountPassword} onChange={event => { setDeleteAccountPassword(event.target.value); if (deleteAccountError) setDeleteAccountError(""); }} autoFocus disabled={deleteAccountBusy} /></label>
                   {deleteAccountError && <div className="ob-error account-delete-error" role="alert"><Icon name="x" size={14} />{deleteAccountError}</div>}
                   <div className="account-delete-actions"><button type="button" className="btn gh" onClick={closeDeleteAccount} disabled={deleteAccountBusy}>Cancel</button><button type="submit" className="btn danger" disabled={deleteAccountBusy || !deleteAccountPassword}>{deleteAccountBusy ? <><i className="spin" />Verifying…</> : 'Verify password'}</button></div>
@@ -196,7 +196,7 @@ export function ProfilePage() {
                 <form onSubmit={event => void confirmDeleteAccount(event)}>
                   <div className="account-delete-warning">
                     <b>This permanently deletes:</b>
-                    <ul><li>Your TaxFlow account and profile</li><li>Your owned clients, documents, messages, tasks, notifications, and integration records</li><li>Private cloud files associated with your account</li></ul>
+                    <ul><li>Your Orvexa account and profile</li><li>Your owned clients, documents, messages, tasks, notifications, and integration records</li><li>Private cloud files associated with your account</li></ul>
                     <b>Your cloud documents will be permanently deleted.</b>
                   </div>
                   <label className="f">Type <code>DELETE MY ACCOUNT</code> to confirm<input className="modal-input account-delete-phrase" value={deleteAccountPhrase} onChange={event => { setDeleteAccountPhrase(event.target.value); if (deleteAccountError) setDeleteAccountError(""); }} autoComplete="off" autoFocus disabled={deleteAccountBusy} /></label>

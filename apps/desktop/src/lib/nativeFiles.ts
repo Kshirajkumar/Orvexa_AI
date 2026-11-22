@@ -10,7 +10,7 @@ export async function openWithDefaultApp(file: Blob, fileName: string): Promise<
   if (!isTauri()) return false;
   if (!file.size) throw new Error('This file is empty and cannot be opened.');
   if (file.size > MAX_NATIVE_OPEN_BYTES) {
-    throw new Error('Files larger than 100 MB cannot be opened through TaxFlow. Download the file and open it manually.');
+    throw new Error('Files larger than 100 MB cannot be opened through Orvexa. Download the file and open it manually.');
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());

@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "taxflow-ai",
+  "productName": "orvexa-ai",
   "version": "0.1.0",
   "identifier": "com.taxflow.ai",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Taxflow.AI",
+        "title": "Orvexa AI",
         "width": 1280,
         "height": 820,
         "minWidth": 980,

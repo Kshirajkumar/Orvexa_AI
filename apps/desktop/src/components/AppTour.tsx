@@ -17,7 +17,7 @@ const TOUR_STEPS: TourStep[] = [
   { page: 'dashboard', target: 'dashboard-metrics', title: 'Spot what needs attention', body: 'These figures summarize your current workload, extraction queue, upcoming deadlines, and scheduled reminders.' },
   { page: 'dashboard', target: 'dashboard-workload', title: 'Keep filings moving', body: 'Open a deadline or select a filing to see progress and the work still to be done.' },
   { page: 'dashboard', target: 'dashboard-documents', title: 'Follow documents and client activity', body: 'See what is waiting, under review, extracted, or approved. Below, check upcoming reminders, missing documents, and recent automation activity.' },
-  { page: 'dashboard', target: 'ai-assistant', title: 'Ask the TaxFlow Assistant', body: 'Ask about clients, missing documents, deadlines, or fees. Quick actions below the conversation help you get started.' },
+  { page: 'dashboard', target: 'ai-assistant', title: 'Ask the Orvexa Assistant', body: 'Ask about clients, missing documents, deadlines, or fees. Quick actions below the conversation help you get started.' },
   { page: 'extract', target: 'nav-extract', title: 'Next: document extraction', body: 'Click Invoice Extraction in the sidebar. You can also choose Next to open it for you.', navigation: true },
   { page: 'extract', target: 'extract-intro', title: 'Turn documents into usable data', body: 'Choose a client and document type, then upload an invoice or statement. The original stays in private Supabase Storage.' },
   { page: 'extract', target: 'extract-document-type', title: 'Choose what you are processing', body: 'Select the document type so extraction can look for the right fields.' },
@@ -52,9 +52,9 @@ const TOUR_STEPS: TourStep[] = [
   { page: 'profile', target: 'profile-intro', title: 'Manage your account', body: 'Update your name and practice information here, and check your account and cloud document storage.' },
   { page: 'profile', target: 'profile-details', title: 'Keep your practice details current', body: 'Your profile identifies the account owner and shows the workspace and cloud-storage status.' },
   { page: 'settings', target: 'nav-settings', title: 'Next: settings', body: 'Click Settings for your AI connection, automation preferences, and the option to replay this guide.', navigation: true },
-  { page: 'settings', target: 'settings-intro', title: 'Make TaxFlow work your way', body: 'Settings bring your AI connection, secure provider options, automation preferences, and this replayable guide together.' },
-  { page: 'settings', target: 'automation-settings', title: 'Set your automation preferences', body: 'Choose whether TaxFlow extracts new bills, reminds clients, asks before sending, and blocks duplicate invoices.' },
-  { page: 'settings', target: 'settings-replay', title: 'Replay this guide any time', body: 'Come back to this button whenever you want another page-by-page tour of TaxFlow.' },
+  { page: 'settings', target: 'settings-intro', title: 'Make Orvexa work your way', body: 'Settings bring your AI connection, secure provider options, automation preferences, and this replayable guide together.' },
+  { page: 'settings', target: 'automation-settings', title: 'Set your automation preferences', body: 'Choose whether Orvexa extracts new bills, reminds clients, asks before sending, and blocks duplicate invoices.' },
+  { page: 'settings', target: 'settings-replay', title: 'Replay this guide any time', body: 'Come back to this button whenever you want another page-by-page tour of Orvexa.' },
 ];
 
 const TOUR_FALLBACKS: Record<string, string> = {
@@ -262,7 +262,7 @@ export function AppTour({ onFinish }: { onFinish: () => void }) {
         <section className="tour-welcome tour-complete" role="dialog" aria-modal="true" aria-labelledby="tour-complete-title" onKeyDown={trapDialogFocus}>
           <span className="tour-welcome-mark tour-finished-mark" aria-hidden="true"><Icon name="check" size={20} /></span>
           <p className="tour-eyebrow">YOU’RE READY TO GO</p>
-          <h2 id="tour-complete-title">That’s your TaxFlow workspace</h2>
+          <h2 id="tour-complete-title">That’s your Orvexa workspace</h2>
           <p className="tour-welcome-copy">You can replay this page-by-page guide anytime from Settings.</p>
           <div className="tour-welcome-actions"><button type="button" className="btn pri" ref={finishRef} onClick={onFinish}>Go to work</button></div>
         </section>

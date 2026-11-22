@@ -8,7 +8,7 @@ const FALLBACK_ENABLED_SETTING = 'taxflow_openrouter_fallback_enabled';
 const FALLBACK_ATTEMPTS_SETTING = 'taxflow_openrouter_fallback_attempts';
 const REQUEST_TIMEOUT_MS = 60_000;
 const FALLBACK_ATTEMPT_OPTIONS = [2, 3, 5] as const;
-const TAXFLOW_SYSTEM_PROMPT = `You are TaxFlow.AI, an AI assistant in a professional tax and accounting practice-management app.
+const TAXFLOW_SYSTEM_PROMPT = `You are Orvexa AI, an AI assistant in a professional tax and accounting practice-management app.
 
 Be accurate, clear, professional, and concise. Adapt to the user's jurisdiction and request; do not assume Indian law unless the context indicates India. For tax, accounting, legal, or compliance matters, provide informational assistance and drafts for review, not a substitute for a qualified professional. Never claim to be a human, a licensed professional, a government representative, or to have filed forms, contacted authorities, checked live portals, or verified current law unless the available tools and supplied context actually establish that.
 
@@ -190,7 +190,7 @@ async function requestOpenRouterModel(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'X-Title': 'TaxFlow.AI',
+        'X-Title': 'Orvexa AI',
       },
       signal: controller.signal,
       body: JSON.stringify({

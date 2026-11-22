@@ -1,5 +1,5 @@
 /**
- * TaxFlow.AI — Onboarding Flow
+ * Orvexa AI — Onboarding Flow
  *
  * A premium onboarding shown to every new user
  * after their first login, until onboardingComplete = true.
@@ -98,7 +98,7 @@ export function OnboardingFlow() {
         {/* ── STEP 1: Profile & Clients ── */}
           <div className="ob-body">
             <h1 className="ob-title">Set Up Your Practice</h1>
-            <p className="ob-subtitle">Let's configure your personal CA workspace and add your first clients so TaxFlow.AI is ready to go from day one.</p>
+            <p className="ob-subtitle">Let's configure your personal CA workspace and add your first clients so Orvexa AI is ready to go from day one.</p>
 
             <div className="ob-section-label">Your Practice Details</div>
             <div className="ob-form-grid">

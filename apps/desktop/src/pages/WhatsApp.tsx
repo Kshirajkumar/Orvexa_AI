@@ -114,7 +114,7 @@ function TelegramMigrationHelp({ copied, copyError, onCopy }: { copied: boolean;
   return (
     <details className="telegram-migration-help">
       <summary>How to fix the database setup</summary>
-      <p>From the TaxFlow project folder, run this in PowerShell. Ensure <code>DATABASE_URL</code> is set in <code>services/backend/.env</code> for the same Supabase project used by the deployed backend.</p>
+      <p>From the Orvexa project folder, run this in PowerShell. Ensure <code>DATABASE_URL</code> is set in <code>services/backend/.env</code> for the same Supabase project used by the deployed backend.</p>
       <code className="telegram-migration-command">{TELEGRAM_MIGRATION_COMMAND}</code>
       <button className="btn sm" onClick={onCopy}>{copied ? 'Command copied' : 'Copy PowerShell command'}</button>
       {copyError && <span role="status">{copyError}</span>}
@@ -980,7 +980,7 @@ export function WhatsAppPage() {
       if (reminderTemplate?.template_key === 'portal_invite' && reminderTemplate.body.includes('{portalLink}')) {
         const invitation = await inviteClientToPortal(reminderClient.id);
         if (!invitation?.link) throw new Error('The client portal link could not be resolved. Please check the client portal access before sending this reminder.');
-        message = message.replace(/https:\/\/taxflowaiwebsite\.vercel\.app\/portal/g, invitation.link);
+        message = message.replace(/https:\/\/orvvexa\.vercel\.app\/portal/g, invitation.link);
       }
       await sendWhatsAppManualMessage(reminderClient.id, reminderClient.phone, message);
       dispatch({ type: 'REM_SEND_NOW', id: reminder.id });
@@ -2001,7 +2001,7 @@ export function WhatsAppPage() {
                     <span className="wa-tpl-instruction-title">Dynamic Client Message Placeholders</span>
                   </div>
                   <p className="wa-tpl-instruction-text">
-                    When sending messages or reminders, TaxFlow automatically replaces these <strong>&#123;tags&#125;</strong> with the selected client's actual data. <strong>Click any placeholder below to insert it at your cursor:</strong>
+                    When sending messages or reminders, Orvexa automatically replaces these <strong>&#123;tags&#125;</strong> with the selected client's actual data. <strong>Click any placeholder below to insert it at your cursor:</strong>
                   </p>
                   <div className="wa-tpl-tokens-grid">
                     {([
@@ -2113,7 +2113,7 @@ export function WhatsAppPage() {
                 <span className="wa-tpl-section-desc">
                   {dbDefaultTemplates.length > 0
                     ? 'Loaded from database · Shared with all users in your practice'
-                    : 'Built into TaxFlow · Select a country to change the message set'}
+                    : 'Built into Orvexa · Select a country to change the message set'}
                 </span>
               </div>
               {dbDefaultTemplates.length === 0 && (
@@ -2423,7 +2423,7 @@ function ScheduleModal({
             </div>
           </div>
           <textarea id="schedule-message-body" className="inp" rows={4} maxLength={4096} value={messageBody} onChange={(event) => setMessageBody(event.target.value)} />
-          <small>Use {'{name}'} for the client name and {'{portalLink}'} for the secure client portal. At send time, TaxFlow automatically resolves the client’s real data and portal link.</small>
+          <small>Use {'{name}'} for the client name and {'{portalLink}'} for the secure client portal. At send time, Orvexa automatically resolves the client’s real data and portal link.</small>
         </div>
         {error && <div className="ob-error" role="alert">{error}</div>}
         <div className="row wa-schedule-actions">

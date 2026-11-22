@@ -94,7 +94,7 @@ export function Chat() {
     <aside className="chat" data-tour="ai-assistant" aria-label="AI Assistant">
       <div className="ch-h">
         <div className="ch-h-icon"><Icon name="spark" size={18} /><span className="ch-h-pulse" /></div>
-        <div className="ch-h-text"><b>Taxflow Assistant</b><small><span className="online-dot" />Saved device key or secure gateway</small></div>
+        <div className="ch-h-text"><b>Orvexa Assistant</b><small><span className="online-dot" />Saved device key or secure gateway</small></div>
         <button className="ch-close-btn" onClick={() => dispatch({ type: 'TOGGLE_CHAT' })} title="Close assistant" aria-label="Close assistant">×</button>
       </div>
 

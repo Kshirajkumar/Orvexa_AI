@@ -37,7 +37,7 @@ const PAIN_POINTS: PainPoint[] = [
     problem: 'Endless WhatsApp & Email Document Chasing Chaos',
     solution: 'Secure Client Portal & Cloud Intake',
     description:
-      'Clients upload sensitive tax documents through their private TaxFlow portal. Originals are stored in private Supabase Storage, while structured metadata and extracted fields remain in the database for staff review.',
+      'Clients upload sensitive tax documents through their private Orvexa portal. Originals are stored in private Supabase Storage, while structured metadata and extracted fields remain in the database for staff review.',
     metric: 'Private portal uploads • Reviewable extraction history',
     icon: 'chat',
   },
@@ -59,7 +59,7 @@ const PAIN_POINTS: PainPoint[] = [
     problem: 'Section 194Q & 206C TDS/TCS Cumulative Turnover Slip-ups',
     solution: 'Live ₹50L Threshold Monitor & Auto Form 26Q Schedules',
     description:
-      'Never miss the ₹50 Lakh cumulative purchase threshold or 0.1% deduction triggers. TaxFlow AI monitors vendor turnover in real time and automatically prepares quarterly 26Q & 27EQ schedules with automated challan linking.',
+      'Never miss the ₹50 Lakh cumulative purchase threshold or 0.1% deduction triggers. Orvexa AI monitors vendor turnover in real time and automatically prepares quarterly 26Q & 27EQ schedules with automated challan linking.',
     metric: '100% Threshold Compliance • Zero 201(1A) Interest Fines',
     icon: 'rupee',
   },
@@ -568,7 +568,7 @@ export function AuthPage() {
                   <Icon name="spark" size={16} />
                 </div>
                 <div>
-                  <span className="solution-kicker">TAXFLOW AI INTELLIGENT FIX</span>
+                          <span className="solution-kicker">ORVEXA AI INTELLIGENT FIX</span>
                   <h3 className="solution-title">
                     {typedSolution}
                     {typingStage === 'solution' && <span className="typewriter-cursor">|</span>}
@@ -894,7 +894,7 @@ export function AuthPage() {
                           onChange={(e) => setSignupAgree(e.target.checked)}
                         />
                         <span>
-                          I agree to TaxFlow AI’s <a href="https://orvvexa.vercel.app/terms" target="_blank" rel="noreferrer">Terms and Conditions</a> and <a href="https://orvvexa.vercel.app/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>, including private cloud document storage.
+                          I agree to Orvexa AI’s <a href="https://orvvexa.vercel.app/terms" target="_blank" rel="noreferrer">Terms and Conditions</a> and <a href="https://orvvexa.vercel.app/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>, including private cloud document storage.
                         </span>
                       </label>
                     </div>
@@ -919,7 +919,7 @@ export function AuthPage() {
                   </form>
 
                   <div className="card-footer-switch">
-                    <span>Already have a TaxFlow practice account?</span>
+                          <span>Already have an Orvexa practice account?</span>
                     <button
                       type="button"
                       className="inline-link-btn"
@@ -950,7 +950,7 @@ export function AuthPage() {
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                         <input
                           type="email"
-                          placeholder="ca@taxflow.ai or your email"
+                          placeholder="ca@orvexa.ai or your email"
                           value={loginEmail}
                           onChange={(e) => setLoginEmail(e.target.value)}
                           disabled={lockoutSeconds > 0}
@@ -1045,7 +1045,7 @@ export function AuthPage() {
             <div className="password-reset-handoff-orbit" aria-hidden="true"><Icon name="check" size={25} /></div>
             <span className="auth-modal-kicker">SECURE RECOVERY COMPLETE</span>
             <h3 id="password-reset-handoff-title">Your password was reset successfully</h3>
-            <p>Your account is ready. Sign in to continue to your TaxFlow AI workspace.</p>
+                    <p>Your account is ready. Sign in to continue to your Orvexa AI workspace.</p>
             <button type="button" className="auth-primary-btn" onClick={() => setPasswordResetHandoffOpen(false)}>
               Continue to login <span aria-hidden="true">→</span>
             </button>
