@@ -46,6 +46,8 @@ test('identity migration separates CA and client portal identities', () => {
   assert.match(sql, /name TEXT NOT NULL DEFAULT ''/i);
   assert.match(sql, /filing_types JSONB NOT NULL DEFAULT '\[\]'::jsonb/i);
   assert.match(sql, /sync_client_user_profile_details/i);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS assigned_ca VARCHAR\(255\)/i);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS filing_types JSONB/i);
   assert.doesNotMatch(sql, /INSERT INTO public\.user_profiles.*client_user/is);
 });
 

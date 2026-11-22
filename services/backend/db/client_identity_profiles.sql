@@ -21,6 +21,25 @@ BEGIN
 END;
 $$;
 
+-- Older installations may not have the complete client master shape yet.
+-- Add the fields mirrored into client_user_profiles before the functions below
+-- are parsed and executed.
+ALTER TABLE public.clients
+  ADD COLUMN IF NOT EXISTS entity_type VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS pan VARCHAR(10),
+  ADD COLUMN IF NOT EXISTS gstin VARCHAR(15),
+  ADD COLUMN IF NOT EXISTS phone VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'Active',
+  ADD COLUMN IF NOT EXISTS assigned_ca VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS filing_status VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS filing_types JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS vault_folder TEXT,
+  ADD COLUMN IF NOT EXISTS total_docs INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS total_ai_calls INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
 CREATE OR REPLACE FUNCTION public.generate_taxflow_ca_code()
 RETURNS text
 LANGUAGE plpgsql
