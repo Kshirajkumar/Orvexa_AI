@@ -12,7 +12,8 @@ async function main() {
     for (const migration of [
       'client_deletion_relationships.sql',
       'client_deletion_cleanup.sql',
-      'document_file_activity_client_delete_fix.sql'
+      'document_file_activity_client_delete_fix.sql',
+      'backend_worker_permissions.sql'
     ]) {
       await client.query(await fs.readFile(path.join(__dirname, migration), 'utf8'));
     }
