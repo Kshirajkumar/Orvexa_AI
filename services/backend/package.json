@@ -7,6 +7,7 @@
     "start": "node index.js",
     "dev": "node --watch index.js",
     "migrate:storage": "node db/migrate_local_vault_documents.js",
+    "migrate:client-deletion": "node db/apply_client_deletion_migration.js",
     "migrate:telegram": "node db/apply_telegram_migration.js",
     "migrate:notifications": "node db/apply_notifications_migration.js",
     "test": "node --test test/*.test.js"

@@ -732,6 +732,9 @@ export interface StorageCleanupJob {
   target_type: 'client' | 'document';
   status: 'pending' | 'processing' | 'retrying' | 'auth_cleanup_pending' | 'failed' | 'completed';
   attempt_count: number;
+  next_attempt_at?: string | null;
+  last_error?: string | null;
+  error_message?: string | null;
   created_at: string;
   completed_at: string | null;
   message: string;

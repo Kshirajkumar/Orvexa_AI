@@ -42,6 +42,7 @@ export function ClientsPage() {
   const [cleanupJobs, setCleanupJobs] = React.useState<StorageCleanupJob[]>([]);
   const [cleanupLoading, setCleanupLoading] = React.useState(false);
   const [cleanupError, setCleanupError] = React.useState('');
+  const [cleanupSuccess, setCleanupSuccess] = React.useState('');
   const [portalAccessEnabled, setPortalAccessEnabled] = React.useState(false);
   const [portalAccessLoading, setPortalAccessLoading] = React.useState(false);
   const [portalActionLoading, setPortalActionLoading] = React.useState(false);
@@ -231,6 +232,7 @@ export function ClientsPage() {
     if (!selectedClient || deleteSaving) return;
     setDeleteSaving(true);
     setDeleteError('');
+    setCleanupSuccess('');
     try {
       const deleted = await deleteClient(selectedClient.id);
       dispatch({ type: 'DELETE_CLIENT', id: selectedClient.id });
@@ -253,7 +255,7 @@ export function ClientsPage() {
       setDeleteConfirm(false);
       setEditingClient(false);
       setSelectedClient(null);
-      emitToast({ kind: 'success', title: 'Client deleted', message: `${deleted.name} was removed. Cloud cleanup is tracked separately.`, eventType: 'client.deleted', entityType: 'client', entityId: deleted.id });
+      emitToast({ kind: 'success', title: 'Client deletion queued', message: `${deleted.name} was removed from the active list. Cloud files and the portal account are still being cleaned up; success will appear when cleanup completes.`, eventType: 'client.delete_queued', entityType: 'client', entityId: deleted.id });
     } catch (err: any) {
       setDeleteError(err.message || 'Could not delete this client. Nothing was removed.');
       emitToast({ kind: 'error', title: 'Client could not be deleted', message: err.message || 'Nothing was removed.', eventType: 'client.delete_failed', entityType: 'client', entityId: selectedClient?.id || null });
@@ -269,6 +271,13 @@ export function ClientsPage() {
     try {
       const updatedJob = await fetchStorageCleanupJob(jobId);
       setCleanupJobs(previous => previous.map(job => job.id === jobId ? updatedJob : job));
+      if (updatedJob.status === 'completed') {
+        setCleanupSuccess(updatedJob.message || 'Client data, cloud files, and the portal account were deleted successfully.');
+        setCleanupError('');
+      } else if (updatedJob.status === 'failed') {
+        setCleanupSuccess('');
+        setCleanupError(updatedJob.error_message || updatedJob.last_error || updatedJob.message || 'Cloud cleanup failed and needs a retry.');
+      }
     } catch (err) {
       setCleanupError(err instanceof Error ? err.message : 'Could not load cloud cleanup status.');
     } finally {
@@ -282,6 +291,7 @@ export function ClientsPage() {
     setCleanupError('');
     try {
       await retryStorageCleanupJob(jobId);
+      setCleanupSuccess('');
       setCleanupJobs(previous => previous.map(job => job.id === jobId
         ? { ...job, status: 'pending', attempt_count: 0, message: 'Cloud cleanup was queued for retry.' }
         : job));
@@ -328,8 +338,9 @@ export function ClientsPage() {
       {(cleanupJobs.length > 0 || cleanupError) && <div className="vault-lifecycle-panel card" aria-label="Client cleanup jobs">
         <div><b>Client cloud cleanup</b><small>Deletion is queued in Supabase; it retries automatically if Storage is temporarily unavailable.</small></div>
         {cleanupError && <span className="ob-error" role="alert">{cleanupError}</span>}
+        {cleanupSuccess && <span className="ob-success" role="status">{cleanupSuccess}</span>}
         {cleanupJobs.map(job => <div className="vault-cleanup-row" key={job.id} role="status">
-          <span><b>{job.message}</b><small>Status: {job.status}</small></span>
+          <span><b>{job.message}</b><small>Status: {job.status}</small>{job.error_message && job.status !== 'completed' && <small className="ob-error">Reason: {job.error_message}</small>}</span>
           <div className="vault-lifecycle-actions">
             <button className="btn sm" onClick={() => void refreshCleanupJob(job.id)} disabled={cleanupLoading}>{cleanupLoading ? 'Checking…' : 'Check status'}</button>
             {job.status === 'failed' && <button className="btn sm" onClick={() => void retryCleanupJob(job.id)} disabled={cleanupLoading}>Retry cleanup</button>}
@@ -493,7 +504,7 @@ function OpenRouterSettings() {
         if (!saved && isUsingLocalOpenRouterKey()) {
           setUsingLocalOpenRouterKey(false);
           setUseLocalKey(false);
-          setError('The saved OpenRouter key is unavailable. The app has switched back to the TaxFlow AI service.');
+          setError('The saved OpenRouter key is unavailable. The app has switched back to the Orvexa AI service.');
         }
       })
       .catch(loadError => {
@@ -582,7 +593,7 @@ function OpenRouterSettings() {
       setUseLocalKey(next);
       setNotice(next
         ? 'Other supported AI requests will use your saved OpenRouter key. Chat also uses the saved key automatically.'
-        : 'Other supported AI requests will use the current TaxFlow AI service. Chat still uses a saved device key automatically.');
+        : 'Other supported AI requests will use the current Orvexa AI service. Chat still uses a saved device key automatically.');
     } catch (settingError) {
       setError(settingError instanceof Error ? settingError.message : 'Could not update the AI provider setting.');
     }
@@ -700,7 +711,7 @@ function OpenRouterSettings() {
               aria-describedby="openrouter-key-help openrouter-settings-error"
             />
             <small id="openrouter-key-help">
-              {keySaved ? 'A key is saved on this Windows device. Click the field to enter a replacement; the saved key is never displayed or sent to the TaxFlow backend.' : 'Enter your own OpenRouter API key. It is saved only in Windows Credential Manager.'}
+              {keySaved ? 'A key is saved on this Windows device. Click the field to enter a replacement; the saved key is never displayed or sent to the Orvexa backend.' : 'Enter your own OpenRouter API key. It is saved only in Windows Credential Manager.'}
             </small>
           </div>
           <div className="ai-key-actions">

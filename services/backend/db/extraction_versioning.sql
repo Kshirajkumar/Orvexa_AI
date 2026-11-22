@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS public.extraction_events (
 CREATE TABLE IF NOT EXISTS public.document_file_activity (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   document_id uuid REFERENCES public.documents_metadata(id) ON DELETE SET NULL,
-  client_id uuid REFERENCES public.clients(id) ON DELETE SET NULL,
+  client_id uuid REFERENCES public.clients(id) ON DELETE CASCADE,
   user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   operation text NOT NULL,
   file_name text,
@@ -85,6 +85,14 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
 BEGIN
+  -- A client cascade removes the parent before this child trigger runs.
+  -- Do not create an audit row that would reference the deleted client.
+  IF OLD.client_id IS NULL OR NOT EXISTS (
+    SELECT 1 FROM public.clients WHERE id = OLD.client_id
+  ) THEN
+    RETURN OLD;
+  END IF;
+
   INSERT INTO public.document_file_activity (
     document_id, client_id, operation, file_name, file_size_before_kb,
     file_sha256, storage_bucket, storage_object_path, status, note

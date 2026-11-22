@@ -6,6 +6,7 @@ const path = require('node:path');
 const routeSource = fs.readFileSync(path.join(__dirname, '..', 'routes', 'extraction.js'), 'utf8');
 const baseSql = fs.readFileSync(path.join(__dirname, '..', 'db', 'extraction_versioning.sql'), 'utf8');
 const repairSql = fs.readFileSync(path.join(__dirname, '..', 'db', 'extraction_versioning_digest_fix.sql'), 'utf8');
+const clientDeletionRelationshipsSql = fs.readFileSync(path.join(__dirname, '..', 'db', 'client_deletion_relationships.sql'), 'utf8');
 const runsSql = fs.readFileSync(path.join(__dirname, '..', 'db', 'extraction_runs.sql'), 'utf8');
 
 test('version hashing explicitly qualifies pgcrypto digest and preserves UTF-8 input', () => {
@@ -14,6 +15,17 @@ test('version hashing explicitly qualifies pgcrypto digest and preserves UTF-8 i
     assert.match(sql, /extensions\.digest\(convert_to\(p_data::text, 'UTF8'\), 'sha256'\)/);
     assert.doesNotMatch(sql, /encode\(digest\(p_data::text, 'sha256'\), 'hex'\)/);
   }
+});
+
+test('client deletion cascades document file activity and future client relationships', () => {
+  assert.match(baseSql, /client_id uuid REFERENCES public\.clients\(id\) ON DELETE CASCADE/);
+  assert.match(clientDeletionRelationshipsSql, /c\.confrelid = 'public\.clients'::regclass/);
+  assert.match(clientDeletionRelationshipsSql, /REFERENCES public\.clients \(%s\) ON DELETE CASCADE/);
+});
+
+test('document delete audit skips rows whose client is being cascaded', () => {
+  assert.match(baseSql, /IF OLD\.client_id IS NULL OR NOT EXISTS/);
+  assert.match(baseSql, /SELECT 1 FROM public\.clients WHERE id = OLD\.client_id/);
 });
 
 test('extraction failure status is scoped to the verified document client', () => {

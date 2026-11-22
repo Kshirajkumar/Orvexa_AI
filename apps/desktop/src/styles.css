@@ -4609,6 +4609,9 @@ body.sidebar-collapsed.chat-hidden .shell {
 .vault-lifecycle-panel{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:12px;padding:14px}
 .vault-lifecycle-panel>div:first-child{display:grid;gap:4px;min-width:220px;flex:1}
 .vault-lifecycle-panel small,.vault-version-row small{color:var(--tx3);font-size:11px}
+.vault-lifecycle-panel .ob-error,.vault-lifecycle-panel .ob-success{flex:1 0 100%;padding:9px 10px;border-radius:8px;font-size:11px;line-height:1.45}
+.vault-lifecycle-panel .ob-error{border:1px solid color-mix(in srgb,var(--red) 30%,var(--line));background:color-mix(in srgb,var(--red) 8%,transparent);color:var(--red)}
+.vault-lifecycle-panel .ob-success{border:1px solid color-mix(in srgb,var(--green) 30%,var(--line));background:color-mix(in srgb,var(--green) 8%,transparent);color:var(--green)}
 .vault-lifecycle-actions{display:flex;flex-wrap:wrap;gap:7px}
 .vault-lifecycle-form{display:flex;flex:1 0 100%;flex-wrap:wrap;align-items:end;gap:10px}
 .vault-lifecycle-form label{display:grid;flex:1;min-width:160px;gap:5px;color:var(--tx2);font-size:11px}

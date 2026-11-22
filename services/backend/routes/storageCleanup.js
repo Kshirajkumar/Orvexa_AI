@@ -10,7 +10,7 @@ router.get('/', async (req, res) => {
       return res.json({ success: true, source: 'demo', data: [] });
     }
     const { data, error } = await supabase.from('storage_cleanup_jobs')
-      .select('id, target_type, status, attempt_count, created_at, completed_at')
+      .select('id, target_type, status, attempt_count, next_attempt_at, last_error, created_at, completed_at')
       .eq('user_id', req.user.id)
       .neq('status', 'completed')
       .order('created_at', { ascending: false })
@@ -21,8 +21,11 @@ router.get('/', async (req, res) => {
       source: 'supabase',
       data: (data || []).map(job => ({
         ...job,
-        message: job.status === 'failed'
-          ? 'Cloud cleanup needs a manual retry.'
+        error_message: job.last_error || null,
+        message: job.status === 'completed'
+          ? 'Cloud cleanup completed successfully.'
+          : job.status === 'failed'
+            ? 'Cloud cleanup needs a manual retry.'
           : job.status === 'auth_cleanup_pending'
             ? 'Client files were removed; portal account cleanup is finishing.'
           : `The ${job.target_type} deletion is queued for cloud cleanup.`
@@ -41,7 +44,7 @@ router.get('/:id', async (req, res) => {
       return res.status(503).json({ success: false, message: 'Cloud cleanup status is unavailable.' });
     }
     const { data, error } = await supabase.from('storage_cleanup_jobs')
-      .select('id, target_type, status, attempt_count, created_at, completed_at')
+      .select('id, target_type, status, attempt_count, next_attempt_at, last_error, created_at, completed_at')
       .eq('id', req.params.id)
       .eq('user_id', req.user.id)
       .maybeSingle();
@@ -52,13 +55,16 @@ router.get('/:id', async (req, res) => {
       source: 'supabase',
       data: {
         ...data,
+        error_message: data.last_error || null,
         message: data.status === 'completed'
           ? 'Cloud cleanup is complete.'
           : data.status === 'auth_cleanup_pending'
             ? 'Client files were removed; portal account cleanup is finishing.'
           : data.status === 'failed'
             ? 'Cloud cleanup needs a retry.'
-            : 'Cloud cleanup is queued and will retry automatically if Storage is unavailable.'
+            : data.status === 'retrying'
+              ? 'Cloud cleanup is retrying after a cleanup error.'
+              : 'Cloud cleanup is queued and will retry automatically if Storage is unavailable.'
       }
     });
   } catch (error) {
