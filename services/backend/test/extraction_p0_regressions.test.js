@@ -47,3 +47,14 @@ test('provider attempts have durable run metadata and usage provenance', () => {
   assert.match(runsSql, /ALTER TABLE public\.ai_usage_log/);
   assert.match(repairSql, /NULLIF\(p_data->>'extraction_run_id', ''\)::uuid/);
 });
+
+test('corrected-data approval uses one database transaction boundary', () => {
+  const documentsSource = fs.readFileSync(path.join(__dirname, '..', 'routes', 'documents.js'), 'utf8');
+  assert.match(documentsSource, /approve_extraction_data/);
+  assert.doesNotMatch(documentsSource, /correctedData[\s\S]{0,500}\.from\('documents_metadata'\)[\s\S]{0,250}\.update\(\{ extracted_data/);
+  for (const sql of [baseSql, repairSql]) {
+    assert.match(sql, /CREATE OR REPLACE FUNCTION public\.approve_extraction_data/);
+    assert.match(sql, /SET extracted_data = p_envelope->'source_data'/);
+    assert.match(sql, /approved_extraction_version = version_row\.version_number/);
+  }
+});

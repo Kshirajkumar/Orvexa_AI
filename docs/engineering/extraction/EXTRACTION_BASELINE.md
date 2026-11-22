@@ -40,6 +40,7 @@
 - Provider attempts now have durable `extraction_runs` metadata, including provider/model, schema and prompt versions, timing, token/cost fields, request ID, status, and usage provenance. The existing usage log is treated as observability and cannot turn a successful extraction into a failed request on an older deployment that has not added `usage_source` yet.
 - Provider calls now use a bounded two-attempt retry policy for transient HTTP failures and a per-attempt timeout; non-transient client failures are not retried.
 - Extraction results now retain review warnings for malformed PAN, GSTIN, TAN, IFSC, HSN, invalid ISO dates, and inconsistent GST totals without silently altering extracted values.
+- Corrected-data approval now uses the `approve_extraction_data` service-role RPC to create the edit version, mirror source data, and mark the same version approved within one database transaction.
 
 These changes are repository-verified only. They do not yet prove extraction accuracy against a golden-document set, validate provider-specific response quality, or prove the new RPCs against a staging database.
 

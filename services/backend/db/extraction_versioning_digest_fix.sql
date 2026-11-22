@@ -150,6 +150,62 @@ $$;
 REVOKE ALL ON FUNCTION public.restore_extraction_version(uuid, uuid, integer, integer, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.restore_extraction_version(uuid, uuid, integer, integer, text) TO service_role;
 
+CREATE OR REPLACE FUNCTION public.approve_extraction_data(
+  p_user_id uuid,
+  p_document_id uuid,
+  p_envelope jsonb,
+  p_provider_score numeric,
+  p_computed_score numeric,
+  p_schema_version text,
+  p_base_version integer,
+  p_changed_field_paths jsonb DEFAULT '[]'::jsonb,
+  p_note text DEFAULT NULL
+)
+RETURNS public.extraction_versions
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  document_row public.documents_metadata%ROWTYPE;
+  version_row public.extraction_versions%ROWTYPE;
+BEGIN
+  SELECT d.* INTO document_row
+  FROM public.documents_metadata d
+  JOIN public.clients c ON c.id = d.client_id
+  WHERE d.id = p_document_id AND c.user_id = p_user_id
+    AND d.deletion_requested_at IS NULL
+  FOR UPDATE OF d, c;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Document was not found in your workspace.' USING ERRCODE = 'P0002'; END IF;
+  IF document_row.current_extraction_version IS DISTINCT FROM p_base_version THEN
+    RAISE EXCEPTION 'A newer extraction version already exists.' USING ERRCODE = '40001';
+  END IF;
+  IF p_envelope->'source_data' IS NULL THEN
+    RAISE EXCEPTION 'Corrected extraction data is missing from the version envelope.' USING ERRCODE = '22023';
+  END IF;
+  version_row := public.save_extraction_version(
+    p_user_id, p_document_id, 'edit', p_envelope, p_provider_score,
+    p_computed_score, p_schema_version, p_base_version, p_note,
+    COALESCE(p_changed_field_paths, '[]'::jsonb)
+  );
+  UPDATE public.documents_metadata
+  SET extracted_data = p_envelope->'source_data',
+      approved_extraction_version = version_row.version_number,
+      extraction_status = 'approved',
+      status = 'Verified',
+      verified_by = p_user_id::text,
+      verified_at = now(),
+      updated_at = now()
+  WHERE id = p_document_id;
+  INSERT INTO public.extraction_events (document_id, client_id, version_number, event, actor_type, actor_id)
+  VALUES (p_document_id, document_row.client_id, version_row.version_number, 'approved', 'ca', p_user_id);
+  RETURN version_row;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.approve_extraction_data(uuid, uuid, jsonb, numeric, numeric, text, integer, jsonb, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.approve_extraction_data(uuid, uuid, jsonb, numeric, numeric, text, integer, jsonb, text) TO service_role;
+
 
 -- Verification (run against staging after applying this migration):
 -- SELECT encode(extensions.digest(convert_to('{"probe":1}'::text, 'UTF8'), 'sha256'), 'hex');

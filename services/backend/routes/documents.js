@@ -742,17 +742,16 @@ router.post('/:id/verify', async (req, res) => {
         });
         const previousFields = latestVersion?.data?.fields || {};
         const changedFieldPaths = diffFields(previousFields, envelope.fields);
-        const { data: savedVersion, error: versionError } = await supabase.rpc('save_extraction_version', {
+        const { data: savedVersion, error: versionError } = await supabase.rpc('approve_extraction_data', {
           p_user_id: req.user.id,
           p_document_id: document.id,
-          p_version_kind: 'edit',
-          p_data: envelope,
+          p_envelope: envelope,
           p_provider_score: envelope.overall_score.provider_score,
           p_computed_score: envelope.overall_score.computed_score,
           p_schema_version: envelope.schema_version,
           p_base_version: latestVersion?.version_number || null,
-          p_note: typeof req.body.note === 'string' ? req.body.note.slice(0, 2000) : 'Reviewed in TaxFlow.AI',
           p_changed_field_paths: changedFieldPaths,
+          p_note: typeof req.body.note === 'string' ? req.body.note.slice(0, 2000) : 'Reviewed in TaxFlow.AI',
         });
         if (versionError) {
           if (versionError.code === '40001') return res.status(409).json({ success: false, message: versionError.message });
@@ -761,23 +760,15 @@ router.post('/:id/verify', async (req, res) => {
         extractionVersion = savedVersion;
       }
       let data = null;
-      if (correctedData !== undefined) {
-        const { data: updatedData, error } = await supabase
-          .from('documents_metadata')
-          .update({ extracted_data: correctedData })
-          .eq('id', document.id)
-          .eq('client_id', document.client_id)
-          .select().single();
-        if (error) throw error;
-        data = updatedData;
-      }
       if (extractionVersion?.version_number) {
-        const { error: approvalError } = await supabase.rpc('approve_extraction_version', {
-          p_user_id: req.user.id,
-          p_document_id: document.id,
-          p_version_number: extractionVersion.version_number,
-        });
-        if (approvalError) throw approvalError;
+        if (correctedData === undefined) {
+          const { error: approvalError } = await supabase.rpc('approve_extraction_version', {
+            p_user_id: req.user.id,
+            p_document_id: document.id,
+            p_version_number: extractionVersion.version_number,
+          });
+          if (approvalError) throw approvalError;
+        }
         const { data: approvedData, error: approvedDataError } = await supabase
           .from('documents_metadata')
           .select('*')
