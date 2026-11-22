@@ -124,7 +124,7 @@ function calculateExtractionScore(envelope) {
   };
 }
 
-function buildExtractionEnvelope({ data, category, documentId, assessmentYear, versionNumber = 1, versionKind = 'ai', providerScore = null, providerRaw = null, fieldConfidence = {} }) {
+function buildExtractionEnvelope({ data, category, documentId, assessmentYear, versionNumber = 1, versionKind = 'ai', providerScore = null, providerRaw = null, fieldConfidence = {}, validationWarnings = [] }) {
   const canonical = canonicalizeFields(data, category);
   const envelope = {
     document_id: documentId,
@@ -138,7 +138,7 @@ function buildExtractionEnvelope({ data, category, documentId, assessmentYear, v
     source_data: data,
     fields: canonical.fields,
     extra_fields: canonical.extra_fields,
-    warnings: [],
+    warnings: Array.isArray(validationWarnings) ? validationWarnings : [],
     provider_raw: providerRaw,
     normalization_events: canonical.normalization_events,
   };

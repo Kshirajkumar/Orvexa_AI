@@ -27,6 +27,7 @@
 - No production or staging Supabase migration was run from this checkout.
 - No live database counts, function definitions, RLS policies, grants, or extension placement were queried.
 - No real client documents or provider credentials were used.
+- Provider retry behavior and data-quality checks were verified with deterministic unit tests; behavior against the real Gemini service remains unverified.
 - Full extraction accuracy, field-level evidence, background processing, shared schema registry, and golden-document evaluation remain separate workstreams.
 
 ## P1 work now present in the repository
@@ -37,6 +38,8 @@
 - Extraction history has separate authenticated APIs for listing, comparing, and restoring versions. Restore creates a new immutable version and uses optimistic concurrency.
 - Non-GST approval without edits now approves the latest extraction version when one exists; legacy documents without extraction history retain the prior verification path.
 - Provider attempts now have durable `extraction_runs` metadata, including provider/model, schema and prompt versions, timing, token/cost fields, request ID, status, and usage provenance. The existing usage log is treated as observability and cannot turn a successful extraction into a failed request on an older deployment that has not added `usage_source` yet.
+- Provider calls now use a bounded two-attempt retry policy for transient HTTP failures and a per-attempt timeout; non-transient client failures are not retried.
+- Extraction results now retain review warnings for malformed PAN, GSTIN, TAN, IFSC, HSN, invalid ISO dates, and inconsistent GST totals without silently altering extracted values.
 
 These changes are repository-verified only. They do not yet prove extraction accuracy against a golden-document set, validate provider-specific response quality, or prove the new RPCs against a staging database.
 

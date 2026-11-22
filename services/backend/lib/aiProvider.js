@@ -1,5 +1,6 @@
 const { supabase, isConnected } = require('../db/supabase');
 const { TAXFLOW_SYSTEM_PROMPT } = require('./systemPrompt');
+const { fetchWithRetry } = require('./providerRequest');
 
 const PROVIDER_TIMEOUT_MS = 30000;
 
@@ -50,11 +51,9 @@ async function generateGeminiChat({ ownerUserId, messages }) {
     parts: [{ text: message.content }],
   }));
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
   let response;
   try {
-    response = await fetch(
+    response = await fetchWithRetry(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`,
       {
         method: 'POST',
@@ -62,7 +61,6 @@ async function generateGeminiChat({ ownerUserId, messages }) {
           'Content-Type': 'application/json',
           'x-goog-api-key': config.apiKey,
         },
-        signal: controller.signal,
         body: JSON.stringify({
           systemInstruction: {
             parts: [{ text: TAXFLOW_SYSTEM_PROMPT }],
@@ -70,10 +68,11 @@ async function generateGeminiChat({ ownerUserId, messages }) {
           contents,
           generationConfig: { temperature: 0.4, maxOutputTokens: 1024 },
         }),
-      }
+      },
+      { timeoutMs: PROVIDER_TIMEOUT_MS }
     );
   } catch (error) {
-    if (error.name === 'AbortError') {
+    if (error.code === 'PROVIDER_TIMEOUT' || error.name === 'AbortError') {
       const timeoutError = new Error('The AI provider took too long to respond. Please try again.');
       timeoutError.status = 504;
       throw timeoutError;

@@ -24,8 +24,10 @@ const { downloadDocument, isOwnedDocumentObject } = require('../lib/documentStor
 const { saveInvoiceExport } = require('../lib/invoiceExport');
 const { buildExtractionEnvelope, compareExtractionVersions } = require('../lib/extractionVersioning');
 const { startExtractionRun, finishExtractionRun } = require('../lib/extractionRuns');
+const { validateExtractedDataQuality } = require('../lib/extractionValidation');
+const { fetchWithRetry } = require('../lib/providerRequest');
 
-async function saveExtractionVersion({ userId, document, data, category, versionKind = 'ai', baseVersion = null, note = null, providerScore = null, providerRaw = null, fieldConfidence = {}, extractionRunId = null }) {
+async function saveExtractionVersion({ userId, document, data, category, versionKind = 'ai', baseVersion = null, note = null, providerScore = null, providerRaw = null, fieldConfidence = {}, validationWarnings = [], extractionRunId = null }) {
   const envelope = buildExtractionEnvelope({
     data,
     category,
@@ -35,6 +37,7 @@ async function saveExtractionVersion({ userId, document, data, category, version
     providerScore,
     providerRaw,
     fieldConfidence,
+    validationWarnings,
   });
   if (extractionRunId) envelope.extraction_run_id = extractionRunId;
   const { data: version, error } = await supabase.rpc('save_extraction_version', {
@@ -142,24 +145,22 @@ router.post('/process', async (req, res) => {
       generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
     };
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
     let geminiRes;
     try {
-      geminiRes = await fetch(
+      geminiRes = await fetchWithRetry(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiConfig.model)}:generateContent`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiConfig.apiKey },
           body: JSON.stringify(geminiPayload),
-          signal: controller.signal,
-        }
+        },
+        { timeoutMs: 30000 }
       );
     } catch (error) {
-      const providerError = new Error(error.name === 'AbortError'
+      const providerError = new Error(error.code === 'PROVIDER_TIMEOUT' || error.name === 'AbortError'
         ? 'The AI extraction provider took too long to respond. Please try again.'
         : 'The AI extraction provider could not be reached. Please try again.');
-      providerError.status = error.name === 'AbortError' ? 504 : 502;
+      providerError.status = error.code === 'PROVIDER_TIMEOUT' || error.name === 'AbortError' ? 504 : 502;
       throw providerError;
     } finally {
       clearTimeout(timeout);
@@ -215,6 +216,7 @@ router.post('/process', async (req, res) => {
       providerScore: providerPayload?.accuracy_score || providerPayload?.confidence_score,
       providerRaw: providerPayload,
       fieldConfidence: providerPayload?.field_confidence,
+      validationWarnings: validateExtractedDataQuality(extractedData, docCategory),
       extractionRunId,
     });
     const { data: updatedDoc, error: updateErr } = await supabase
@@ -346,7 +348,6 @@ router.post('/save', async (req, res) => {
       .eq('client_id', document.client_id)
       .single();
     if (ownershipError) throw ownershipError;
-    localRunDocument = documentWithOwnership;
     const model = typeof req.body.model === 'string' ? req.body.model.slice(0, 200) : 'OpenRouter';
     const inputTokens = Number.isSafeInteger(req.body.inputTokens) && req.body.inputTokens >= 0 ? req.body.inputTokens : 0;
     const outputTokens = Number.isSafeInteger(req.body.outputTokens) && req.body.outputTokens >= 0 ? req.body.outputTokens : 0;
@@ -365,6 +366,7 @@ router.post('/save', async (req, res) => {
       data: extractedData,
       category,
       providerScore: req.body.providerScore,
+      validationWarnings: validateExtractedDataQuality(extractedData, category),
       extractionRunId,
     });
     const { data: updatedDocument, error: updateError } = await supabase
