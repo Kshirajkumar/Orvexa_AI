@@ -163,8 +163,6 @@ router.post('/process', async (req, res) => {
         : 'The AI extraction provider could not be reached. Please try again.');
       providerError.status = error.code === 'PROVIDER_TIMEOUT' || error.name === 'AbortError' ? 504 : 502;
       throw providerError;
-    } finally {
-      clearTimeout(timeout);
     }
     let geminiJson;
     try {

@@ -58,3 +58,8 @@ test('corrected-data approval uses one database transaction boundary', () => {
     assert.match(sql, /approved_extraction_version = version_row\.version_number/);
   }
 });
+
+test('Gemini extraction delegates timeout cleanup to the shared provider helper', () => {
+  assert.match(routeSource, /fetchWithRetry\(/);
+  assert.doesNotMatch(routeSource, /clearTimeout\(timeout\)/);
+});
