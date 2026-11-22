@@ -187,12 +187,28 @@ test('portal invitation registration checks the exact email and blocks replayed 
         body: JSON.stringify({ token, email: 'client@example.com', password: 'long-enough-password-123' }),
       });
       assert.equal(registration.status, 201);
-      assert.deepEqual(createdUsers, [{
+      assert.equal(createdUsers.length, 1);
+      assert.deepEqual(createdUsers[0], {
         email: 'client@example.com',
         password: 'long-enough-password-123',
         email_confirm: true,
+        user_metadata: {
+          full_name: 'client@example.com',
+          client_id: 'client-1',
+          entity_type: null,
+          pan: null,
+          gstin: null,
+          phone: null,
+          status: 'Active',
+          assigned_ca: null,
+          filing_status: null,
+          filing_types: [],
+          vault_folder: null,
+          total_docs: 0,
+          total_ai_calls: 0,
+        },
         app_metadata: { role: 'client', taxflow_client_portal: true },
-      }]);
+      });
       assert.deepEqual(markedUsers, []);
       assert.equal(rpcCalls.filter((call) => call.functionName === 'claim_client_portal_invite').length, 1);
 

@@ -384,15 +384,10 @@ async function hasActiveClientPortalAccount(client) {
     .maybeSingle();
   if (error) throw error;
   if (!access?.active || !access.user_id) return false;
-  const [{ data: authData, error: authError }, { data: profile, error: profileError }] = await Promise.all([
-    supabase.auth.admin.getUserById(access.user_id),
-    supabase.from('user_profiles').select('account_category').eq('id', access.user_id).maybeSingle(),
-  ]);
+  const { data: authData, error: authError } = await supabase.auth.admin.getUserById(access.user_id);
   if (authError) throw authError;
-  if (profileError) throw profileError;
   return Boolean(
     isClientAccount(authData?.user)
-    && profile?.account_category === 'client_user'
     && String(access.invited_email || '').trim().toLowerCase() === String(client.email || '').trim().toLowerCase()
     && String(authData.user.email || '').trim().toLowerCase() === String(client.email || '').trim().toLowerCase()
   );

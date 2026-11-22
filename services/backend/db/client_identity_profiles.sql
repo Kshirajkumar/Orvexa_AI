@@ -82,11 +82,39 @@ CREATE TABLE IF NOT EXISTS public.client_user_profiles (
   full_name TEXT NOT NULL DEFAULT '',
   email TEXT NOT NULL,
   phone TEXT,
+  name TEXT NOT NULL DEFAULT '',
+  entity_type TEXT,
+  pan TEXT,
+  gstin TEXT,
+  status TEXT,
+  assigned_ca TEXT,
+  filing_status TEXT,
+  filing_types JSONB NOT NULL DEFAULT '[]'::jsonb,
+  vault_folder TEXT,
+  total_docs INTEGER NOT NULL DEFAULT 0,
+  total_ai_calls INTEGER NOT NULL DEFAULT 0,
+  client_created_at TIMESTAMPTZ,
+  client_updated_at TIMESTAMPTZ,
   onboarding_complete BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT client_user_profiles_code_format CHECK (client_code ~ '^TF-CL-[A-F0-9]{8}$')
 );
+
+ALTER TABLE public.client_user_profiles
+  ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS entity_type TEXT,
+  ADD COLUMN IF NOT EXISTS pan TEXT,
+  ADD COLUMN IF NOT EXISTS gstin TEXT,
+  ADD COLUMN IF NOT EXISTS status TEXT,
+  ADD COLUMN IF NOT EXISTS assigned_ca TEXT,
+  ADD COLUMN IF NOT EXISTS filing_status TEXT,
+  ADD COLUMN IF NOT EXISTS filing_types JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS vault_folder TEXT,
+  ADD COLUMN IF NOT EXISTS total_docs INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS total_ai_calls INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS client_created_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS client_updated_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS public.ca_client_relationships (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -144,9 +172,9 @@ CREATE TRIGGER on_auth_user_created_identity_profile
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.sync_ca_identity_profile();
 
--- Extend the existing portal-access trigger so a successful claim also creates
--- the client identity and verifies the CA/client relationship in one database
--- transaction. The legacy user_profiles row remains for compatibility only.
+-- Extend the existing portal-access trigger so a successful claim creates the
+-- client identity and verifies the CA/client relationship in one transaction.
+-- Portal users intentionally do not receive a user_profiles compatibility row.
 CREATE OR REPLACE FUNCTION public.sync_client_portal_profile()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -196,24 +224,45 @@ BEGIN
 
     IF v_client.id IS NOT NULL AND v_ca.user_id IS NOT NULL AND v_user.id IS NOT NULL THEN
       INSERT INTO public.client_user_profiles (
-        user_id, client_id, ca_user_id, ca_code, full_name, email, phone, onboarding_complete
+        user_id, client_id, ca_user_id, ca_code, full_name, email, phone,
+        name, entity_type, pan, gstin, status, assigned_ca, filing_status,
+        filing_types, vault_folder, total_docs, total_ai_calls,
+        client_created_at, client_updated_at, onboarding_complete
       )
       VALUES (
         NEW.user_id,
         v_client.id,
         v_ca.user_id,
         v_ca.ca_code,
-        COALESCE(v_user.raw_user_meta_data ->> 'full_name', v_client.name, ''),
+        v_client.name,
         lower(btrim(COALESCE(v_user.email, v_client.email, NEW.invited_email))),
         v_client.phone,
+        v_client.name, v_client.entity_type, v_client.pan, v_client.gstin,
+        v_client.status, v_client.assigned_ca, v_client.filing_status,
+        v_client.filing_types, v_client.vault_folder, v_client.total_docs,
+        v_client.total_ai_calls, v_client.created_at, v_client.updated_at,
         FALSE
       )
       ON CONFLICT (user_id) DO UPDATE SET
         client_id = EXCLUDED.client_id,
         ca_user_id = EXCLUDED.ca_user_id,
         ca_code = EXCLUDED.ca_code,
+        full_name = EXCLUDED.full_name,
         email = EXCLUDED.email,
         phone = EXCLUDED.phone,
+        name = EXCLUDED.name,
+        entity_type = EXCLUDED.entity_type,
+        pan = EXCLUDED.pan,
+        gstin = EXCLUDED.gstin,
+        status = EXCLUDED.status,
+        assigned_ca = EXCLUDED.assigned_ca,
+        filing_status = EXCLUDED.filing_status,
+        filing_types = EXCLUDED.filing_types,
+        vault_folder = EXCLUDED.vault_folder,
+        total_docs = EXCLUDED.total_docs,
+        total_ai_calls = EXCLUDED.total_ai_calls,
+        client_created_at = EXCLUDED.client_created_at,
+        client_updated_at = EXCLUDED.client_updated_at,
         updated_at = now()
       RETURNING * INTO v_client_profile;
 
@@ -296,16 +345,23 @@ ON CONFLICT (client_id) DO UPDATE SET
 
 -- Backfill already-claimed client portal accounts and mark their relationship verified.
 INSERT INTO public.client_user_profiles (
-  user_id, client_id, ca_user_id, ca_code, full_name, email, phone, onboarding_complete
+  user_id, client_id, ca_user_id, ca_code, full_name, email, phone,
+  name, entity_type, pan, gstin, status, assigned_ca, filing_status,
+  filing_types, vault_folder, total_docs, total_ai_calls,
+  client_created_at, client_updated_at, onboarding_complete
 )
 SELECT
   access.user_id,
   client.id,
   client.user_id,
   ca.ca_code,
-  COALESCE(profile.full_name, client.name),
+  client.name,
   lower(btrim(COALESCE(auth_user.email, client.email))),
   client.phone,
+  client.name, client.entity_type, client.pan, client.gstin, client.status,
+  client.assigned_ca, client.filing_status, client.filing_types,
+  client.vault_folder, client.total_docs, client.total_ai_calls,
+  client.created_at, client.updated_at,
   COALESCE(profile.onboarding_complete, FALSE)
 FROM public.client_portal_access AS access
 JOIN public.clients AS client ON client.id = access.client_id
@@ -318,9 +374,68 @@ ON CONFLICT (user_id) DO UPDATE SET
   client_id = EXCLUDED.client_id,
   ca_user_id = EXCLUDED.ca_user_id,
   ca_code = EXCLUDED.ca_code,
+  full_name = EXCLUDED.full_name,
   email = EXCLUDED.email,
   phone = EXCLUDED.phone,
+  name = EXCLUDED.name,
+  entity_type = EXCLUDED.entity_type,
+  pan = EXCLUDED.pan,
+  gstin = EXCLUDED.gstin,
+  status = EXCLUDED.status,
+  assigned_ca = EXCLUDED.assigned_ca,
+  filing_status = EXCLUDED.filing_status,
+  filing_types = EXCLUDED.filing_types,
+  vault_folder = EXCLUDED.vault_folder,
+  total_docs = EXCLUDED.total_docs,
+  total_ai_calls = EXCLUDED.total_ai_calls,
+  client_created_at = EXCLUDED.client_created_at,
+  client_updated_at = EXCLUDED.client_updated_at,
   updated_at = now();
+
+-- Remove only the obsolete compatibility rows for portal identities. Staff
+-- user_profiles rows remain the source for CA onboarding and profile edits.
+DELETE FROM public.user_profiles AS profile
+USING public.client_portal_access AS access
+WHERE profile.id = access.user_id
+  AND access.user_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.sync_client_user_profile_details()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+BEGIN
+  UPDATE public.client_user_profiles
+  SET full_name = NEW.name,
+      name = NEW.name,
+      entity_type = NEW.entity_type,
+      pan = NEW.pan,
+      gstin = NEW.gstin,
+      phone = NEW.phone,
+      email = COALESCE(NEW.email, client_user_profiles.email),
+      status = NEW.status,
+      assigned_ca = NEW.assigned_ca,
+      filing_status = NEW.filing_status,
+      filing_types = NEW.filing_types,
+      vault_folder = NEW.vault_folder,
+      total_docs = NEW.total_docs,
+      total_ai_calls = NEW.total_ai_calls,
+      client_created_at = NEW.created_at,
+      client_updated_at = NEW.updated_at,
+      updated_at = now()
+  WHERE client_id = NEW.id;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.sync_client_user_profile_details() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS trg_sync_client_user_profile_details ON public.clients;
+CREATE TRIGGER trg_sync_client_user_profile_details
+  AFTER UPDATE OF name, entity_type, pan, gstin, phone, email, status,
+    assigned_ca, filing_status, filing_types, vault_folder, total_docs, total_ai_calls
+  ON public.clients
+  FOR EACH ROW EXECUTE FUNCTION public.sync_client_user_profile_details();
 
 UPDATE public.ca_client_relationships AS relationship
 SET

@@ -19,7 +19,7 @@ const crypto = require('node:crypto');
 const { createClient } = require('@supabase/supabase-js');
 const router = express.Router();
 const { supabase, isConnected, SUPABASE_SERVER_KEY } = require('../db/supabase');
-const { ACCOUNT_ROLE, getAccountRole } = require('../lib/accountRoles');
+const { ACCOUNT_ROLE, getAccountRole, isClientAccount } = require('../lib/accountRoles');
 const { requireAuth } = require('../middleware/requireAuth');
 const { deleteAccountStorage, deleteAccountVaultSecrets } = require('../lib/accountDeletion');
 const { isResendConfigured, sendEmailVerificationCode } = require('../lib/resend');
@@ -209,7 +209,8 @@ async function issueEmailOtp({ userId, email, challengeId } = {}) {
 // Helper: fetch user_profile row from Supabase
 // Uses service-role key (bypasses RLS) so backend can always read
 // ──────────────────────────────────────────────────────────
-async function fetchUserProfile(userId) {
+async function fetchUserProfile(userId, supaUser = null) {
+  if (isClientAccount(supaUser)) return null;
   const { data, error } = await supabase
     .from('user_profiles')
     .select('*')
@@ -451,7 +452,7 @@ router.post('/login', async (req, res) => {
     clearRateLimit(rateKey);
 
     // Fetch profile from user_profiles table for onboarding status.
-    const profile = await fetchUserProfile(supaAuth.user.id);
+    const profile = await fetchUserProfile(supaAuth.user.id, supaAuth.user);
 
     return res.json({
       success: true,
@@ -494,7 +495,7 @@ router.post('/refresh', async (req, res) => {
       });
     }
 
-    const profile = await fetchUserProfile(refreshed.user.id);
+    const profile = await fetchUserProfile(refreshed.user.id, refreshed.user);
     return res.json({
       success: true,
       message: 'Session refreshed.',
@@ -689,7 +690,7 @@ router.get('/me', async (req, res) => {
     return res.status(401).json({ success: false, message: 'Session is invalid or has expired. Please log in again.' });
   }
 
-  const profile = await fetchUserProfile(data.user.id);
+  const profile = await fetchUserProfile(data.user.id, data.user);
 
   return res.json({
     success: true,

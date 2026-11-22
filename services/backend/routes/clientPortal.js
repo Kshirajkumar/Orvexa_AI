@@ -169,7 +169,7 @@ async function inspectPortalInvite(token, email) {
   ) return { status: 'invalid' };
 
   const { data: client, error: clientError } = await supabase.from('clients')
-    .select('id, email, status')
+    .select('id, name, entity_type, pan, gstin, phone, email, status, assigned_ca, filing_status, filing_types, vault_folder, total_docs, total_ai_calls, created_at, updated_at')
     .eq('id', invite.client_id)
     .is('deletion_requested_at', null)
     .maybeSingle();
@@ -184,7 +184,7 @@ async function inspectPortalInvite(token, email) {
   if (invite.revoked_at || new Date(invite.expires_at).getTime() <= Date.now()) {
     return { status: 'invalid' };
   }
-  return { status: 'valid', invite };
+  return { status: 'valid', invite, client };
 }
 
 function sendAlreadyClaimedInvitation(res) {
@@ -447,6 +447,21 @@ router.post('/invitations/register', async (req, res) => {
       email,
       password,
       email_confirm: true,
+      user_metadata: {
+        full_name: invitation.client.name || email,
+        client_id: invitation.client.id,
+        entity_type: invitation.client.entity_type || null,
+        pan: invitation.client.pan || null,
+        gstin: invitation.client.gstin || null,
+        phone: invitation.client.phone || null,
+        status: invitation.client.status || null,
+        assigned_ca: invitation.client.assigned_ca || null,
+        filing_status: invitation.client.filing_status || null,
+        filing_types: invitation.client.filing_types || [],
+        vault_folder: invitation.client.vault_folder || null,
+        total_docs: invitation.client.total_docs || 0,
+        total_ai_calls: invitation.client.total_ai_calls || 0,
+      },
       app_metadata: { role: ACCOUNT_ROLE.CLIENT, taxflow_client_portal: true },
     });
     if (createError || !created?.user?.id) {
@@ -589,15 +604,10 @@ async function hasClaimedClientPortalAccount(clientId, email) {
     .maybeSingle();
   if (error) throw error;
   if (!data?.active || !data.user_id) return false;
-  const [{ data: authData, error: authError }, { data: profile, error: profileError }] = await Promise.all([
-    supabase.auth.admin.getUserById(data.user_id),
-    supabase.from('user_profiles').select('account_category').eq('id', data.user_id).maybeSingle(),
-  ]);
+  const { data: authData, error: authError } = await supabase.auth.admin.getUserById(data.user_id);
   if (authError) throw authError;
-  if (profileError) throw profileError;
   return Boolean(
     isClientAccount(authData?.user)
-    && profile?.account_category === 'client_user'
     && String(data.invited_email || '').trim().toLowerCase() === email
     && String(authData.user.email || '').trim().toLowerCase() === email
   );

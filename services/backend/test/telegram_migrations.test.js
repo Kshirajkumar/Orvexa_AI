@@ -23,6 +23,8 @@ test('portal auth trigger skips staff profile creation for portal identities', (
   assert.match(sql, /RETURN NEW/i);
   assert.match(sql, /CREATE TRIGGER on_auth_user_created\s+AFTER INSERT ON auth\.users/i);
   assert.match(sql, /raw_app_meta_data\s*->>\s*'role'.*client/i);
+  assert.match(sql, /IF COALESCE\(NEW\.raw_app_meta_data.*<> 'client'/is);
+  assert.doesNotMatch(sql, /THEN 'Client User' ELSE 'Managing Partner'/i);
 });
 
 test('account role migration assigns explicit server-controlled client and staff roles', () => {
@@ -41,6 +43,10 @@ test('identity migration separates CA and client portal identities', () => {
   assert.match(sql, /TF-CL-/i);
   assert.match(sql, /status = 'verified'/i);
   assert.match(sql, /CREATE TRIGGER trg_ensure_ca_client_relationship/i);
+  assert.match(sql, /name TEXT NOT NULL DEFAULT ''/i);
+  assert.match(sql, /filing_types JSONB NOT NULL DEFAULT '\[\]'::jsonb/i);
+  assert.match(sql, /sync_client_user_profile_details/i);
+  assert.doesNotMatch(sql, /INSERT INTO public\.user_profiles.*client_user/is);
 });
 
 test('portal migration enables existing active clients with email without reactivating prior access records', () => {

@@ -40,15 +40,8 @@ LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = public
 AS $$
 BEGIN
-  IF NEW.active = TRUE AND NEW.user_id IS NOT NULL THEN
-    INSERT INTO public.user_profiles (id, full_name, practice_type, role, account_category)
-    SELECT NEW.user_id,
-      COALESCE(u.raw_user_meta_data ->> 'full_name', ''),
-      'Chartered Accountant (CA)', 'Client User', 'client_user'
-    FROM auth.users u WHERE u.id = NEW.user_id
-    ON CONFLICT (id) DO UPDATE SET
-      role = 'Client User', account_category = 'client_user', updated_at = clock_timestamp();
-  END IF;
+  -- Portal identities are stored in client_user_profiles by the identity
+  -- migration. Never create a duplicate user_profiles row here.
   RETURN NEW;
 END;
 $$;
@@ -66,25 +59,24 @@ LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = public
 AS $$
 BEGIN
-  INSERT INTO public.user_profiles (
-    id, full_name, practice_type, membership_no, role, account_category
-  )
-  VALUES (
-    NEW.id,
-    COALESCE(NEW.raw_user_meta_data ->> 'full_name', ''),
-    COALESCE(NEW.raw_user_meta_data ->> 'practice_type', 'Chartered Accountant (CA)'),
-    NEW.raw_user_meta_data ->> 'membership_no',
-    CASE WHEN COALESCE(NEW.raw_app_meta_data ->> 'role', '') = 'client'
-      OR COALESCE(NEW.raw_app_meta_data ->> 'taxflow_client_portal', 'false') = 'true'
-      THEN 'Client User' ELSE 'Managing Partner' END,
-    CASE WHEN COALESCE(NEW.raw_app_meta_data ->> 'role', '') = 'client'
-      OR COALESCE(NEW.raw_app_meta_data ->> 'taxflow_client_portal', 'false') = 'true'
-      THEN 'client_user' ELSE 'ca_user' END
-  )
-  ON CONFLICT (id) DO UPDATE SET
-    account_category = EXCLUDED.account_category,
-    role = EXCLUDED.role,
-    updated_at = clock_timestamp();
+  IF COALESCE(NEW.raw_app_meta_data ->> 'role', '') <> 'client'
+     AND COALESCE(NEW.raw_app_meta_data ->> 'taxflow_client_portal', 'false') <> 'true' THEN
+    INSERT INTO public.user_profiles (
+      id, full_name, practice_type, membership_no, role, account_category
+    )
+    VALUES (
+      NEW.id,
+      COALESCE(NEW.raw_user_meta_data ->> 'full_name', ''),
+      COALESCE(NEW.raw_user_meta_data ->> 'practice_type', 'Chartered Accountant (CA)'),
+      NEW.raw_user_meta_data ->> 'membership_no',
+      'Managing Partner',
+      'ca_user'
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      account_category = 'ca_user',
+      role = 'Managing Partner',
+      updated_at = clock_timestamp();
+  END IF;
   RETURN NEW;
 END;
 $$;
