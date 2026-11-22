@@ -69,3 +69,12 @@ test('unsupported MIME types are rejected before a durable extraction run starts
   const runStart = routeSource.indexOf('extractionRunId = await startExtractionRun');
   assert.ok(mimeCheck >= 0 && mimeCheck < runStart);
 });
+
+test('exact processed-file duplicate guard runs before category/provider work', () => {
+  const duplicateCheck = routeSource.indexOf("code: 'DUPLICATE_DOCUMENT'");
+  const categoryCheck = routeSource.indexOf('const docCategory = doc.category');
+  const providerLookup = routeSource.indexOf('getGeminiConfig(req.user.id)');
+  assert.ok(duplicateCheck >= 0 && duplicateCheck < categoryCheck && duplicateCheck < providerLookup);
+  assert.match(routeSource, /\.eq\('file_sha256', doc\.file_sha256\)/);
+  assert.match(routeSource, /\.eq\('client_id', doc\.client_id\)/);
+});

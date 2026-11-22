@@ -46,6 +46,7 @@
 - Provider JSON parsing is bounded and accepts only an object, with support for fenced output and short surrounding commentary; it does not rewrite malformed field values.
 - Unsupported MIME types are rejected before a durable extraction run is created, preventing stranded `processing` run records.
 - Null provider and field confidence values remain null through score calculation; explicit zero remains a meaningful zero.
+- Exact duplicate documents are rejected before a paid provider call when the same client already has a processed document with the same SHA-256; invoice-number near-duplicates remain in human review.
 
 These changes are repository-verified only. They do not yet prove extraction accuracy against a golden-document set, validate provider-specific response quality, or prove the new RPCs against a staging database.
 

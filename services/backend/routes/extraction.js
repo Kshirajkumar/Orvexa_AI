@@ -93,6 +93,27 @@ router.post('/process', async (req, res) => {
     if (doc.source === 'Telegram') {
       return res.status(404).json({ success: false, message: 'Telegram files are not available for extraction. Use the secure client portal for document uploads.' });
     }
+    if (doc.file_sha256) {
+      const { data: duplicateDocument, error: duplicateError } = await supabase
+        .from('documents_metadata')
+        .select('id, file_name, status')
+        .eq('client_id', doc.client_id)
+        .eq('file_sha256', doc.file_sha256)
+        .neq('id', doc.id)
+        .in('status', ['Extracted', 'Verified'])
+        .not('extracted_data', 'is', null)
+        .limit(1)
+        .maybeSingle();
+      if (duplicateError) throw duplicateError;
+      if (duplicateDocument) {
+        return res.status(409).json({
+          success: false,
+          code: 'DUPLICATE_DOCUMENT',
+          message: 'This exact document was already extracted for this client. Review the existing result instead of running another paid extraction.',
+          data: { existingDocumentId: duplicateDocument.id, existingFileName: duplicateDocument.file_name },
+        });
+      }
+    }
     const docCategory = doc.category || category || 'General';
     if (!SUPPORTED_EXTRACTION_CATEGORIES.includes(docCategory)) {
       return res.status(422).json({ success: false, message: `The extraction category "${docCategory}" is not supported yet.` });
