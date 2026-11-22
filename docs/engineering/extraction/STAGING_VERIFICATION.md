@@ -31,4 +31,6 @@ Apply the repository SQL to a non-production staging target in the documented or
 3. `approve_extraction_data` and `restore_extraction_version` existence and grants.
 4. RLS, service-role grants, and advisor output.
 
+The copy/paste checks are in `STAGING_VERIFICATION.sql`; they are read-only and are not a migration.
+
 Production migration remains intentionally unexecuted. The repository is not deployment-complete until these checks pass against the intended staging environment.
