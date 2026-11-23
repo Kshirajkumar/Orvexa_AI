@@ -8,8 +8,8 @@
 const { Resend } = require('resend');
 
 const apiKey = process.env.RESEND_API_KEY;
-const defaultFrom = process.env.RESEND_FROM_EMAIL || 'TaxFlow.AI <onboarding@resend.dev>';
-const resendOnboardingFrom = 'TaxFlow.AI <onboarding@resend.dev>';
+const defaultFrom = process.env.RESEND_FROM_EMAIL || 'Orvexa <onboarding@resend.dev>';
+const resendOnboardingFrom = 'Orvexa <onboarding@resend.dev>';
 
 function getConfiguredFrom() {
   const configured = String(process.env.RESEND_FROM_EMAIL || defaultFrom).trim();

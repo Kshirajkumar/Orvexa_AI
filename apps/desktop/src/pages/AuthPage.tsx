@@ -816,13 +816,18 @@ export function AuthPage() {
                       <h2 className="confirmed-title">Confirm your practice email</h2>
                       <p className="confirmed-subtitle">We sent a six-digit code to</p>
                       <div className="confirmed-email-pill"><span>{signupConfirmedEmail}</span></div>
+                      <div className="otp-flow-steps" aria-label="Account setup progress">
+                        <span className="is-complete"><i aria-hidden="true">✓</i>Account</span>
+                        <span className="is-active"><i aria-hidden="true">2</i>Verify</span>
+                        <span><i aria-hidden="true">3</i>Workspace</span>
+                      </div>
                       <div className="otp-boxes" role="group" aria-label="Six digit email verification code">
                         {Array.from({ length: 6 }).map((_, index) => {
                           const digit = signupOtp[index] || '';
                           return <input
                             key={index}
                             ref={(element) => { otpInputRefs.current[index] = element; }}
-                            className={`otp-box ${digit && Number(digit) > 5 ? 'otp-digit-high' : 'otp-digit-low'}`}
+                            className={`otp-box ${digit ? 'is-filled ' : ''}${digit && Number(digit) > 5 ? 'otp-digit-high' : 'otp-digit-low'}`}
                             value={digit}
                             inputMode="numeric"
                             pattern="[0-9]*"
@@ -839,6 +844,7 @@ export function AuthPage() {
                           />;
                         })}
                       </div>
+                      <div className="otp-code-meta"><span className="otp-live-dot" aria-hidden="true" />Code expires in 10 minutes</div>
                       <div className="otp-status" aria-live="polite">
                         {otpState === 'success' ? 'Verified. Opening your workspace…' : otpState === 'verifying' ? 'Checking your code…' : 'Enter the code to confirm your account'}
                       </div>
