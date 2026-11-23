@@ -163,8 +163,8 @@ export function AuthPage() {
       setErrorMessage(null);
       setSuccessMessage(null);
     };
-    window.addEventListener('taxflow:password-reset-complete', onPasswordResetComplete);
-    return () => window.removeEventListener('taxflow:password-reset-complete', onPasswordResetComplete);
+    window.addEventListener('orvexa:password-reset-complete', onPasswordResetComplete);
+    return () => window.removeEventListener('orvexa:password-reset-complete', onPasswordResetComplete);
   }, []);
 
   // Rate Limiting & Cooldown state

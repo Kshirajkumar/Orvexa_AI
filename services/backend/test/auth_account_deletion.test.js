@@ -17,7 +17,7 @@ test('account deletion requires configured cloud storage, exact phrase, and a va
     error: null
   });
   database.supabase.from = (table) => {
-    if (table !== 'client_portal_access') return originalFrom(table);
+    if (table !== 'client_portal_access') return originalFrom.call(database.supabase, table);
     return {
       select() { return this; },
       eq() { return this; },
@@ -58,4 +58,57 @@ test('account deletion requires configured cloud storage, exact phrase, and a va
 
   const invalidChallenge = await request({ confirmation: 'DELETE MY ACCOUNT', challenge: 'invalid' });
   assert.equal(invalidChallenge.status, 401);
+
+  // Valid challenge deletion
+  const crypto = require('node:crypto');
+  const testUserId = '11752602-62fa-4252-ae1d-23c4fb3b7312';
+  const payload = {
+    sub: testUserId,
+    exp: Math.floor(Date.now() / 1000) + 300,
+    nonce: crypto.randomBytes(24).toString('base64url')
+  };
+  const secret = process.env.SUPABASE_SECRET_KEY;
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto.createHmac('sha256', secret).update(encodedPayload).digest('base64url');
+  const validChallenge = `${encodedPayload}.${signature}`;
+
+  const deletedUserCalls = [];
+  database.supabase.auth.admin = {
+    async deleteUser(id) {
+      deletedUserCalls.push(id);
+      return { error: null };
+    }
+  };
+  database.supabase.rpc = async (name) => {
+    if (name === 'delete_ca_user_all_data') {
+      return { data: { success: true, clientCount: 0, portalUserIds: [] }, error: null };
+    }
+    return { data: null, error: null };
+  };
+  database.supabase.storage = {
+    from() {
+      return {
+        async list() { return { data: [], error: null }; },
+        async remove(paths) { return { data: paths, error: null }; }
+      };
+    }
+  };
+
+  database.supabase.from = () => ({
+    select() { return this; },
+    eq() { return this; },
+    in() { return this; },
+    not() { return this; },
+    order() { return this; },
+    delete() { return this; },
+    then(resolve) { return Promise.resolve({ data: [], error: null }).then(resolve); },
+    async range() { return { data: [], error: null }; }
+  });
+
+  const validResponse = await request({ confirmation: 'DELETE MY ACCOUNT', challenge: validChallenge });
+  assert.equal(validResponse.status, 200);
+  const body = await validResponse.json();
+  assert.equal(body.success, true);
+  assert.match(body.message, /permanently deleted/i);
+  assert.ok(deletedUserCalls.includes(testUserId));
 });

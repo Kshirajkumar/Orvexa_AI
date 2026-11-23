@@ -123,10 +123,13 @@ function AuthDeepLinkHandler() {
     const handledUrls = new Set<string>();
 
     const handleUrls = async (urls: string[]) => {
-      const passwordResetUrl = urls.find((url) => url.startsWith('taxflow://auth/password-reset-success'));
+      const passwordResetUrl = urls.find((url) =>
+        url.startsWith('orvexa://auth/password-reset-success') ||
+        url.startsWith('orvvexa://auth/password-reset-success')
+      );
       if (passwordResetUrl && !disposed && !handledUrls.has(passwordResetUrl)) {
         handledUrls.add(passwordResetUrl);
-        window.dispatchEvent(new CustomEvent('taxflow:password-reset-complete'));
+        window.dispatchEvent(new CustomEvent('orvexa:password-reset-complete'));
         try {
           await getCurrentWindow().show();
           await getCurrentWindow().setFocus();
@@ -135,7 +138,10 @@ function AuthDeepLinkHandler() {
         }
         return;
       }
-      const callbackUrl = urls.find((url) => url.startsWith('taxflow://auth/callback'));
+      const callbackUrl = urls.find((url) =>
+        url.startsWith('orvexa://auth/callback') ||
+        url.startsWith('orvvexa://auth/callback')
+      );
       if (!callbackUrl || disposed || handledUrls.has(callbackUrl)) return;
       handledUrls.add(callbackUrl);
 

@@ -21,7 +21,7 @@ const router = express.Router();
 const { supabase, isConnected, SUPABASE_SERVER_KEY } = require('../db/supabase');
 const { ACCOUNT_ROLE, getAccountRole, isClientAccount } = require('../lib/accountRoles');
 const { requireAuth } = require('../middleware/requireAuth');
-const { deleteAccountStorage, deleteAccountVaultSecrets } = require('../lib/accountDeletion');
+const { deleteAccountStorage, deleteAccountVaultSecrets, purgeAccountCompletely } = require('../lib/accountDeletion');
 const { isResendConfigured, sendEmailVerificationCode } = require('../lib/resend');
 const ALLOWED_PRACTICE_TYPES = new Set(['Chartered Accountant (CA)', 'Individual']);
 const ACCOUNT_DELETE_CONFIRMATION = 'DELETE MY ACCOUNT';
@@ -639,33 +639,20 @@ router.post('/delete-account/confirm', async (req, res) => {
   }
 
   try {
-    const { deletedObjectCount } = await deleteAccountStorage(
-      supabase,
-      userId,
-      storageBucket
-    );
-    const { deletedSecretCount } = await deleteAccountVaultSecrets(supabase, userId);
-    const { error } = await supabase.auth.admin.deleteUser(userId);
-    if (error) {
-      console.error(`[AUTH] Account database deletion failed for ${userId}:`, error.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Private cloud files were removed, but database account deletion did not finish. Your account remains active; verify the database foreign-key constraints and retry deletion.'
-      });
-    }
+    const result = await purgeAccountCompletely(supabase, userId, storageBucket);
 
-    console.info(`[AUTH] Account ${userId} permanently deleted; removed ${deletedObjectCount} private cloud object(s) and ${deletedSecretCount} integration secret(s).`);
+    console.info(`[AUTH] Account ${userId} permanently deleted; removed ${result.deletedObjectCount} private cloud object(s), ${result.deletedSecretCount} integration secret(s), ${result.deletedPortalCount || 0} client portal account(s), and ${result.clientCount || 0} client record(s).`);
     res.setHeader('Cache-Control', 'no-store');
     return res.json({
       success: true,
-      message: 'Your account and account-owned cloud data were permanently deleted.',
-      data: { deletedObjectCount, deletedSecretCount }
+      message: 'Your account, clients, and all associated cloud data were permanently deleted.',
+      data: result
     });
   } catch (error) {
-    console.error(`[AUTH] Account deletion failed before auth removal for ${userId}:`, error.message);
+    console.error(`[AUTH] Account permanent deletion failed for ${userId}:`, error.message);
     return res.status(500).json({
       success: false,
-      message: 'Account deletion did not finish. Your sign-in account was not deleted; some private cloud files or integration secrets may already have been removed. Retry, or contact support if the problem continues.'
+      message: error.message || 'Account deletion did not finish. Your sign-in account was not deleted; some private cloud files or integration secrets may already have been removed. Retry, or contact support if the problem continues.'
     });
   }
 });

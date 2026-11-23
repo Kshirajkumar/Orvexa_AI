@@ -80,93 +80,110 @@ export function Sidebar() {
   return (
     <nav className={`side${collapsed ? ' collapsed' : ''}`} aria-label="Pages">
       {/* Collapse Toggle Button */}
-      <button
-        className="sidebar-toggle"
-        onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
-        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-      >
-        <span className="sidebar-toggle-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            {collapsed ? (
-              <>
-                <line x1="3" y1="6" x2="21" y2="6" />
-                <line x1="3" y1="12" x2="21" y2="12" />
-                <line x1="3" y1="18" x2="21" y2="18" />
-              </>
-            ) : (
-              <>
-                <line x1="3" y1="6" x2="21" y2="6" />
-                <line x1="3" y1="12" x2="15" y2="12" />
-                <line x1="3" y1="18" x2="21" y2="18" />
-              </>
-            )}
-          </svg>
-        </span>
-        {!collapsed && <span className="sidebar-toggle-label">Collapse</span>}
-      </button>
-
-      {/* Navigation Groups */}
-      {NAV.map((g) => (
-        <div key={g.g} className="nav-group">
-          {!collapsed && <div className="gtitle">{g.g}</div>}
-          {g.items.filter(([id]) => id !== 'extraction-review' || Boolean(s.ui.review?.documentId)).map(([id, label, icon]) => {
-            const b = badge(id);
-            const isActive = s.page === id;
-            return (
-              <button
-                key={id}
-                className={'nav' + (isActive ? ' on' : '') + (id === 'extraction-review' ? ' nav-review' : '')}
-                data-tour={`nav-${id}`}
-                onClick={() => dispatch({ type: 'GO', page: id })}
-                title={collapsed ? `${label}${b ? ` (${b.n})` : ''}` : undefined}
-                aria-label={label}
-                aria-current={isActive ? 'page' : undefined}
-              >
-                <span className="nav-icon">
-                  <Icon name={icon} size={18} />
-                </span>
-                {!collapsed && <span className="lb">{label}</span>}
-                {b && <span className={'bd' + (b.hot ? ' hot' : '') + (b.chatUnread ? ' chat-unread' : '')}>{b.n}</span>}
-                {id === 'extraction-review' && <span className="review-nav-dot" aria-label="Review required" />}
-                {isActive && <span className="nav-active-bar" />}
-              </button>
-            );
-          })}
-        </div>
-      ))}
-
-      {/* User Profile */}
-      <div className={`me${s.page === 'profile' ? ' active' : ''}`} data-tour="profile-card" title="Open your profile" onClick={() => dispatch({ type: 'GO', page: 'profile' })} role="button" tabIndex={0} aria-label="Open your profile" onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); dispatch({ type: 'GO', page: 'profile' }); } }}>
-        <div className="me-avatar-wrap">
-          <span className="av" style={{ ['--t' as any]: '#4C8DFF' }}>
-            {initials}
-          </span>
-          <span className="me-status-dot" title="Online" />
-        </div>
-        {!collapsed && (
-          <div className="me-info">
-            <b className="me-name">
-              {s.currentUser?.name || 'Personal workspace'}
-            </b>
-            <small className="me-role">
-              {s.currentUser?.role || 'Managing Partner'}
-            </small>
-          </div>
-        )}
+      <div className="side-header">
         <button
-          type="button"
-          className="logout-btn"
-          onClick={event => { event.stopPropagation(); dispatch({ type: 'LOGOUT' }); }}
-          title="Sign out"
-          aria-label="Sign out"
+          className="sidebar-toggle"
+          onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
+          <span className="sidebar-toggle-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {collapsed ? (
+                <>
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </>
+              ) : (
+                <>
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="15" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </>
+              )}
+            </svg>
+          </span>
+          {!collapsed && <span className="sidebar-toggle-label">Collapse</span>}
         </button>
+      </div>
+
+      {/* Navigation Groups Container (Scrolls independently if needed) */}
+      <div className="side-nav-scroll">
+        {NAV.map((g) => (
+          <div key={g.g} className="nav-group">
+            {!collapsed && <div className="gtitle">{g.g}</div>}
+            {g.items.filter(([id]) => id !== 'extraction-review' || Boolean(s.ui.review?.documentId)).map(([id, label, icon]) => {
+              const b = badge(id);
+              const isActive = s.page === id;
+              return (
+                <button
+                  key={id}
+                  className={'nav' + (isActive ? ' on' : '') + (id === 'extraction-review' ? ' nav-review' : '') + ` nav-item-${id}`}
+                  data-tour={`nav-${id}`}
+                  data-icon={icon}
+                  onClick={() => dispatch({ type: 'GO', page: id })}
+                  title={collapsed ? `${label}${b ? ` (${b.n})` : ''}` : undefined}
+                  aria-label={label}
+                  aria-current={isActive ? 'page' : undefined}
+                >
+                  <span className={`nav-icon nav-icon-${icon} nav-icon-page-${id}`}>
+                    <Icon name={icon} size={18} />
+                  </span>
+                  {!collapsed && <span className="lb">{label}</span>}
+                  {b && <span className={'bd' + (b.hot ? ' hot' : '') + (b.chatUnread ? ' chat-unread' : '')}>{b.n}</span>}
+                  {id === 'extraction-review' && <span className="review-nav-dot" aria-label="Review required" />}
+                  {isActive && <span className="nav-active-bar" />}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {/* User Profile Card - Permanently Shifted to Sidebar Most Bottom */}
+      <div className="side-footer">
+        <div
+          className={`me${s.page === 'profile' ? ' active' : ''}`}
+          data-tour="profile-card"
+          title="Open your profile"
+          onClick={() => dispatch({ type: 'GO', page: 'profile' })}
+          role="button"
+          tabIndex={0}
+          aria-label="Open your profile"
+          onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); dispatch({ type: 'GO', page: 'profile' }); } }}
+        >
+          <div className="me-avatar-wrap">
+            <span className="av me-av" style={{ ['--t' as any]: '#4C8DFF' }}>
+              {initials}
+            </span>
+            <span className="me-status-dot" title="Online" />
+          </div>
+          {!collapsed && (
+            <div className="me-info">
+              <b className="me-name">
+                {s.currentUser?.name || 'Personal workspace'}
+              </b>
+              <small className="me-role">
+                <span className="me-role-dot" />
+                <span className="me-role-text">{s.currentUser?.role || 'Managing Partner'}</span>
+              </small>
+            </div>
+          )}
+          <button
+            type="button"
+            className="logout-btn"
+            onClick={event => { event.stopPropagation(); dispatch({ type: 'LOGOUT' }); }}
+            title="Sign out"
+            aria-label="Sign out"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="logout-icon">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
+        </div>
       </div>
     </nav>
   );

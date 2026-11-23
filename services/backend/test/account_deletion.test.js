@@ -6,18 +6,34 @@ const userId = '11752602-62fa-4252-ae1d-23c4fb3b7312';
 const clientId = '20314145-9020-45f0-85a0-68bc63eb359e';
 const secretId = '49815d77-b97f-4abf-ae4b-65cd91af0160';
 
-function createSupabase({ documents = [], integrations = [], storageEntries = {}, listError = null, rpcResult = 0 } = {}) {
+function createSupabase({ documents = [], integrations = [], storageEntries = {}, listError = null, rpcResult = 0, portalUsers = [] } = {}) {
   const removed = [];
   const rpcCalls = [];
+  const deletedUsers = [];
+  const deletedTables = [];
   const tables = {
     clients: [{ id: clientId, user_id: userId }],
     documents_metadata: documents,
-    integration_secrets: integrations
+    integration_secrets: integrations,
+    client_portal_access: portalUsers.map(u => ({ user_id: u, client_id: clientId })),
+    client_user_profiles: portalUsers.map(u => ({ user_id: u, client_id: clientId })),
+    client_portal_invites: [],
+    storage_cleanup_jobs: []
   };
 
   return {
     removed,
     rpcCalls,
+    deletedUsers,
+    deletedTables,
+    auth: {
+      admin: {
+        async deleteUser(id) {
+          deletedUsers.push(id);
+          return { error: null };
+        }
+      }
+    },
     from(table) {
       const filters = [];
       return {
@@ -26,6 +42,14 @@ function createSupabase({ documents = [], integrations = [], storageEntries = {}
         in(field, values) { filters.push((row) => values.includes(row[field])); return this; },
         not(field, _operator, value) { filters.push((row) => row[field] !== value); return this; },
         order() { return this; },
+        delete() {
+          deletedTables.push(table);
+          return this;
+        },
+        then(onFulfilled, onRejected) {
+          const data = (tables[table] || []).filter((row) => filters.every((filter) => filter(row)));
+          return Promise.resolve({ data, error: null }).then(onFulfilled, onRejected);
+        },
         async range(start, end) {
           const data = (tables[table] || []).filter((row) => filters.every((filter) => filter(row)));
           return { data: data.slice(start, end + 1), error: null };
@@ -139,4 +163,56 @@ test('account cleanup does not hide a Vault RPC failure', async () => {
     deleteAccountVaultSecrets(supabase, userId),
     /Could not remove account-owned integration secrets.*Vault function is unavailable/
   );
+});
+
+test('collectClientPortalAuthUserIds discovers portal auth accounts linked to CA clients', async () => {
+  const { collectClientPortalAuthUserIds } = require('../lib/accountDeletion');
+  const portalUserId = '33333333-3333-4333-a333-333333333333';
+  const supabase = createSupabase({ portalUsers: [portalUserId] });
+
+  const ids = await collectClientPortalAuthUserIds(supabase, userId);
+  assert.deepEqual(ids, [portalUserId]);
+});
+
+test('deleteClientPortalAuthUsers deletes all client portal auth users and handles errors gracefully', async () => {
+  const { deleteClientPortalAuthUsers } = require('../lib/accountDeletion');
+  const portalUserId = '33333333-3333-4333-a333-333333333333';
+  const supabase = createSupabase();
+
+  const result = await deleteClientPortalAuthUsers(supabase, [portalUserId]);
+  assert.equal(result.deletedPortalCount, 1);
+  assert.deepEqual(supabase.deletedUsers, [portalUserId]);
+});
+
+test('deleteAccountDatabaseRecords uses atomic RPC when present or falls back to cascade', async () => {
+  const { deleteAccountDatabaseRecords } = require('../lib/accountDeletion');
+  const portalUserId = '33333333-3333-4333-a333-333333333333';
+  const supabase = createSupabase({
+    rpcResult: { success: true, clientCount: 1, portalUserIds: [portalUserId], portalUserCount: 1 }
+  });
+
+  const result = await deleteAccountDatabaseRecords(supabase, userId);
+  assert.equal(result.success, true);
+  assert.equal(result.clientCount, 1);
+  assert.deepEqual(result.portalUserIds, [portalUserId]);
+});
+
+test('purgeAccountCompletely deletes storage, secrets, db records, client portal auth, and CA auth account', async () => {
+  const { purgeAccountCompletely } = require('../lib/accountDeletion');
+  const portalUserId = '33333333-3333-4333-a333-333333333333';
+  const supabase = createSupabase({
+    documents: [
+      { client_id: clientId, storage_bucket: 'taxflow-intake', storage_object_path: `${userId}/client/doc.pdf` }
+    ],
+    rpcResult: { success: true, clientCount: 1, portalUserIds: [portalUserId], portalUserCount: 1 }
+  });
+
+  const result = await purgeAccountCompletely(supabase, userId, 'taxflow-intake');
+  assert.equal(result.success, true);
+  assert.equal(result.clientCount, 1);
+  assert.equal(result.deletedPortalCount, 1);
+  assert.equal(result.deletedObjectCount, 1);
+  // Both portal user and CA user must be deleted from Supabase Auth admin
+  assert.ok(supabase.deletedUsers.includes(portalUserId));
+  assert.ok(supabase.deletedUsers.includes(userId));
 });

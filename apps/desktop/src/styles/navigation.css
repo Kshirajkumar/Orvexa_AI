@@ -4,20 +4,6 @@
   transform-origin: 50% 8%;
 }
 
-.me {
-  cursor: pointer;
-}
-
-.me:focus-visible {
-  outline: 2px solid var(--blue);
-  outline-offset: 3px;
-}
-
-.me.active {
-  background: var(--card2);
-  box-shadow: inset 3px 0 0 var(--blue);
-}
-
 .page-title-badge {
   min-width: 92px;
   text-align: center;
@@ -72,5 +58,526 @@
 @media (prefers-reduced-motion: reduce) {
   .page-transition {
     animation: none;
+  }
+}
+
+/* ==========================================================================
+   SIDEBAR LAYOUT & PINNED BOTTOM SECTION
+   ========================================================================== */
+.side {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden !important;
+  box-sizing: border-box;
+}
+
+.side-header {
+  flex-shrink: 0;
+  width: 100%;
+}
+
+.side-nav-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--line2) 50%, transparent) transparent;
+}
+
+.side-nav-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.side-nav-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.side-nav-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--line2) 50%, transparent);
+  border-radius: 4px;
+}
+
+.side-footer {
+  margin-top: auto;
+  flex-shrink: 0;
+  width: 100%;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+}
+
+/* ==========================================================================
+   STYLISH & GOOD LOOKING USER PROFILE CARD (.me)
+   ========================================================================== */
+.me {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--card2) 60%, var(--panel)), var(--card));
+  border: 1px solid color-mix(in srgb, var(--line2) 60%, var(--line));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+}
+
+:root[data-theme="light"] .me {
+  background: linear-gradient(135deg, #FFFFFF, #F4F7FC);
+  border-color: var(--line);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+}
+
+.me::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--blue) 40%, transparent), transparent);
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+
+.me:hover {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--blue) 14%, var(--card2)), var(--card2));
+  border-color: color-mix(in srgb, var(--blue) 60%, var(--line2));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 0 0 1px color-mix(in srgb, var(--blue) 30%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transform: translateY(-1.5px);
+}
+
+:root[data-theme="light"] .me:hover {
+  background: linear-gradient(135deg, #FFFFFF, #EDF3FE);
+  border-color: var(--blue);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.12), 0 0 0 1px color-mix(in srgb, var(--blue) 25%, transparent);
+}
+
+.me:hover::before {
+  opacity: 1;
+}
+
+.me:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.me.active {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--blue) 20%, var(--card2)), var(--card2));
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue), 0 6px 20px color-mix(in srgb, var(--blue) 25%, transparent);
+}
+
+/* Avatar Styling */
+.me-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.av.me-av {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%) !important;
+  color: #FFFFFF !important;
+  font-size: 13.5px;
+  font-weight: 750;
+  letter-spacing: 0.5px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+}
+
+.me:hover .av.me-av {
+  transform: scale(1.05);
+  box-shadow: 0 5px 14px rgba(37, 99, 235, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.me-status-dot {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #10B981;
+  border: 2px solid var(--panel);
+  box-shadow: 0 0 8px #10B981;
+  animation: statusDotPulse 2.8s infinite ease-in-out;
+}
+
+@keyframes statusDotPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0);
+  }
+}
+
+/* User Info Styling */
+.me-info {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5px;
+  overflow: hidden;
+}
+
+.me-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--tx);
+  letter-spacing: -0.2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+  transition: color 0.18s ease;
+}
+
+.me:hover .me-name {
+  color: #FFFFFF;
+}
+
+:root[data-theme="light"] .me:hover .me-name {
+  color: #0F172A;
+}
+
+.me-role {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--tx3);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.me-role-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--blue);
+  flex-shrink: 0;
+}
+
+.me-role-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--blue) 80%, var(--tx2));
+  font-weight: 550;
+  font-size: 10.5px;
+}
+
+/* Logout Button */
+.logout-btn {
+  background: color-mix(in srgb, var(--panel) 75%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  color: var(--tx3);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.logout-icon {
+  transition: transform 0.2s ease;
+}
+
+.logout-btn:hover {
+  color: #EF4444;
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.35);
+  transform: translateX(1px) scale(1.06);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25);
+}
+
+.logout-btn:hover .logout-icon {
+  transform: translateX(2px);
+  animation: logoutArrowNudge 0.4s ease infinite alternate;
+}
+
+@keyframes logoutArrowNudge {
+  from { transform: translateX(1px); }
+  to { transform: translateX(3px); }
+}
+
+/* Collapsed Profile Footer */
+.side.collapsed .side-footer {
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.side.collapsed .me {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 12px;
+}
+
+.side.collapsed .me-info {
+  display: none !important;
+}
+
+.side.collapsed .logout-btn {
+  display: none !important;
+}
+
+/* ==========================================================================
+   NAVIGATION BUTTONS HOVER & MICRO-ANIMATIONS FOR ALL ICONS
+   ========================================================================== */
+.nav {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: transparent;
+  border: 0;
+  color: var(--tx2);
+  text-align: left;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              color 0.22s ease,
+              box-shadow 0.22s ease;
+}
+
+.nav:hover {
+  background: color-mix(in srgb, var(--card2) 80%, transparent);
+  color: var(--tx);
+  transform: translateX(3px);
+}
+
+.side.collapsed .nav:hover {
+  transform: scale(1.08);
+}
+
+.nav:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.nav.on {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--blue) 22%, transparent), color-mix(in srgb, var(--blue) 6%, transparent));
+  color: var(--tx);
+  font-weight: 600;
+}
+
+.nav-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.2s ease, filter 0.25s ease;
+}
+
+.nav-icon svg {
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.2s ease, filter 0.25s ease;
+}
+
+/* 1. Dashboard Icon (grid) - 3D Tile Pop & Rotational Spring */
+@keyframes iconHoverGrid {
+  0% { transform: scale(1) rotate(0deg); }
+  25% { transform: scale(1.22) rotate(6deg); }
+  55% { transform: scale(1.12) rotate(-4deg); }
+  80% { transform: scale(1.18) rotate(2deg); }
+  100% { transform: scale(1.15) rotate(0deg); }
+}
+
+.nav:hover .nav-icon-grid svg,
+.nav:hover .nav-icon-page-dashboard svg {
+  animation: iconHoverGrid 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  color: #38BDF8 !important;
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.55));
+}
+
+/* 2. Invoice Extraction Icon (scan) - Vertical Laser Scanner Beam */
+@keyframes iconHoverScan {
+  0% { transform: translateY(0) scale(1); }
+  25% { transform: translateY(-3px) scale(1.14); }
+  55% { transform: translateY(3px) scale(1.14); }
+  80% { transform: translateY(-1px) scale(1.12); }
+  100% { transform: translateY(0) scale(1.12); }
+}
+
+.nav:hover .nav-icon-scan svg,
+.nav:hover .nav-icon-page-extract svg {
+  animation: iconHoverScan 0.55s ease-in-out forwards;
+  color: #06B6D4 !important;
+  filter: drop-shadow(0 0 6px rgba(6, 182, 212, 0.6));
+}
+
+/* 3. Data Extraction Review Icon (table) - Data Inspect Grid Expansion */
+@keyframes iconHoverTable {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.22) scaleX(1.1); }
+  65% { transform: scale(1.12) scaleY(1.08); }
+  100% { transform: scale(1.15); }
+}
+
+.nav:hover .nav-icon-table svg,
+.nav:hover .nav-icon-page-extraction-review svg {
+  animation: iconHoverTable 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  color: #F59E0B !important;
+  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.55));
+}
+
+/* 4. Client Inbox / WhatsApp Icon (chat) - Speech Bubble Pop & Wobble */
+@keyframes iconHoverChat {
+  0% { transform: scale(1) rotate(0deg); }
+  20% { transform: scale(1.26) rotate(-14deg); }
+  45% { transform: scale(1.18) rotate(12deg); }
+  70% { transform: scale(1.14) rotate(-5deg); }
+  100% { transform: scale(1.15) rotate(0deg); }
+}
+
+.nav:hover .nav-icon-chat svg,
+.nav:hover .nav-icon-page-whatsapp svg {
+  animation: iconHoverChat 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  color: #22C55E !important;
+  filter: drop-shadow(0 0 7px rgba(34, 197, 94, 0.6));
+}
+
+/* 5. Client Folders Icon (folder) - Folder Tab Lift & Expand */
+@keyframes iconHoverFolder {
+  0% { transform: translateY(0) scale(1) skewX(0deg); }
+  35% { transform: translateY(-4px) scale(1.2) skewX(-4deg); }
+  70% { transform: translateY(-1.5px) scale(1.14) skewX(2deg); }
+  100% { transform: translateY(-2px) scale(1.15) skewX(0deg); }
+}
+
+.nav:hover .nav-icon-folder svg,
+.nav:hover .nav-icon-page-files svg {
+  animation: iconHoverFolder 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  color: #FB923C !important;
+  filter: drop-shadow(0 0 6px rgba(251, 146, 60, 0.55));
+}
+
+/* 6. Deadlines Icon (cal) - Alert Calendar Chime Pendulum Swing */
+@keyframes iconHoverCal {
+  0% { transform: rotate(0deg) scale(1); }
+  20% { transform: rotate(-16deg) scale(1.2); }
+  45% { transform: rotate(14deg) scale(1.16); }
+  70% { transform: rotate(-8deg) scale(1.14); }
+  85% { transform: rotate(4deg) scale(1.12); }
+  100% { transform: rotate(0deg) scale(1.14); }
+}
+
+.nav:hover .nav-icon-cal svg,
+.nav:hover .nav-icon-page-deadlines svg {
+  animation: iconHoverCal 0.55s ease forwards;
+  color: #F43F5E !important;
+  filter: drop-shadow(0 0 6px rgba(244, 63, 94, 0.55));
+}
+
+/* 7. File Generator Icon (spark) - AI Magic Twinkle & 180° Spin */
+@keyframes iconHoverSpark {
+  0% { transform: scale(1) rotate(0deg); }
+  45% { transform: scale(1.32) rotate(180deg); }
+  75% { transform: scale(1.16) rotate(165deg); }
+  100% { transform: scale(1.2) rotate(180deg); }
+}
+
+.nav:hover .nav-icon-page-generate svg {
+  animation: iconHoverSpark 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  color: #A855F7 !important;
+  filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.7));
+}
+
+/* 8. Clients Icon (users) - Friendly Team Wave & Spring Bounce */
+@keyframes iconHoverUsers {
+  0% { transform: translateY(0) scale(1); }
+  25% { transform: translateY(-5px) scale(1.18); }
+  55% { transform: translateY(1px) scale(1.1); }
+  80% { transform: translateY(-2px) scale(1.14); }
+  100% { transform: translateY(-1px) scale(1.12); }
+}
+
+.nav:hover .nav-icon-users svg,
+.nav:hover .nav-icon-page-clients svg {
+  animation: iconHoverUsers 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  color: #3B82F6 !important;
+  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.55));
+}
+
+/* 9. Subscriptions Icon - Shimmer Pulse & Star Radiance */
+@keyframes iconHoverSubs {
+  0% { transform: scale(1) rotate(0deg); }
+  30% { transform: scale(1.25) rotate(-18deg); }
+  65% { transform: scale(1.15) rotate(14deg); }
+  100% { transform: scale(1.18) rotate(0deg); }
+}
+
+.nav:hover .nav-icon-page-subscriptions svg {
+  animation: iconHoverSubs 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  color: #EAB308 !important;
+  filter: drop-shadow(0 0 7px rgba(234, 179, 8, 0.6));
+}
+
+/* 10. Settings Icon (sliders) - Precision Dial Clockwise Adjustment */
+@keyframes iconHoverSliders {
+  0% { transform: rotate(0deg) scale(1); }
+  45% { transform: rotate(38deg) scale(1.18); }
+  75% { transform: rotate(24deg) scale(1.14); }
+  100% { transform: rotate(30deg) scale(1.15); }
+}
+
+.nav:hover .nav-icon-sliders svg,
+.nav:hover .nav-icon-page-settings svg {
+  animation: iconHoverSliders 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  color: #E2E8F0 !important;
+  filter: drop-shadow(0 0 5px rgba(226, 232, 240, 0.45));
+}
+
+/* Collapse Toggle Button Hover Animation */
+@keyframes toggleLineShift {
+  0% { transform: scaleX(1); }
+  50% { transform: scaleX(0.78); }
+  100% { transform: scaleX(1); }
+}
+
+.sidebar-toggle:hover .sidebar-toggle-icon svg {
+  animation: toggleLineShift 0.35s ease;
+  color: var(--blue);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav:hover,
+  .nav:hover .nav-icon svg,
+  .sidebar-toggle:hover .sidebar-toggle-icon svg,
+  .me:hover,
+  .me-status-dot,
+  .logout-btn:hover .logout-icon {
+    animation: none !important;
+    transform: none !important;
   }
 }
