@@ -25,6 +25,18 @@ test('integration secret migrations grant backend DELETE access for account dele
   }
 });
 
+test('account deletion RPC uses the current portal and document lifecycle columns', () => {
+  const sql = fs.readFileSync(
+    path.join(__dirname, '..', 'db', 'account_deletion_comprehensive.sql'),
+    'utf8'
+  );
+
+  assert.doesNotMatch(sql, /claimed_by_user_id|invited_by_user_id|uploaded_by_user_id/i);
+  assert.match(sql, /document_upload_reservations[\s\S]*owner_user_id/i);
+  assert.match(sql, /document_versions[\s\S]*created_by/i);
+  assert.match(sql, /client_portal_invites[\s\S]*created_by/i);
+});
+
 function createSupabase({ documents = [], integrations = [], storageEntries = {}, listError = null, rpcResult = 0, portalUsers = [] } = {}) {
   const removed = [];
   const rpcCalls = [];

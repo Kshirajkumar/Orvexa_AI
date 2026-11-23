@@ -103,9 +103,6 @@ BEGIN
     SELECT user_id AS uid FROM public.client_user_profiles
     WHERE (client_id = ANY(v_client_ids) OR ca_user_id = p_ca_user_id) AND user_id IS NOT NULL AND user_id <> p_ca_user_id
     UNION
-    SELECT claimed_by_user_id AS uid FROM public.client_portal_invites
-    WHERE client_id = ANY(v_client_ids) AND claimed_by_user_id IS NOT NULL AND claimed_by_user_id <> p_ca_user_id
-    UNION
     SELECT portal_user_id AS uid FROM public.storage_cleanup_jobs
     WHERE (client_id = ANY(v_client_ids) OR user_id = p_ca_user_id) AND portal_user_id IS NOT NULL AND portal_user_id <> p_ca_user_id
   ) sub;
@@ -171,16 +168,16 @@ BEGIN
     END IF;
 
     DELETE FROM public.document_upload_reservations
-    WHERE client_id = ANY(v_client_ids) OR user_id = p_ca_user_id;
+    WHERE client_id = ANY(v_client_ids) OR owner_user_id = p_ca_user_id;
 
     DELETE FROM public.document_versions
-    WHERE client_id = ANY(v_client_ids) OR uploaded_by_user_id = p_ca_user_id;
+    WHERE client_id = ANY(v_client_ids) OR created_by = p_ca_user_id;
 
     DELETE FROM public.documents_metadata WHERE client_id = ANY(v_client_ids);
 
     -- Client portal tables
     DELETE FROM public.client_portal_invites
-    WHERE client_id = ANY(v_client_ids) OR invited_by_user_id = p_ca_user_id;
+    WHERE client_id = ANY(v_client_ids) OR created_by = p_ca_user_id;
 
     DELETE FROM public.client_portal_access
     WHERE client_id = ANY(v_client_ids) OR created_by = p_ca_user_id;
@@ -209,7 +206,7 @@ BEGIN
 
   -- Step 4: Delete CA user-scoped records
   DELETE FROM public.document_file_activity WHERE user_id = p_ca_user_id;
-  DELETE FROM public.document_upload_reservations WHERE user_id = p_ca_user_id;
+  DELETE FROM public.document_upload_reservations WHERE owner_user_id = p_ca_user_id;
   DELETE FROM public.storage_cleanup_jobs WHERE user_id = p_ca_user_id;
 
   IF to_regclass('public.client_deletion_audit') IS NOT NULL THEN
