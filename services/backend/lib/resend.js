@@ -266,26 +266,85 @@ async function sendDocumentUploadNotificationEmail({ to, clientName, fileName, c
   });
 }
 
+/**
+ * Render the one-time code email separately from the legacy notification
+ * wrapper. Signup verification is a user-facing auth message and should stay
+ * light, focused, and unmistakably Orvexa-branded.
+ */
+function renderEmailVerificationCode({ code, expiresInMinutes = 10 }) {
+  const safeCode = escapeHtml(code);
+  const safeExpiry = escapeHtml(expiresInMinutes);
+
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+    <title>Your Orvexa verification code</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f4f7fb;color:#17233d;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#f4f7fb;font-size:1px;line-height:1px;">Your secure Orvexa verification code is ready.</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f4f7fb;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background:#ffffff;border:1px solid #dfe7f2;border-radius:20px;box-shadow:0 16px 40px rgba(31,55,92,.10);overflow:hidden;">
+            <tr>
+              <td style="padding:28px 32px 24px;background:#ffffff;border-bottom:1px solid #edf1f6;">
+                <div style="font-size:24px;line-height:1;font-weight:800;letter-spacing:-.8px;color:#17233d;">Orvexa<span style="color:#3478f6;">.</span></div>
+                <div style="margin-top:9px;color:#71809a;font-size:12px;line-height:1.4;letter-spacing:.08em;text-transform:uppercase;">Professional tax practice workspace</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:34px 32px 36px;">
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td style="width:44px;height:44px;background:#eaf2ff;border-radius:13px;text-align:center;color:#3478f6;font-size:22px;line-height:44px;">&#10003;</td>
+                  </tr>
+                </table>
+                <h1 style="margin:22px 0 12px;color:#17233d;font-size:25px;line-height:1.25;font-weight:750;letter-spacing:-.45px;">Confirm your email</h1>
+                <p style="margin:0;color:#53627b;font-size:15px;line-height:1.7;">Use the verification code below to activate your Orvexa practice account.</p>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:26px 0 24px;background:#f6f9ff;border:1px solid #dbe7fb;border-radius:16px;">
+                  <tr>
+                    <td align="center" style="padding:24px 16px 22px;">
+                      <div style="margin-bottom:10px;color:#71809a;font-size:11px;line-height:1.4;font-weight:700;letter-spacing:.14em;text-transform:uppercase;">Your verification code</div>
+                      <div style="color:#17233d;font-size:34px;line-height:1.2;font-weight:800;letter-spacing:11px;padding-left:11px;">${safeCode}</div>
+                    </td>
+                  </tr>
+                </table>
+
+                <p style="margin:0 0 16px;color:#53627b;font-size:14px;line-height:1.7;">This code expires in <strong style="color:#17233d;">${safeExpiry} minutes</strong> and can be used only once.</p>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f8fafc;border:1px solid #e5ebf3;border-radius:12px;">
+                  <tr>
+                    <td style="padding:15px 16px;color:#53627b;font-size:13px;line-height:1.65;">
+                      <strong style="color:#17233d;">Security reminder</strong><br />Orvexa will never ask you to share this code. If you did not create an account, you can safely ignore this email.
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 32px;background:#fbfcfe;border-top:1px solid #edf1f6;color:#8390a6;font-size:12px;line-height:1.6;text-align:center;">Secure workflows. Simplified tax practice.</td>
+            </tr>
+          </table>
+          <p style="margin:18px 16px 0;color:#9aa7ba;font-size:11px;line-height:1.6;text-align:center;">&#169; 2026 Orvexa &middot; Automated account notification</p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
 /** Send the one-time code used to confirm a new CA/staff account. */
 async function sendEmailVerificationCode({ to, code, expiresInMinutes = 10 }) {
-  const safeCode = escapeHtml(code);
-  const title = 'Confirm your TaxFlow.AI account';
-  const html = wrapHtmlEmail({
-    title,
-    preheader: 'Your TaxFlow.AI verification code',
-    contentHtml: `
-      <p>Use this verification code to confirm your TaxFlow.AI practice account:</p>
-      <div class="card" style="text-align:center; letter-spacing:12px; font-size:32px; font-weight:700; color:#F8FAFC;">${safeCode}</div>
-      <p>This code expires in <strong>${expiresInMinutes} minutes</strong> and can be used only once.</p>
-      <p style="font-size:13px;color:#94A3B8;">If you did not create this account, you can safely ignore this email.</p>
-    `,
-    footerNote: 'TaxFlow.AI will never ask you to share this verification code.'
-  });
+  const html = renderEmailVerificationCode({ code, expiresInMinutes });
   return sendEmail({
     to,
-    subject: `${code} is your TaxFlow.AI verification code`,
+    subject: `${code} is your Orvexa verification code`,
     html,
-    text: `Your TaxFlow.AI verification code is ${code}. It expires in ${expiresInMinutes} minutes. Never share this code.`
+    text: `Your Orvexa verification code is ${code}. It expires in ${expiresInMinutes} minutes and can be used only once. Never share this code.`
   });
 }
 
