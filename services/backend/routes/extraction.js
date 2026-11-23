@@ -18,56 +18,21 @@ const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
 const { getGeminiConfig } = require('../lib/aiProvider');
 const {
-  getExtractionPrompt,
-  getCategoryUserPrompt,
-  parseBoundedJsonObject,
-  sanitizeExtractionCandidate,
   validateExtractionData,
   SUPPORTED_EXTRACTION_CATEGORIES,
 } = require('../lib/extractionSchema');
-const { TAXFLOW_SYSTEM_PROMPT, ORVEXA_EXTRACTION_SYSTEM_PROMPT } = require('../lib/systemPrompt');
 const { getOwnedClientIds } = require('../lib/ownership');
 const { downloadDocument, isOwnedDocumentObject } = require('../lib/documentStorage');
 const { saveInvoiceExport } = require('../lib/invoiceExport');
-const { buildExtractionEnvelope, compareExtractionVersions } = require('../lib/extractionVersioning');
+const { compareExtractionVersions } = require('../lib/extractionVersioning');
 const { startExtractionRun, finishExtractionRun } = require('../lib/extractionRuns');
 const { validateExtractedDataQuality } = require('../lib/extractionValidation');
 const { fetchWithRetry } = require('../lib/providerRequest');
-
-async function saveExtractionVersion({ userId, document, data, category, versionKind = 'ai', baseVersion = null, note = null, providerScore = null, providerRaw = null, fieldConfidence = {}, fieldEvidence = {}, validationWarnings = [], extractionRunId = null }) {
-  const envelope = buildExtractionEnvelope({
-    data,
-    category,
-    documentId: document.id,
-    document,
-    assessmentYear: document.assessment_year,
-    versionKind,
-    providerScore,
-    providerRaw,
-    fieldConfidence,
-    fieldEvidence,
-    validationWarnings,
-    fileName: document.file_name,
-    mimeType: document.mime_type,
-    sizeBytes: document.file_size_kb ? Math.round(document.file_size_kb * 1024) : null,
-    sha256: document.file_sha256,
-  });
-  if (extractionRunId) envelope.extraction_run_id = extractionRunId;
-  const { data: version, error } = await supabase.rpc('save_extraction_version', {
-    p_user_id: userId,
-    p_document_id: document.id,
-    p_version_kind: versionKind,
-    p_data: envelope,
-    p_provider_score: envelope.overall_score.provider_score,
-    p_computed_score: envelope.overall_score.computed_score,
-    p_schema_version: envelope.schema_version,
-    p_base_version: baseVersion,
-    p_note: note,
-    p_changed_field_paths: [],
-  });
-  if (error) throw error;
-  return { envelope, version };
-}
+const {
+  saveExtractionVersion,
+  processDocumentExtraction,
+  GeminiProviderAdapter,
+} = require('../lib/extractionEngine');
 
 /**
  * POST /api/v1/extraction/process
@@ -157,14 +122,8 @@ router.post('/process', async (req, res) => {
       .eq('client_id', doc.client_id);
     if (processingError) throw processingError;
 
-    const fileBuffer = await downloadDocument(doc.storage_bucket, doc.storage_object_path);
-
-    // Step 3: Call Gemini AI if API key is available
-    let extractedData = null;
-    let inputTokens = 0, outputTokens = 0;
-    let aiSuccess = false;
+    // Step 3: Delegate execution to deep ExtractionEngine
     const geminiConfig = await getGeminiConfig(req.user.id);
-    const base64Content = fileBuffer.toString('base64');
     extractionRunId = await startExtractionRun({
       userId: req.user.id,
       document: doc,
@@ -173,119 +132,32 @@ router.post('/process', async (req, res) => {
       schemaVersion: `${docCategory.toLowerCase()}-v1`,
       usageSource: 'provider_response',
     });
-    const geminiPayload = {
-      systemInstruction: { parts: [{ text: ORVEXA_EXTRACTION_SYSTEM_PROMPT }] },
-      contents: [{
-        parts: [
-          { text: getCategoryUserPrompt(docCategory, { assessmentYear: doc.assessment_year, clientName: doc.client_name }) },
-          { inline_data: { mime_type: mimeType, data: base64Content } }
-        ]
-      }],
-      generationConfig: {
-        temperature: 0,
-        maxOutputTokens: 8192,
-        responseMimeType: 'application/json'
-      }
-    };
 
-    let geminiRes;
-    try {
-      geminiRes = await fetchWithRetry(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiConfig.model)}:generateContent`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiConfig.apiKey },
-          body: JSON.stringify(geminiPayload),
-        },
-        { timeoutMs: 30000 }
-      );
-    } catch (error) {
-      const providerError = new Error(error.code === 'PROVIDER_TIMEOUT' || error.name === 'AbortError'
-        ? 'The AI extraction provider took too long to respond. Please try again.'
-        : 'The AI extraction provider could not be reached. Please try again.');
-      providerError.status = error.code === 'PROVIDER_TIMEOUT' || error.name === 'AbortError' ? 504 : 502;
-      throw providerError;
-    }
-    let geminiJson;
-    try {
-      geminiJson = await geminiRes.json();
-    } catch {
-      const invalidResponseError = new Error('The AI extraction provider returned an invalid response.');
-      invalidResponseError.status = 502;
-      throw invalidResponseError;
-    }
-    if (!geminiRes.ok) {
-      const error = new Error(geminiRes.status === 429
-        ? 'The AI extraction provider is rate limited. Please wait and try again.'
-        : 'The AI extraction provider could not process this document.');
-      error.status = geminiRes.status === 429 ? 429 : 502;
-      throw error;
-    }
+    const providerAdapter = new GeminiProviderAdapter({
+      apiKey: geminiConfig.apiKey,
+      model: geminiConfig.model,
+      fetchImpl: (url, options, config) => fetchWithRetry(url, options, config),
+      timeoutMs: 30000,
+    });
 
-    const rawText = geminiJson.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('').trim();
-    if (!rawText) {
-      const emptyResponseError = new Error('The AI extraction provider returned no usable text.');
-      emptyResponseError.status = 502;
-      throw emptyResponseError;
-    }
-    let providerPayload;
-    let fieldConfidence = {};
-    let fieldEvidence = {};
-    try {
-      providerPayload = parseBoundedJsonObject(rawText);
-      let candidateData = {};
-      if (providerPayload?.fields && typeof providerPayload.fields === 'object' && !Array.isArray(providerPayload.fields)) {
-        for (const [key, fieldObj] of Object.entries(providerPayload.fields)) {
-          if (fieldObj && typeof fieldObj === 'object' && ('value' in fieldObj || 'confidence' in fieldObj)) {
-            candidateData[key] = fieldObj.value ?? null;
-            if (fieldObj.confidence !== undefined) fieldConfidence[key] = fieldObj.confidence;
-            if (fieldObj.page || fieldObj.raw_text) {
-              fieldEvidence[key] = { page: fieldObj.page, quote: fieldObj.raw_text };
-            }
-          } else {
-            candidateData[key] = fieldObj;
-          }
-        }
-        if (providerPayload.line_items && typeof providerPayload.line_items === 'object') {
-          candidateData.line_items = providerPayload.line_items;
-        }
-      } else if (providerPayload?.data && typeof providerPayload.data === 'object' && !Array.isArray(providerPayload.data)) {
-        candidateData = { ...providerPayload.data };
-        fieldConfidence = providerPayload.field_confidence || {};
-        fieldEvidence = providerPayload.field_evidence || {};
-      } else {
-        candidateData = { ...providerPayload };
-      }
-
-      const sanitized = sanitizeExtractionCandidate(candidateData, docCategory);
-      extractedData = validateExtractionData(sanitized.validData, docCategory);
-    } catch {
-      const invalidOutputError = new Error('The AI extraction provider returned data that did not match the required format. Please retry.');
-      invalidOutputError.status = 502;
-      throw invalidOutputError;
-    }
-    aiSuccess = true;
-    inputTokens = geminiJson.usageMetadata?.promptTokenCount || 0;
-    outputTokens = geminiJson.usageMetadata?.candidatesTokenCount || 0;
-    const duration = Date.now() - startTime;
-    const confidenceScore = null;
-
-    // Step 4: Save an immutable extraction version. Keep the flat mirror temporarily
-    // because the existing review screen and GST workflow still consume it.
-    const versionResult = await saveExtractionVersion({
+    const {
+      extractedData,
+      inputTokens,
+      outputTokens,
+      providerRequestId,
+      versionResult,
+    } = await processDocumentExtraction({
       userId: req.user.id,
       document: doc,
-      data: extractedData,
       category: docCategory,
-      versionKind: doc.current_extraction_version ? 'ai_rerun' : 'ai',
-      providerScore: providerPayload?.model_overall_confidence ?? providerPayload?.accuracy_score ?? providerPayload?.confidence_score,
-      providerRaw: providerPayload,
-      fieldConfidence,
-      fieldEvidence,
-      validationWarnings: validateExtractedDataQuality(extractedData, docCategory),
+      providerAdapter,
+      downloadFn: downloadDocument,
+      supabaseClient: supabase,
       extractionRunId,
     });
-    const reviewScore = versionResult?.envelope?.overall_score?.review_score ?? versionResult?.envelope?.overall_score?.computed_score ?? confidenceScore;
+
+    const duration = Date.now() - startTime;
+    const reviewScore = versionResult?.envelope?.overall_score?.review_score ?? versionResult?.envelope?.overall_score?.computed_score ?? null;
     const { data: updatedDoc, error: updateErr } = await supabase
       .from('documents_metadata')
       .update({
@@ -299,15 +171,13 @@ router.post('/process', async (req, res) => {
       .select().single();
     if (updateErr) throw updateErr;
 
-    // Step 5: Log AI usage to Supabase ai_usage_log. The usage_source column is
-    // additive; preserve extraction success if an older deployment has not run
-    // the compatibility migration yet.
+    // Step 4: Log AI usage to Supabase ai_usage_log
     const { error: usageError } = await supabase.from('ai_usage_log').insert([{
       client_id: doc.client_id, document_id: documentId,
       operation: 'extraction', model_used: geminiConfig?.model || 'database-configured',
       input_tokens: inputTokens, output_tokens: outputTokens,
       cost_usd: ((inputTokens * 0.000075 + outputTokens * 0.0003) / 1000),
-      duration_ms: duration, success: aiSuccess, usage_source: 'provider_response'
+      duration_ms: duration, success: true, usage_source: 'provider_response'
     }]);
     if (usageError) console.warn('[Extraction] AI usage logging was skipped:', usageError.message);
     await finishExtractionRun(extractionRunId, {
@@ -316,7 +186,7 @@ router.post('/process', async (req, res) => {
       outputTokens,
       costUsd: ((inputTokens * 0.000075 + outputTokens * 0.0003) / 1000),
       durationMs: duration,
-      providerRequestId: geminiRes.headers.get('x-request-id'),
+      providerRequestId,
     });
 
     // Step 6: Increment AI call counter for this client
