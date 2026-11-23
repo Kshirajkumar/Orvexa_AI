@@ -1,10 +1,29 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { deleteAccountStorage } = require('../lib/accountDeletion');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const userId = '11752602-62fa-4252-ae1d-23c4fb3b7312';
 const clientId = '20314145-9020-45f0-85a0-68bc63eb359e';
 const secretId = '49815d77-b97f-4abf-ae4b-65cd91af0160';
+
+test('integration secret migrations grant backend DELETE access for account deletion', () => {
+  const migrationPaths = [
+    path.join(__dirname, '..', 'db', 'create_integration_secrets.sql'),
+    path.join(__dirname, '..', 'db', 'grant_integration_secrets_backend.sql'),
+    path.join(__dirname, '..', 'db', 'grant_integration_secrets_delete.sql')
+  ];
+
+  for (const migrationPath of migrationPaths) {
+    const sql = fs.readFileSync(migrationPath, 'utf8');
+    assert.match(
+      sql,
+      /GRANT\s+SELECT,\s*UPDATE,\s*DELETE\s+ON\s+TABLE\s+public\.integration_secrets\s+TO\s+service_role/i,
+      `${path.basename(migrationPath)} must grant DELETE to service_role`
+    );
+  }
+});
 
 function createSupabase({ documents = [], integrations = [], storageEntries = {}, listError = null, rpcResult = 0, portalUsers = [] } = {}) {
   const removed = [];
