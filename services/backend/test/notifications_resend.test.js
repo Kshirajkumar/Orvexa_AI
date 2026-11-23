@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createNotification, listNotifications, markNotificationsRead } = require('../lib/notifications');
-const { isResendConfigured, sendEmail, testResendConnection } = require('../lib/resend');
+const { isResendConfigured, getResendConfigurationIssue, sendEmail, testResendConnection } = require('../lib/resend');
 
 test('Resend configuration and diagnostic check', async () => {
   assert.equal(typeof isResendConfigured(), 'boolean');
@@ -15,6 +15,17 @@ test('Resend simulation and structure validation', async () => {
     async () => sendEmail({ to: '', subject: 'test', html: '<p>test</p>' }),
     /At least one recipient email address/
   );
+});
+
+test('Resend falls back from the placeholder sender domain', () => {
+  const previous = process.env.RESEND_FROM_EMAIL;
+  process.env.RESEND_FROM_EMAIL = 'TaxFlow.AI <otp@yourdomain.com>';
+  try {
+    assert.equal(getResendConfigurationIssue(), null);
+  } finally {
+    if (previous === undefined) delete process.env.RESEND_FROM_EMAIL;
+    else process.env.RESEND_FROM_EMAIL = previous;
+  }
 });
 
 test('Notifications in-memory fallback and life cycle', async () => {

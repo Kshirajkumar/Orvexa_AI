@@ -9,6 +9,26 @@ const { Resend } = require('resend');
 
 const apiKey = process.env.RESEND_API_KEY;
 const defaultFrom = process.env.RESEND_FROM_EMAIL || 'TaxFlow.AI <onboarding@resend.dev>';
+const resendOnboardingFrom = 'TaxFlow.AI <onboarding@resend.dev>';
+
+function getConfiguredFrom() {
+  const configured = String(process.env.RESEND_FROM_EMAIL || defaultFrom).trim();
+  // Resend's onboarding sender is the only sender available before a custom
+  // domain is verified. Keep old deployments with the template placeholder
+  // working until RESEND_FROM_EMAIL is updated to a verified domain.
+  if (!configured || /yourdomain\.com/i.test(configured)) return resendOnboardingFrom;
+  return configured;
+}
+
+function getResendConfigurationIssue() {
+  const from = getConfiguredFrom();
+  if (!from) return 'RESEND_FROM_EMAIL is empty. Set it to an address on a verified Resend domain.';
+  const address = from.match(/<([^>]+)>/)?.[1] || from;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address.trim())) {
+    return 'RESEND_FROM_EMAIL is not a valid sender address. Set it to an address on a verified Resend domain.';
+  }
+  return null;
+}
 
 let resendClient = null;
 
@@ -59,7 +79,7 @@ function safeEmailActionUrl(value) {
 /**
  * Send a generic transactional email via Resend.
  */
-async function sendEmail({ to, subject, html, text, from = defaultFrom, replyTo }) {
+async function sendEmail({ to, subject, html, text, from = getConfiguredFrom(), replyTo }) {
   const client = getResendClient();
   const recipient = Array.isArray(to) ? to : [to].filter(Boolean);
 
@@ -68,6 +88,16 @@ async function sendEmail({ to, subject, html, text, from = defaultFrom, replyTo 
   }
   const safeSubject = String(subject || '').replace(/[\r\n\x00-\x1f\x7f]/g, ' ').trim().slice(0, 200);
   if (!safeSubject) throw new Error('A valid email subject is required.');
+
+  const senderIssue = getResendConfigurationIssue();
+  if (client && senderIssue) {
+    return {
+      success: false,
+      source: 'resend',
+      code: 'EMAIL_SENDER_NOT_CONFIGURED',
+      error: senderIssue,
+    };
+  }
 
   if (!client) {
     console.warn(`[Resend] ⚠️ Resend is not configured (RESEND_API_KEY missing). Simulating email to: ${recipient.join(', ')} — Subject: "${safeSubject}"`);
@@ -334,6 +364,7 @@ async function testResendConnection() {
 module.exports = {
   getResendClient,
   isResendConfigured,
+  getResendConfigurationIssue,
   sendEmail,
   sendPortalInviteEmail,
   sendDocumentUploadNotificationEmail,
