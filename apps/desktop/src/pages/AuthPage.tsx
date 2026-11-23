@@ -310,6 +310,28 @@ export function AuthPage() {
 
   const passStrength = getPasswordStrength(signupPassword);
 
+  const resetSignupVerification = (clearCredentials = false) => {
+    setSignupConfirmedEmail(null);
+    setSignupVerificationId('');
+    setSignupOtp('');
+    setOtpState('idle');
+    setOtpResendSeconds(0);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    if (clearCredentials) {
+      setSignupEmail('');
+      setSignupPassword('');
+      setSignupConfirm('');
+    }
+  };
+
+  const switchAuthMode = (mode: 'signup' | 'login') => {
+    setAuthMode(mode);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setLoginAccountNotFound(false);
+  };
+
   // ─────────────────────────────────────────────────────────────
   // Handle Signup Submission
   // ─────────────────────────────────────────────────────────────
@@ -389,16 +411,32 @@ export function AuthPage() {
 
   const completeEmailVerification = async (code: string) => {
     if (code.length !== 6 || !signupVerificationId || otpState === 'verifying' || otpState === 'success') return;
+    const verifiedEmail = (signupConfirmedEmail || signupEmail).trim().toLowerCase();
     setOtpState('verifying');
     setErrorMessage(null);
+    let emailWasVerified = false;
     try {
-      await apiVerifyEmailOtp(signupVerificationId, code);
+      const verification = await apiVerifyEmailOtp(signupVerificationId, code);
+      if (!verification.success) {
+        throw new Error(verification.message || 'That code could not be verified. Please try again.');
+      }
+      emailWasVerified = true;
       setOtpState('success');
       setSuccessMessage('Email confirmed. Preparing your secure practice workspace…');
-      const login = await apiLogin(signupEmail.trim(), signupPassword);
+      const login = await apiLogin(verifiedEmail, signupPassword);
       if (!login.success || !login.user || !login.token) throw new Error(login.message || 'Your account was verified, but sign-in could not be completed. Please sign in manually.');
       window.setTimeout(() => dispatch({ type: 'LOGIN', user: login.user!, token: login.token!, refreshToken: login.refreshToken }), 950);
     } catch (err: any) {
+      if (emailWasVerified) {
+        // The OTP is single-use. Do not leave the user on a screen with an
+        // already-consumed code when automatic sign-in fails.
+        resetSignupVerification();
+        setAuthMode('login');
+        setLoginEmail(verifiedEmail);
+        setLoginPassword('');
+        setErrorMessage(err.message || 'Email verified. Please sign in to continue.');
+        return;
+      }
       setOtpState('idle');
       setErrorMessage(err.message || 'That code could not be verified. Please try again.');
     }
@@ -435,6 +473,7 @@ export function AuthPage() {
     setErrorMessage(null);
     try {
       const result = await apiResendEmailOtp(signupVerificationId, signupConfirmedEmail);
+      if (!result.success) throw new Error(result.message || 'A new verification code could not be sent.');
       if (result.verificationId) setSignupVerificationId(result.verificationId);
       setSignupOtp('');
       setOtpState('idle');
@@ -684,10 +723,7 @@ export function AuthPage() {
                 type="button"
                 className={`auth-mode-tab ${authMode === 'signup' ? 'active' : ''}`}
                 onClick={() => {
-                  setAuthMode('signup');
-                  setErrorMessage(null);
-                  setSuccessMessage(null);
-                  setLoginAccountNotFound(false);
+                  switchAuthMode('signup');
                 }}
               >
                 Create Account
@@ -696,10 +732,7 @@ export function AuthPage() {
                 type="button"
                 className={`auth-mode-tab ${authMode === 'login' ? 'active' : ''}`}
                 onClick={() => {
-                  setAuthMode('login');
-                  setErrorMessage(null);
-                  setSuccessMessage(null);
-                  setLoginAccountNotFound(false);
+                  switchAuthMode('login');
                 }}
               >
                 Sign In
@@ -722,7 +755,7 @@ export function AuthPage() {
                     type="button"
                     className="auth-alert-action-btn"
                     onClick={() => {
-                      setAuthMode('signup');
+                      switchAuthMode('signup');
                       setErrorMessage(null);
                       setLoginAccountNotFound(false);
                       setSignupEmail(loginEmail.trim());
@@ -812,7 +845,7 @@ export function AuthPage() {
                       <button type="button" className="confirmed-action-btn otp-resend-btn" onClick={() => void resendSignupOtp()} disabled={isLoading || otpResendSeconds > 0 || otpState !== 'idle'}>
                         {otpResendSeconds > 0 ? `Resend code in ${otpResendSeconds}s` : 'Resend verification code'}
                       </button>
-                      <button type="button" className="confirmed-back-btn" onClick={() => { setSignupConfirmedEmail(null); setSignupVerificationId(''); setSignupOtp(''); setOtpState('idle'); setErrorMessage(null); }}>
+                      <button type="button" className="confirmed-back-btn" onClick={() => resetSignupVerification(true)}>
                         ← Register with a different email
                       </button>
                     </div>
@@ -970,7 +1003,7 @@ export function AuthPage() {
                     <button
                       type="button"
                       className="inline-link-btn"
-                      onClick={() => setAuthMode('login')}
+                      onClick={() => switchAuthMode('login')}
                     >
                       Sign In to Workspace →
                     </button>
@@ -1074,7 +1107,7 @@ export function AuthPage() {
                     <button
                       type="button"
                       className="inline-link-btn"
-                      onClick={() => setAuthMode('signup')}
+                      onClick={() => switchAuthMode('signup')}
                     >
                       Create Practice Account →
                     </button>
