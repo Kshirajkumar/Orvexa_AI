@@ -274,6 +274,7 @@ async function sendDocumentUploadNotificationEmail({ to, clientName, fileName, c
 function renderEmailVerificationCode({ code, expiresInMinutes = 10 }) {
   const safeCode = escapeHtml(code);
   const safeExpiry = escapeHtml(expiresInMinutes);
+  const copyHandler = escapeHtml(`try { navigator.clipboard.writeText(${JSON.stringify(String(code))}); this.innerHTML = 'Copied'; } catch (error) { this.innerHTML = 'Copy manually'; }`);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -292,8 +293,15 @@ function renderEmailVerificationCode({ code, expiresInMinutes = 10 }) {
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background:#ffffff;border:1px solid #dfe7f2;border-radius:20px;box-shadow:0 16px 40px rgba(31,55,92,.10);overflow:hidden;">
             <tr>
               <td style="padding:28px 32px 24px;background:#ffffff;border-bottom:1px solid #edf1f6;">
-                <div style="font-size:24px;line-height:1;font-weight:800;letter-spacing:-.8px;color:#17233d;">Orvexa<span style="color:#3478f6;">.</span></div>
-                <div style="margin-top:9px;color:#71809a;font-size:12px;line-height:1.4;letter-spacing:.08em;text-transform:uppercase;">Professional tax practice workspace</div>
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td style="width:42px;height:42px;background:#2347d9;border-radius:11px;text-align:center;vertical-align:middle;">
+                      <span style="display:block;margin:0 auto 3px;width:21px;height:3px;background:#ffffff;border-radius:3px;box-shadow:0 6px 0 rgba(255,255,255,.78),0 12px 0 rgba(255,255,255,.78);"></span>
+                      <span style="display:block;margin:0 auto;color:#ffffff;font-size:17px;line-height:10px;font-weight:800;">✓</span>
+                    </td>
+                    <td style="padding-left:12px;color:#0d1a2d;font-size:27px;line-height:42px;font-weight:700;letter-spacing:-1.4px;">Orvexa<span style="color:#3478f6;">.</span></td>
+                  </tr>
+                </table>
               </td>
             </tr>
             <tr>
@@ -311,6 +319,10 @@ function renderEmailVerificationCode({ code, expiresInMinutes = 10 }) {
                     <td align="center" style="padding:24px 16px 22px;">
                       <div style="margin-bottom:10px;color:#71809a;font-size:11px;line-height:1.4;font-weight:700;letter-spacing:.14em;text-transform:uppercase;">Your verification code</div>
                       <div style="color:#17233d;font-size:34px;line-height:1.2;font-weight:800;letter-spacing:11px;padding-left:11px;">${safeCode}</div>
+                      <div style="margin-top:18px;">
+                        <button type="button" onclick="${copyHandler}" style="border:0;border-radius:10px;background:#3478f6;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;line-height:1;padding:12px 18px;cursor:pointer;box-shadow:0 5px 14px rgba(52,120,246,.22);">&#128203;&nbsp; Copy code</button>
+                      </div>
+                      <div style="margin-top:9px;color:#8a98ad;font-size:11px;line-height:1.4;">If the button is unavailable, select the code above.</div>
                     </td>
                   </tr>
                 </table>
