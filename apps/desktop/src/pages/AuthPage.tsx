@@ -349,7 +349,16 @@ export function AuthPage() {
         practiceType: signupType,
       });
 
-      if (res.success) {
+      if (res.accountCreated && res.needsEmailConfirmation && res.verificationId) {
+        // The account is intentionally retained when the first OTP delivery
+        // fails, so the user can recover with the resend flow.
+        setSignupConfirmedEmail(res.email || signupEmail.trim().toLowerCase());
+        setSignupVerificationId(res.verificationId);
+        setSignupOtp('');
+        setOtpState('idle');
+        setOtpResendSeconds(0);
+        setErrorMessage(res.message || 'Your account was created, but the verification code could not be delivered. Please resend it.');
+      } else if (res.success) {
         if (res.needsEmailConfirmation && res.verificationId) {
           setSignupConfirmedEmail(res.email || signupEmail.trim().toLowerCase());
           setSignupVerificationId(res.verificationId);

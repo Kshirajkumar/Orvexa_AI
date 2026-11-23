@@ -200,7 +200,13 @@ async function issueEmailOtp({ userId, email, challengeId } = {}) {
 
   const delivery = await sendEmailVerificationCode({ to: email, code, expiresInMinutes: EMAIL_OTP_LIFETIME_MINUTES });
   if (!delivery?.success || delivery.source === 'simulated') {
-    throw new Error(delivery?.error || 'Verification email could not be delivered.');
+    throw Object.assign(
+      new Error(delivery?.error || 'Verification email could not be delivered.'),
+      {
+        code: 'EMAIL_DELIVERY_FAILED',
+        verificationId: challenge.id,
+      },
+    );
   }
   return challenge;
 }
@@ -322,7 +328,26 @@ router.post('/signup', async (req, res) => {
       }
     }
 
-    const challenge = await issueEmailOtp({ userId: supaAuth.user.id, email: cleanEmail });
+    let challenge;
+    try {
+      challenge = await issueEmailOtp({ userId: supaAuth.user.id, email: cleanEmail });
+    } catch (err) {
+      // The Auth user and challenge already exist. Keep them so a transient
+      // provider failure can be recovered through the resend endpoint instead
+      // of forcing the user to start registration over.
+      if (err?.code === 'EMAIL_DELIVERY_FAILED') {
+        return res.status(503).json({
+          success: false,
+          accountCreated: true,
+          needsEmailConfirmation: true,
+          verificationId: err.verificationId,
+          expiresIn: EMAIL_OTP_LIFETIME_MINUTES * 60,
+          email: cleanEmail,
+          message: 'Your account was created, but the verification email could not be delivered. Please use Resend code after checking the email service configuration.',
+        });
+      }
+      throw err;
+    }
     return res.status(201).json({
       success: true,
       needsEmailConfirmation: true,

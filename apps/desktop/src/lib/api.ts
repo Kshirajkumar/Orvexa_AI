@@ -50,6 +50,7 @@ export interface AuthResponse {
   refreshToken?: string;
   user?: AuthUser;
   needsEmailConfirmation?: boolean;
+  accountCreated?: boolean;
   verificationId?: string;
   expiresIn?: number;
   email?: string;
