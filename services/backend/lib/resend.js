@@ -295,11 +295,9 @@ function renderEmailVerificationCode({ code, expiresInMinutes = 10 }) {
               <td style="padding:28px 32px 24px;background:#ffffff;border-bottom:1px solid #edf1f6;">
                 <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                   <tr>
-                    <td style="width:42px;height:42px;background:#2347d9;border-radius:11px;text-align:center;vertical-align:middle;">
-                      <span style="display:block;margin:0 auto 3px;width:21px;height:3px;background:#ffffff;border-radius:3px;box-shadow:0 6px 0 rgba(255,255,255,.78),0 12px 0 rgba(255,255,255,.78);"></span>
-                      <span style="display:block;margin:0 auto;color:#ffffff;font-size:17px;line-height:10px;font-weight:800;">✓</span>
+                    <td>
+                      <img src="https://orvvexa.vercel.app/orvexa-logo.svg" width="174" height="42" alt="Orvexa" style="display:block;width:174px;height:42px;border:0;" />
                     </td>
-                    <td style="padding-left:12px;color:#0d1a2d;font-size:27px;line-height:42px;font-weight:700;letter-spacing:-1.4px;">Orvexa<span style="color:#3478f6;">.</span></td>
                   </tr>
                 </table>
               </td>
