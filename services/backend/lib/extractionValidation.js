@@ -48,12 +48,84 @@ function validateExtractedDataQuality(data, category) {
 
   walk(data, '');
 
-  if (category === 'GST' && data && typeof data === 'object') {
+  if (!data || typeof data !== 'object') return warnings;
+
+  // 1. GST Cross-Checks
+  if (category === 'GST') {
     const taxable = data.taxable_value;
     const tax = data.total_gst;
     const total = data.grand_total;
     if ([taxable, tax, total].every(isFiniteNumber) && total + 1 < taxable + tax) {
       add('grand_total', 'gst_total_mismatch', 'Grand total is lower than taxable value plus total GST.');
+    }
+  }
+
+  // 2. Form 16 Cross-Checks
+  if (category === 'Form16') {
+    const gross = data.gross_salary;
+    const exempt = data.allowances_exempt_u_s_10 || 0;
+    const stdDed = data.standard_deduction || 0;
+    const profTax = data.professional_tax || 0;
+    const salaryIncome = data.income_from_salary;
+
+    if (isFiniteNumber(gross) && isFiniteNumber(salaryIncome) && isFiniteNumber(stdDed)) {
+      const expectedSalaryIncome = gross - exempt - stdDed - profTax;
+      if (Math.abs(salaryIncome - expectedSalaryIncome) > 50) {
+        add('income_from_salary', 'form16_salary_math_mismatch', `Income from salary (${salaryIncome}) does not equal gross salary minus deductions (${expectedSalaryIncome}).`);
+      }
+    }
+
+    const netTaxable = data.net_taxable_income ?? data.total_taxable_income;
+    const sec80c = data.section_80c ?? data.ded_80c ?? 0;
+    const sec80d = data.section_80d ?? data.ded_80d ?? 0;
+    const otherDeductions = data.other_chapter_vi_a_total ?? 0;
+    const totalDeductions = sec80c + sec80d + otherDeductions;
+
+    if (isFiniteNumber(salaryIncome) && isFiniteNumber(netTaxable) && totalDeductions > 0) {
+      if (netTaxable > salaryIncome) {
+        add('net_taxable_income', 'form16_taxable_exceeds_salary', 'Net taxable income exceeds salary income despite chapter VI-A deductions.');
+      }
+    }
+
+    if (Array.isArray(data.quarterly_tds) && data.quarterly_tds.length > 0) {
+      const totalQuarterlyTds = data.quarterly_tds.reduce((sum, q) => sum + (Number(q?.tds_deducted) || 0), 0);
+      const reportedTds = data.total_tds ?? data.tds_deducted_total ?? data.tax_deducted;
+      if (isFiniteNumber(reportedTds) && totalQuarterlyTds > 0 && Math.abs(totalQuarterlyTds - reportedTds) > 10) {
+        add('total_tds', 'form16_quarterly_tds_mismatch', `Total TDS (${reportedTds}) does not match sum of quarterly TDS records (${totalQuarterlyTds}).`);
+      }
+    }
+  }
+
+  // 3. ITR / IncomeTax Cross-Checks
+  if (['IncomeTax', 'ITR1', 'ITR2'].includes(category)) {
+    const grossTotal = data.gross_total_income;
+    const salary = data.salary_gross || 0;
+    const house = data.house_property_income || 0;
+    const other = data.other_sources_income || 0;
+    const stcg = data.short_term_capital_gains || 0;
+    const ltcg = data.long_term_capital_gains || 0;
+
+    if (isFiniteNumber(grossTotal) && [salary, house, other].some(v => v !== 0)) {
+      const expectedGross = salary + house + other + stcg + ltcg;
+      if (Math.abs(grossTotal - expectedGross) > 50) {
+        add('gross_total_income', 'itr_gross_income_mismatch', `Gross total income (${grossTotal}) does not match sum of income heads (${expectedGross}).`);
+      }
+    }
+
+    const totalIncome = data.total_income ?? data.taxable_income;
+    const deductions = data.total_deductions_chapter_vi_a ?? (
+      (data.ded_80c || data.deductions_80c || 0) +
+      (data.ded_80d || data.deductions_80d || 0) +
+      (data.ded_80ccd_1b || 0) +
+      (data.ded_80g || 0) +
+      (data.ded_other || data.other_deductions || 0)
+    );
+
+    if (isFiniteNumber(grossTotal) && isFiniteNumber(totalIncome) && deductions > 0) {
+      const expectedTotal = Math.max(0, grossTotal - deductions);
+      if (Math.abs(totalIncome - expectedTotal) > 50) {
+        add('total_income', 'itr_total_income_mismatch', `Total income (${totalIncome}) does not match gross total income minus deductions (${expectedTotal}).`);
+      }
     }
   }
 

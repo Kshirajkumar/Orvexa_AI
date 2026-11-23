@@ -80,8 +80,6 @@ async function generateGeminiChat({ ownerUserId, messages }) {
     const networkError = new Error('The AI provider could not be reached. Please try again.');
     networkError.status = 502;
     throw networkError;
-  } finally {
-    clearTimeout(timeout);
   }
 
   let payload;

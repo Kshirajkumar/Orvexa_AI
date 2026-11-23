@@ -33,6 +33,7 @@ export function ClientsPage() {
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
   const [portalNotice, setPortalNotice] = React.useState('');
+  const [portalNoticeClientId, setPortalNoticeClientId] = React.useState('');
   const [editingClient, setEditingClient] = React.useState(false);
   const [editSaving, setEditSaving] = React.useState(false);
   const [editError, setEditError] = React.useState('');
@@ -211,6 +212,7 @@ export function ClientsPage() {
       setPortalNotice(saved.portalInvitation?.link
         ? `Client created. A one-time portal invitation is ready for ${saved.email} and expires in 30 days.`
         : 'Client created. Add an email address later to enable the secure client portal.');
+      setPortalNoticeClientId(saved.id);
       if (saved.portalInvitation?.link) setPortalInviteLink(saved.portalInvitation.link);
       setPortalCardStates(previous => ({ ...previous, [saved.id]: { status: saved.portalInvitation?.link ? 'invitation_pending' : 'not_started', link: saved.portalInvitation?.link || null } }));
       dispatch({ type: 'ADD_CLIENT', client: { id: saved.id, name: saved.name, entityType: saved.entity_type || form.entityType, short: saved.name.slice(0, 3).toUpperCase(), city: 'Local', country: saved.country_name || 'Selected country', countryId: saved.country_id || form.countryId, cur: saved.currency_code || 'INR', gstin: saved.gstin || '', pan: saved.pan || '', svc: saved.filing_types || form.filingTypes, filingTypes: saved.filing_types || form.filingTypes, contact: saved.email || '', phone: saved.phone || '', fee: 0, tone: 'blue', alias: [] } });
@@ -349,7 +351,6 @@ export function ClientsPage() {
   return (
     <>
       <div className="ph" data-tour="clients-intro"><div><p>Everyone you file for, with their services and current workload.</p></div><button className="btn pri" onClick={() => setShowAdd(true)}>+ Add client</button></div>
-      {portalNotice && <div className="ob-error" role="status">{portalNotice}</div>}
       {(cleanupJobs.length > 0 || cleanupError) && <div className="vault-lifecycle-panel card" aria-label="Client cleanup jobs">
         <div><b>Client cloud cleanup</b><small>Deletion is queued in Supabase; it retries automatically if Storage is temporarily unavailable.</small></div>
         {cleanupError && <span className="ob-error" role="alert">{cleanupError}</span>}
@@ -395,6 +396,7 @@ export function ClientsPage() {
                 {portalCardStates[c.id]?.status === 'unavailable' && <span className="chip amber">Portal status unavailable</span>}
               </div>
               {portalCardStates[c.id]?.link && <div className="portal-card-link"><input value={portalCardStates[c.id].link || ''} readOnly aria-label={`${c.name} portal link`} onFocus={event => event.currentTarget.select()} /><button className="btn xs" onClick={() => { void navigator.clipboard.writeText(portalCardStates[c.id].link || ''); setPortalCardCopied(c.id); window.setTimeout(() => setPortalCardCopied(current => current === c.id ? '' : current), 1400); }}>{portalCardCopied === c.id ? 'Copied' : 'Copy link'}</button></div>}
+              {portalNoticeClientId === c.id && portalNotice && <div className="client-created-invite" role="status"><span className="client-created-invite-icon"><Icon name="check" size={13} /></span><div><b>Client created</b><span>{portalNotice}</span></div></div>}
               <div className="row"><button className="btn sm" onClick={() => setSelectedClient(c)}>View details</button><button className="btn sm" onClick={() => { dispatch({ type: 'WA_CLIENT', id: c.id }); dispatch({ type: 'GO', page: 'whatsapp' }); }}><Icon name="chat" size={13} />Chat</button></div>
             </div>
           );

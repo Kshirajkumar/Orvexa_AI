@@ -314,6 +314,7 @@ router.post('/', async (req, res) => {
     }
     try {
       const { error: rpcError } = await supabase.rpc('increment_client_docs', { cid: clientId });
+      if (rpcError) console.warn('[Documents] Could not increment client docs count:', rpcError.message);
       if (rpcError) throw rpcError;
     } catch (rpcError) {
       console.warn('[Documents] Could not increment client document count:', rpcError.message);
@@ -751,7 +752,7 @@ router.post('/:id/verify', async (req, res) => {
           p_schema_version: envelope.schema_version,
           p_base_version: latestVersion?.version_number || null,
           p_changed_field_paths: changedFieldPaths,
-          p_note: typeof req.body.note === 'string' ? req.body.note.slice(0, 2000) : 'Reviewed in TaxFlow.AI',
+          p_note: typeof req.body.note === 'string' ? req.body.note.slice(0, 2000) : 'Reviewed in Orvexa AI',
         });
         if (versionError) {
           if (versionError.code === '40001') return res.status(409).json({ success: false, message: versionError.message });

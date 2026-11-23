@@ -314,7 +314,7 @@ export function WhatsAppPage() {
   // Keep the compact launcher visible on every newly opened conversation. The
   // full composer is an intentional user action, so loading a chat cannot
   // make the primary compose affordance appear/disappear by itself.
-  const [composerExpanded, setComposerExpanded] = useState(false);
+  const [composerExpanded, setComposerExpanded] = useState(true);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateError, setTemplateError] = useState('');
@@ -383,7 +383,7 @@ export function WhatsAppPage() {
 
   useEffect(() => {
     setTelegramTemplatesOpen(false);
-    setComposerExpanded(false);
+    setComposerExpanded(true);
     setTelegramLinkToShare('');
     setTelegramInfo('');
   }, [channel, c?.id]);
@@ -1322,7 +1322,7 @@ export function WhatsAppPage() {
                       ? (isTelegramLinkedForCurrentClient ? 'connected' : 'disconnected')
                       : (whatsAppLoading ? 'pending' : whatsAppReady ? 'connected' : 'disconnected')} />
                     {channel === 'telegram'
-                      ? `${isTelegramLinkedForCurrentClient ? 'Telegram connected' : 'Telegram not linked'} · ${c.contact} · ${c.phone}`
+                      ? `${isTelegramLinkedForCurrentClient ? 'Telegram connected' : 'Telegram not linked'} · ${c.name} · ${c.phone}`
                       : `${whatsAppLoading ? 'Checking WhatsApp' : whatsAppReady ? 'WhatsApp connected' : 'WhatsApp unavailable'} · ${c.contact} · ${c.phone}`}
                   </small>
                 </div>
@@ -1632,22 +1632,9 @@ export function WhatsAppPage() {
                 </div>
               ))}
             </div>
-            <div className={`wa-compose-dock${composerExpanded ? ' expanded' : ''}`}>
-              {composerExpanded ? (
+            <div className="wa-compose-dock expanded">
+              {(
                 <>
-                  <div className="wa-compose-heading">
-                    <span className="wa-compose-heading-icon"><Icon name="chat" size={14} /></span>
-                    <span><b>Message {c.contact.split(' ')[0]}</b><small>via {channel === 'telegram' ? 'Telegram' : 'WhatsApp'}</small></span>
-                    <button
-                      type="button"
-                      className="wa-compose-collapse"
-                      onClick={() => { setComposerExpanded(false); setTelegramTemplatesOpen(false); }}
-                      aria-label="Collapse message composer"
-                      title="Collapse composer"
-                    >
-                      <Icon name="chev" size={15} />
-                    </button>
-                  </div>
                   {channel === 'telegram' ? (
                 <div className="wa-f telegram-composer">
                 <div className="telegram-composer-pill">
@@ -1686,7 +1673,7 @@ export function WhatsAppPage() {
                           ? isEditingPending
                             ? 'Finish editing the message above first…'
                             : 'Approve, edit, or discard the pending message first…'
-                          : `Message ${c.contact.split(' ')[0]} via Telegram`
+                          : `Message ${c.name} via Telegram`
                     }
                     disabled={telegramSending || telegramLoading || isTelegramConversationLoading || !!pendingTelegramMsg || isEditingPending}
                     aria-label="Message input"
@@ -1737,7 +1724,7 @@ export function WhatsAppPage() {
                     ? 'Checking WhatsApp API status…'
                     : !whatsAppReady
                       ? 'WhatsApp API not configured (switch to Telegram or add env vars)'
-                      : `Message ${c.contact.split(' ')[0]} via WhatsApp`}
+                    : `Message ${c.name} via WhatsApp`}
                   disabled={whatsAppLoading || !whatsAppReady || whatsAppSending}
                   aria-label="Message input"
                 />
@@ -1752,23 +1739,7 @@ export function WhatsAppPage() {
                 </button>
               </div>
             )}
-                  <div className="wa-footer-note" role="status">
-                    <Icon name="lock" size={11} />
-                    <span>Messages are sent through the selected channel. Delivery status appears in each message.</span>
-                    <span className="wa-footer-channel">{channel === 'telegram' ? 'Telegram gateway' : 'WhatsApp Business'}</span>
-                  </div>
                 </>
-              ) : (
-                <button
-                  type="button"
-                  className="wa-compose-launcher"
-                  onClick={openComposer}
-                  aria-label={`Write a message to ${c.contact.split(' ')[0]}`}
-                  title="Write a message"
-                >
-                  <Icon name="chat" size={18} />
-                  <span className="wa-compose-launcher-plus"><Icon name="plus" size={11} /></span>
-                </button>
               )}
             </div>
           </div>

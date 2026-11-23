@@ -37,7 +37,7 @@ test('extraction failure status is scoped to the verified document client', () =
 test('successful extraction saves an extraction version for GST and local-key paths', () => {
   assert.doesNotMatch(routeSource, /doc\.category === 'GST' \? null : await saveExtractionVersion/);
   assert.doesNotMatch(routeSource, /document\.category === 'GST' \? null : await saveExtractionVersion/);
-  assert.match(routeSource, /const docCategory = doc\.category \|\| category \|\| 'General'/);
+  assert.match(routeSource, /const docCategory = category \|\| doc\.category \|\| 'General'/);
 });
 
 test('extraction history and restore stay separate from physical file versions', () => {
@@ -84,7 +84,7 @@ test('unsupported MIME types are rejected before a durable extraction run starts
 
 test('exact processed-file duplicate guard runs before category/provider work', () => {
   const duplicateCheck = routeSource.indexOf("code: 'DUPLICATE_DOCUMENT'");
-  const categoryCheck = routeSource.indexOf('const docCategory = doc.category');
+  const categoryCheck = routeSource.indexOf('const docCategory = category || doc.category');
   const providerLookup = routeSource.indexOf('getGeminiConfig(req.user.id)');
   assert.ok(duplicateCheck >= 0 && duplicateCheck < categoryCheck && duplicateCheck < providerLookup);
   assert.match(routeSource, /\.eq\('file_sha256', doc\.file_sha256\)/);

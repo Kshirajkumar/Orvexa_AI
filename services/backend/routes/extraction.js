@@ -17,8 +17,15 @@ const { isDeepStrictEqual } = require('node:util');
 const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
 const { getGeminiConfig } = require('../lib/aiProvider');
-const { getExtractionPrompt, parseBoundedJsonObject, validateExtractionData, SUPPORTED_EXTRACTION_CATEGORIES } = require('../lib/extractionSchema');
-const { TAXFLOW_SYSTEM_PROMPT } = require('../lib/systemPrompt');
+const {
+  getExtractionPrompt,
+  getCategoryUserPrompt,
+  parseBoundedJsonObject,
+  sanitizeExtractionCandidate,
+  validateExtractionData,
+  SUPPORTED_EXTRACTION_CATEGORIES,
+} = require('../lib/extractionSchema');
+const { TAXFLOW_SYSTEM_PROMPT, ORVEXA_EXTRACTION_SYSTEM_PROMPT } = require('../lib/systemPrompt');
 const { getOwnedClientIds } = require('../lib/ownership');
 const { downloadDocument, isOwnedDocumentObject } = require('../lib/documentStorage');
 const { saveInvoiceExport } = require('../lib/invoiceExport');
@@ -32,6 +39,7 @@ async function saveExtractionVersion({ userId, document, data, category, version
     data,
     category,
     documentId: document.id,
+    document,
     assessmentYear: document.assessment_year,
     versionKind,
     providerScore,
@@ -39,6 +47,10 @@ async function saveExtractionVersion({ userId, document, data, category, version
     fieldConfidence,
     fieldEvidence,
     validationWarnings,
+    fileName: document.file_name,
+    mimeType: document.mime_type,
+    sizeBytes: document.file_size_kb ? Math.round(document.file_size_kb * 1024) : null,
+    sha256: document.file_sha256,
   });
   if (extractionRunId) envelope.extraction_run_id = extractionRunId;
   const { data: version, error } = await supabase.rpc('save_extraction_version', {
@@ -114,18 +126,12 @@ router.post('/process', async (req, res) => {
         });
       }
     }
-    const docCategory = doc.category || category || 'General';
+    const docCategory = category || doc.category || 'General';
     if (!SUPPORTED_EXTRACTION_CATEGORIES.includes(docCategory)) {
       return res.status(422).json({ success: false, message: `The extraction category "${docCategory}" is not supported yet.` });
     }
 
-    const { error: processingError } = await supabase.from('documents_metadata')
-      .update({ extraction_status: 'processing', updated_at: new Date().toISOString() })
-      .eq('id', doc.id)
-      .eq('client_id', doc.client_id);
-    if (processingError) throw processingError;
-
-    // Step 2: Read only from this user's private object namespace.
+    // Step 2: Validate private storage reference before setting processing status
     if (!doc.storage_bucket || !doc.storage_object_path || !isOwnedDocumentObject({
         bucket: doc.storage_bucket,
         objectKey: doc.storage_object_path,
@@ -136,6 +142,21 @@ router.post('/process', async (req, res) => {
       console.error(`[Extraction] Refusing unexpected cloud storage reference for document ${doc.id}.`);
       return res.status(409).json({ success: false, message: 'This document has not been migrated to private cloud storage.' });
     }
+    const mimeType = doc.mime_type || getMimeType(doc.file_type || 'PDF');
+    if (!['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(mimeType)) {
+      return res.status(415).json({ success: false, message: 'AI extraction currently supports PDF, PNG, JPEG, and WEBP documents.' });
+    }
+
+    const { error: processingError } = await supabase.from('documents_metadata')
+      .update({
+        extraction_status: 'processing',
+        category: docCategory,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', doc.id)
+      .eq('client_id', doc.client_id);
+    if (processingError) throw processingError;
+
     const fileBuffer = await downloadDocument(doc.storage_bucket, doc.storage_object_path);
 
     // Step 3: Call Gemini AI if API key is available
@@ -144,10 +165,6 @@ router.post('/process', async (req, res) => {
     let aiSuccess = false;
     const geminiConfig = await getGeminiConfig(req.user.id);
     const base64Content = fileBuffer.toString('base64');
-    const mimeType = doc.mime_type || getMimeType(doc.file_type || 'PDF');
-    if (!['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(mimeType)) {
-      return res.status(415).json({ success: false, message: 'AI extraction currently supports PDF, PNG, JPEG, and WEBP documents.' });
-    }
     extractionRunId = await startExtractionRun({
       userId: req.user.id,
       document: doc,
@@ -157,14 +174,18 @@ router.post('/process', async (req, res) => {
       usageSource: 'provider_response',
     });
     const geminiPayload = {
-      systemInstruction: { parts: [{ text: TAXFLOW_SYSTEM_PROMPT }] },
+      systemInstruction: { parts: [{ text: ORVEXA_EXTRACTION_SYSTEM_PROMPT }] },
       contents: [{
         parts: [
-          { text: getExtractionPrompt(docCategory) },
+          { text: getCategoryUserPrompt(docCategory, { assessmentYear: doc.assessment_year, clientName: doc.client_name }) },
           { inline_data: { mime_type: mimeType, data: base64Content } }
         ]
       }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 8192,
+        responseMimeType: 'application/json'
+      }
     };
 
     let geminiRes;
@@ -208,11 +229,36 @@ router.post('/process', async (req, res) => {
       throw emptyResponseError;
     }
     let providerPayload;
+    let fieldConfidence = {};
+    let fieldEvidence = {};
     try {
       providerPayload = parseBoundedJsonObject(rawText);
-      const candidateData = providerPayload?.data && typeof providerPayload.data === 'object'
-        && !Array.isArray(providerPayload.data) ? providerPayload.data : providerPayload;
-      extractedData = validateExtractionData(candidateData, docCategory);
+      let candidateData = {};
+      if (providerPayload?.fields && typeof providerPayload.fields === 'object' && !Array.isArray(providerPayload.fields)) {
+        for (const [key, fieldObj] of Object.entries(providerPayload.fields)) {
+          if (fieldObj && typeof fieldObj === 'object' && ('value' in fieldObj || 'confidence' in fieldObj)) {
+            candidateData[key] = fieldObj.value ?? null;
+            if (fieldObj.confidence !== undefined) fieldConfidence[key] = fieldObj.confidence;
+            if (fieldObj.page || fieldObj.raw_text) {
+              fieldEvidence[key] = { page: fieldObj.page, quote: fieldObj.raw_text };
+            }
+          } else {
+            candidateData[key] = fieldObj;
+          }
+        }
+        if (providerPayload.line_items && typeof providerPayload.line_items === 'object') {
+          candidateData.line_items = providerPayload.line_items;
+        }
+      } else if (providerPayload?.data && typeof providerPayload.data === 'object' && !Array.isArray(providerPayload.data)) {
+        candidateData = { ...providerPayload.data };
+        fieldConfidence = providerPayload.field_confidence || {};
+        fieldEvidence = providerPayload.field_evidence || {};
+      } else {
+        candidateData = { ...providerPayload };
+      }
+
+      const sanitized = sanitizeExtractionCandidate(candidateData, docCategory);
+      extractedData = validateExtractionData(sanitized.validData, docCategory);
     } catch {
       const invalidOutputError = new Error('The AI extraction provider returned data that did not match the required format. Please retry.');
       invalidOutputError.status = 502;
@@ -232,19 +278,21 @@ router.post('/process', async (req, res) => {
       data: extractedData,
       category: docCategory,
       versionKind: doc.current_extraction_version ? 'ai_rerun' : 'ai',
-      providerScore: providerPayload?.accuracy_score ?? providerPayload?.confidence_score,
+      providerScore: providerPayload?.model_overall_confidence ?? providerPayload?.accuracy_score ?? providerPayload?.confidence_score,
       providerRaw: providerPayload,
-      fieldConfidence: providerPayload?.field_confidence,
-      fieldEvidence: providerPayload?.field_evidence,
+      fieldConfidence,
+      fieldEvidence,
       validationWarnings: validateExtractedDataQuality(extractedData, docCategory),
       extractionRunId,
     });
+    const reviewScore = versionResult?.envelope?.overall_score?.review_score ?? versionResult?.envelope?.overall_score?.computed_score ?? confidenceScore;
     const { data: updatedDoc, error: updateErr } = await supabase
       .from('documents_metadata')
       .update({
         status: 'Extracted',
         extracted_data: extractedData,
-        confidence_score: versionResult?.envelope.overall_score.computed_score ?? confidenceScore,
+        category: docCategory,
+        confidence_score: reviewScore,
       })
       .eq('id', doc.id)
       .eq('client_id', doc.client_id)
@@ -273,7 +321,8 @@ router.post('/process', async (req, res) => {
 
     // Step 6: Increment AI call counter for this client
     try {
-      await supabase.rpc('increment_client_ai_calls', { cid: doc.client_id });
+      const { error: rpcErr } = await supabase.rpc('increment_client_ai_calls', { cid: doc.client_id });
+      if (rpcErr) console.warn('[Extraction] Could not increment client AI call count:', rpcErr.message);
     } catch (rpcError) {
       console.warn('[Extraction] Could not increment client AI call count:', rpcError.message);
     }
@@ -428,7 +477,8 @@ router.post('/save', async (req, res) => {
     });
 
     try {
-      await supabase.rpc('increment_client_ai_calls', { cid: document.client_id });
+      const { error: rpcErr } = await supabase.rpc('increment_client_ai_calls', { cid: document.client_id });
+      if (rpcErr) console.warn('[Extraction] Could not increment client AI call count:', rpcErr.message);
     } catch (rpcError) {
       console.warn('[Extraction] Could not increment client AI call count:', rpcError.message);
     }
@@ -697,7 +747,8 @@ router.get('/pending', async (req, res) => {
       { id: 'doc-101', file_name: 'GST_Invoice_Sep_2026.pdf', status: 'Extracted', confidence_score: 96, category: 'GST' }
     ]});
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('[Extraction] /pending error:', err.message);
+    res.status(500).json({ success: false, message: 'Could not load pending documents for review.' });
   }
 });
 
@@ -726,7 +777,8 @@ router.get('/ai-usage', async (req, res) => {
       data: [{ operation: 'extraction', model_used: 'database-configured', success: true, created_at: new Date().toISOString() }]
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('[Extraction] /pending error:', err.message);
+    res.status(500).json({ success: false, message: 'Could not load pending documents for review.' });
   }
 });
 
