@@ -56,6 +56,7 @@ export interface AuthResponse {
   rateLimited?: boolean;
   secondsLeft?: number;
   remainingAttempts?: number;
+  accountNotFound?: boolean;
 }
 
 // ─── Token helpers ─────────────────────────────────────────────

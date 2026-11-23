@@ -140,6 +140,7 @@ export function AuthPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [loginAccountNotFound, setLoginAccountNotFound] = useState(false);
   const [forgotModalOpen, setForgotModalOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotNotice, setForgotNotice] = useState<string | null>(null);
@@ -316,6 +317,7 @@ export function AuthPage() {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
+    setLoginAccountNotFound(false);
 
     if (!signupName.trim()) {
       setErrorMessage('Please enter your full name or partner designation.');
@@ -444,6 +446,7 @@ export function AuthPage() {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
+    setLoginAccountNotFound(false);
 
     if (lockoutSeconds > 0) {
       setErrorMessage(`Rate limit active. Please wait ${lockoutSeconds}s before attempting again.`);
@@ -469,6 +472,12 @@ export function AuthPage() {
         setTimeout(() => {
           dispatch({ type: 'LOGIN', user: res.user!, token: res.token!, refreshToken: res.refreshToken });
         }, 500);
+      } else if (res.accountNotFound) {
+        // The backend confirmed this email has no registered account.
+        setLoginAccountNotFound(true);
+        setErrorMessage(
+          `No account found for "${loginEmail.trim()}". You don't have an account yet — please sign up to get started.`
+        );
       } else {
         if (res.rateLimited && res.secondsLeft) {
           setLockoutSeconds(res.secondsLeft);
@@ -669,6 +678,7 @@ export function AuthPage() {
                   setAuthMode('signup');
                   setErrorMessage(null);
                   setSuccessMessage(null);
+                  setLoginAccountNotFound(false);
                 }}
               >
                 Create Account
@@ -680,6 +690,7 @@ export function AuthPage() {
                   setAuthMode('login');
                   setErrorMessage(null);
                   setSuccessMessage(null);
+                  setLoginAccountNotFound(false);
                 }}
               >
                 Sign In
@@ -697,6 +708,33 @@ export function AuthPage() {
               <div className="auth-alert auth-alert-error">
                 <Icon name="alert" size={16} />
                 <span>{errorMessage}</span>
+                {loginAccountNotFound && authMode === 'login' && (
+                  <button
+                    type="button"
+                    className="auth-alert-action-btn"
+                    onClick={() => {
+                      setAuthMode('signup');
+                      setErrorMessage(null);
+                      setLoginAccountNotFound(false);
+                      setSignupEmail(loginEmail.trim());
+                    }}
+                    style={{
+                      marginLeft: '10px',
+                      background: 'var(--accent, #4C8DFF)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '4px 12px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Sign Up →
+                  </button>
+                )}
               </div>
             )}
             {successMessage && !signupConfirmedEmail && (

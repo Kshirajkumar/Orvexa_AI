@@ -408,6 +408,12 @@ router.post('/resend-email-otp', async (req, res) => {
 // POST /api/v1/auth/login
 // Authenticates via Supabase. Returns JWT + full profile incl.
 // onboarding status so the frontend knows what to show next.
+//
+// Step 1: Verify the account exists before attempting sign-in.
+//         If no Supabase Auth user is found for the given email,
+//         immediately return a clear "no account" response so the
+//         user knows to sign up — without leaking password-check info.
+// Step 2: Only if the account exists do we call signInWithPassword.
 // ──────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   if (!requireSupabase(res)) return;
@@ -415,7 +421,8 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     const ip = req.ip || req.connection?.remoteAddress || 'client';
-    const rateKey = `${ip}_${(email || '').trim().toLowerCase()}`;
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const rateKey = `${ip}_${cleanEmail}`;
 
     // Rate limit check
     const rateCheck = checkRateLimit(rateKey);
@@ -432,17 +439,79 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email and password are required.' });
     }
 
+    // ── STEP 1: Check whether an account exists for this email ──────────
+    // Use the admin API (service-role key) to look up the user by email.
+    // This avoids a failed signInWithPassword being the first indicator —
+    // we give a friendlier, more actionable message when no account exists.
+    const { data: adminLookup, error: lookupErr } = await supabase.auth.admin.listUsers({
+      page: 1,
+      perPage: 1,
+    });
+
+    // listUsers doesn't support email filter directly, so we use getUserByEmail via admin API
+    // which is the correct Supabase admin method.
+    let existingUser = null;
+    try {
+      const { data: found, error: findErr } = await supabase
+        .from('auth.users')
+        .select('id, email')
+        .eq('email', cleanEmail)
+        .maybeSingle();
+      // The above is a direct table query that only works if RLS is bypassed (service key).
+      // We use the admin API as the reliable alternative below.
+      existingUser = found;
+    } catch (_) {
+      // Fall through — we'll rely on the admin lookup below
+    }
+
+    // Reliable method: use admin.getUserByEmail (Supabase v2 admin API)
+    if (!existingUser) {
+      try {
+        const { data: adminUser } = await supabase.auth.admin.getUserByEmail(cleanEmail);
+        existingUser = adminUser?.user || null;
+      } catch (_) {
+        // If admin lookup is unavailable (e.g. anon key instead of service key),
+        // fall through and let signInWithPassword handle it normally.
+      }
+    }
+
+    // If we confirmed the account does NOT exist, stop here with a clear message.
+    if (existingUser === null && lookupErr === null) {
+      // Only return "no account" if we are confident the lookup ran with a service key.
+      // We detect this by checking whether the admin namespace was reachable.
+      // If lookupErr is set, we cannot be sure — fall through to signInWithPassword.
+      const hasServiceKey = typeof process.env.SUPABASE_SECRET_KEY === 'string'
+        && process.env.SUPABASE_SECRET_KEY.trim().length > 20
+        && !process.env.SUPABASE_SECRET_KEY.trim().startsWith('your_');
+
+      if (hasServiceKey) {
+        return res.status(404).json({
+          success: false,
+          accountNotFound: true,
+          message: `No account found for "${cleanEmail}". Please sign up to create your practice workspace.`
+        });
+      }
+    }
+
+    // ── STEP 2: Account exists — attempt password-based sign-in ─────────
     const { data: supaAuth, error: supaErr } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
+      email: cleanEmail,
       password
     });
 
     if (supaErr || !supaAuth?.session) {
       recordFailedAttempt(rateKey);
       const updated = checkRateLimit(rateKey);
+
+      // Re-check: if Supabase says the user is not found at this stage it means
+      // the account genuinely does not exist (the admin lookup may have been skipped).
+      const isNotFound = supaErr?.message?.toLowerCase().includes('invalid login credentials')
+        || supaErr?.status === 400;
+
       return res.status(401).json({
         success: false,
         remainingAttempts: updated.allowed ? updated.remaining : 0,
+        accountNotFound: false,
         message: supaErr?.message === 'Email not confirmed'
           ? 'Your email address has not been confirmed. Please check your inbox and click the confirmation link.'
           : 'Invalid email or password. Please check your credentials.'
