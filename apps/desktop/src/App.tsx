@@ -50,10 +50,12 @@ function Shell() {
   }, [s.page, s.chatOpen, dispatch]);
 
   useEffect(() => {
-    if (s.currentUser?.onboardingComplete && shouldShowTourWelcome(s.currentUser.id)) {
+    // The tour is useful only after the practice has a real first client.
+    // Completing profile setup alone must not interrupt an empty workspace.
+    if (s.currentUser?.onboardingComplete && s.clients.length > 0 && shouldShowTourWelcome(s.currentUser.id)) {
       setShowTourWelcome(true);
     }
-  }, [s.currentUser?.id, s.currentUser?.onboardingComplete]);
+  }, [s.currentUser?.id, s.currentUser?.onboardingComplete, s.clients.length]);
 
   useEffect(() => {
     document.body.classList.toggle('sidebar-collapsed', !!s.sidebarCollapsed);

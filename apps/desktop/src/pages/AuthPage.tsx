@@ -127,6 +127,8 @@ export function AuthPage() {
   const [signupOtp, setSignupOtp] = useState('');
   const [otpState, setOtpState] = useState<'idle' | 'verifying' | 'success'>('idle');
   const [otpResendSeconds, setOtpResendSeconds] = useState(0);
+  const [signupCompleteCountdown, setSignupCompleteCountdown] = useState(0);
+  const pendingSignupLoginRef = useRef<{ user: AuthUser; token: string; refreshToken?: string } | null>(null);
   const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [showSignupPass, setShowSignupPass] = useState(false);
 
@@ -290,6 +292,23 @@ export function AuthPage() {
   }, [otpResendSeconds]);
 
   useEffect(() => {
+    if (signupCompleteCountdown <= 0) return;
+    const timer = window.setInterval(() => {
+      setSignupCompleteCountdown((previous) => {
+        if (previous <= 1) {
+          window.clearInterval(timer);
+          const pendingLogin = pendingSignupLoginRef.current;
+          pendingSignupLoginRef.current = null;
+          if (pendingLogin) dispatch({ type: 'LOGIN', ...pendingLogin });
+          return 0;
+        }
+        return previous - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [signupCompleteCountdown, dispatch]);
+
+  useEffect(() => {
     if (signupConfirmedEmail) focusOtpBox(0);
   }, [signupConfirmedEmail]);
 
@@ -316,6 +335,8 @@ export function AuthPage() {
     setSignupOtp('');
     setOtpState('idle');
     setOtpResendSeconds(0);
+    setSignupCompleteCountdown(0);
+    pendingSignupLoginRef.current = null;
     setErrorMessage(null);
     setSuccessMessage(null);
     if (clearCredentials) {
@@ -425,7 +446,8 @@ export function AuthPage() {
       setSuccessMessage('Email confirmed. Preparing your secure practice workspace…');
       const login = await apiLogin(verifiedEmail, signupPassword);
       if (!login.success || !login.user || !login.token) throw new Error(login.message || 'Your account was verified, but sign-in could not be completed. Please sign in manually.');
-      window.setTimeout(() => dispatch({ type: 'LOGIN', user: login.user!, token: login.token!, refreshToken: login.refreshToken }), 950);
+      pendingSignupLoginRef.current = { user: login.user, token: login.token, refreshToken: login.refreshToken };
+      setSignupCompleteCountdown(8);
     } catch (err: any) {
       if (emailWasVerified) {
         // The OTP is single-use. Do not leave the user on a screen with an
@@ -802,7 +824,26 @@ export function AuthPage() {
               >
                 {/* ────────── CARD 1: SIGN UP (Default) ────────── */}
                 <div className="auth-form-card signup-card">
-                  {signupConfirmedEmail ? (
+                  {signupCompleteCountdown > 0 ? (
+                    <div className="signup-complete-state" role="status" aria-live="polite">
+                      <div className="signup-complete-orbit" aria-hidden="true"><span /><span /><span /><span /></div>
+                      <div className="signup-complete-icon" aria-hidden="true">
+                        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="m5 12 4 4L19 6" />
+                        </svg>
+                      </div>
+                      <p className="signup-complete-kicker">ACCOUNT CREATED</p>
+                      <h2 className="signup-complete-title">Your Orvexa workspace is ready</h2>
+                      <p className="signup-complete-copy">Email verified successfully. We’re preparing your secure practice setup.</p>
+                      <div className="signup-countdown-card">
+                        <span className="signup-countdown-number">{signupCompleteCountdown}</span>
+                        <span>Starting workspace onboarding in <b>{signupCompleteCountdown}s</b></span>
+                      </div>
+                      <div className="signup-countdown-track" aria-hidden="true">
+                        <i style={{ width: `${((8 - signupCompleteCountdown) / 8) * 100}%` }} />
+                      </div>
+                    </div>
+                  ) : signupConfirmedEmail ? (
                     <div className={`auth-confirmed-center otp-stage-${otpState}`}>
                       <div className="otp-success-orbit" aria-hidden="true">
                         {Array.from({ length: 6 }).map((_, index) => <span key={index} className="otp-orbit-node" />)}

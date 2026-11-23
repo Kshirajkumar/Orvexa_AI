@@ -93,12 +93,23 @@ export function OnboardingFlow() {
           <div className="ob-logo">
             <BrandLogo className="onboarding-brand-logo" />
           </div>
+          <div className="ob-header-status">
+            <span className="ob-secure-chip"><i /> Secure setup</span>
+            <span className="ob-step-count">01 / 01</span>
+          </div>
         </div>
 
         {/* ── STEP 1: Profile & Clients ── */}
           <div className="ob-body">
+            <div className="ob-welcome-kicker"><span className="ob-kicker-dot" /> Workspace setup <span>Private by design</span></div>
             <h1 className="ob-title">Set Up Your Practice</h1>
             <p className="ob-subtitle">Let's configure your personal CA workspace and add your first clients so Orvexa AI is ready to go from day one.</p>
+
+            <div className="ob-setup-rail" aria-label="Onboarding stages">
+              <div className="is-active"><b>01</b><span>Your practice</span></div>
+              <div><b>02</b><span>First client</span></div>
+              <div><b>03</b><span>Workspace ready</span></div>
+            </div>
 
             <div className="ob-section-label">Your Practice Details</div>
             <div className="ob-form-grid">
@@ -160,8 +171,9 @@ export function OnboardingFlow() {
         }
 
         .ob-card {
+          position: relative;
           background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.1);
+          border: 1px solid rgba(148,163,184,0.18);
           border-radius: 24px;
           width: 100%;
           max-width: 760px;
@@ -169,6 +181,14 @@ export function OnboardingFlow() {
           box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05);
           overflow: hidden;
           transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.35s;
+        }
+        .ob-card::before {
+          content: '';
+          position: absolute;
+          inset: 0 0 auto;
+          height: 2px;
+          background: linear-gradient(90deg, #34d399, #60a5fa 48%, #a78bfa);
+          box-shadow: 0 0 24px rgba(96,165,250,.5);
         }
 
         .ob-slide-in  { transform: translateY(0);    opacity: 1; }
@@ -180,10 +200,21 @@ export function OnboardingFlow() {
           justify-content: space-between;
           padding: 20px 28px;
           border-bottom: 1px solid rgba(255,255,255,0.07);
-          background: rgba(255,255,255,0.02);
+          background: linear-gradient(105deg, rgba(255,255,255,0.055), rgba(96,165,250,0.035));
         }
 
         .ob-logo { display: flex; align-items: center; }
+
+        .ob-header-status { display: flex; align-items: center; gap: 12px; }
+        .ob-secure-chip {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 6px 10px; border: 1px solid rgba(52,211,153,.22);
+          border-radius: 99px; background: rgba(52,211,153,.08);
+          color: #86efac; font-size: 10px; font-weight: 700;
+          letter-spacing: .04em; text-transform: uppercase;
+        }
+        .ob-secure-chip i { width: 6px; height: 6px; border-radius: 50%; background: #34d399; box-shadow: 0 0 9px rgba(52,211,153,.8); }
+        .ob-step-count { color: rgba(255,255,255,.35); font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: .08em; }
 
         .ob-dots { display: flex; gap: 8px; }
         .ob-dot {
@@ -195,8 +226,19 @@ export function OnboardingFlow() {
         .ob-dot.active { background: #6366f1; width: 24px; border-radius: 4px; }
         .ob-dot.done   { background: #10b981; }
 
-        .ob-body { padding: 32px 28px 28px; }
+        .ob-body { padding: 32px 28px 28px; background: radial-gradient(circle at 100% 0%, rgba(96,165,250,.06), transparent 34%); }
         .ob-tour-body { padding-bottom: 20px; }
+
+        .ob-welcome-kicker { display: flex; align-items: center; gap: 7px; margin-bottom: 12px; color: #93c5fd; font-size: 10px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+        .ob-welcome-kicker > span:last-child { color: rgba(255,255,255,.32); font-weight: 500; letter-spacing: .02em; text-transform: none; }
+        .ob-kicker-dot { width: 6px; height: 6px; border-radius: 50%; background: #60a5fa; box-shadow: 0 0 12px rgba(96,165,250,.85); }
+
+        .ob-setup-rail { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 22px 0 28px; padding: 12px; border: 1px solid rgba(148,163,184,.13); border-radius: 15px; background: rgba(15,23,42,.32); }
+        .ob-setup-rail div { display: flex; align-items: center; gap: 8px; min-width: 0; color: rgba(255,255,255,.35); font-size: 11px; }
+        .ob-setup-rail b { display: grid; place-items: center; width: 24px; height: 24px; flex: 0 0 24px; border: 1px solid rgba(148,163,184,.18); border-radius: 8px; color: rgba(255,255,255,.42); font-size: 10px; }
+        .ob-setup-rail span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ob-setup-rail .is-active { color: #dbeafe; }
+        .ob-setup-rail .is-active b { border-color: rgba(96,165,250,.55); background: rgba(96,165,250,.14); color: #bfdbfe; box-shadow: 0 0 14px rgba(96,165,250,.14); }
 
         .ob-step-badge {
           display: inline-block;
@@ -213,7 +255,7 @@ export function OnboardingFlow() {
         }
 
         .ob-title {
-          font-size: 26px;
+          font-size: 30px;
           font-weight: 700;
           color: #fff;
           letter-spacing: -0.5px;
@@ -492,6 +534,27 @@ export function OnboardingFlow() {
         .ob-feature-desc { font-size: 12.5px; color: rgba(255,255,255,0.5); line-height: 1.5; }
 
         @keyframes ob-fade-in { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+
+        @media (prefers-reduced-motion: reduce) {
+          .ob-card, .ob-btn-primary, .ob-feature-card, .ob-vault-line { transition: none; animation: none; }
+        }
+
+        @media (max-width: 620px) {
+          .ob-overlay { padding: 12px; align-items: flex-start; }
+          .ob-card { border-radius: 18px; }
+          .ob-header { padding: 16px 18px; }
+          .ob-header-status { gap: 7px; }
+          .ob-secure-chip { padding: 5px 7px; font-size: 9px; }
+          .ob-step-count { display: none; }
+          .ob-body { padding: 26px 18px 20px; }
+          .ob-title { font-size: 26px; }
+          .ob-setup-rail { padding: 9px; gap: 4px; }
+          .ob-setup-rail div { gap: 5px; font-size: 9px; }
+          .ob-setup-rail b { width: 21px; height: 21px; flex-basis: 21px; }
+          .ob-form-grid { grid-template-columns: 1fr; }
+          .ob-actions { flex-direction: column-reverse; align-items: stretch; }
+          .ob-btn-primary, .ob-skip { justify-content: center; width: 100%; }
+        }
 
         /* Scrollbar */
         .ob-clients-list::-webkit-scrollbar,

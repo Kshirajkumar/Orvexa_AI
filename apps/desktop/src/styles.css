@@ -2384,6 +2384,172 @@ pre.code{margin:0;background:var(--panel);border:1px solid var(--line);border-ra
   text-decoration: underline;
 }
 
+.signup-complete-state {
+  position: relative;
+  display: flex;
+  min-height: 440px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 30px 26px;
+  text-align: center;
+  animation: signupCompleteReveal .65s cubic-bezier(.16,1,.3,1) both;
+}
+
+.signup-complete-state::before {
+  content: '';
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  top: 34px;
+  left: 50%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(52,211,153,.13), transparent 68%);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.signup-complete-orbit {
+  position: absolute;
+  width: 218px;
+  height: 218px;
+  top: 44px;
+  border: 1px solid rgba(52,211,153,.14);
+  border-radius: 50%;
+  animation: signupOrbitFloat 8s linear infinite;
+  pointer-events: none;
+}
+
+.signup-complete-orbit::before {
+  content: '';
+  position: absolute;
+  inset: 20px;
+  border: 1px dashed rgba(76,141,255,.18);
+  border-radius: 50%;
+}
+
+.signup-complete-orbit span {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #34D399;
+  box-shadow: 0 0 14px rgba(52,211,153,.85);
+}
+.signup-complete-orbit span:nth-child(1) { top: 8px; left: calc(50% - 3px); }
+.signup-complete-orbit span:nth-child(2) { right: 14px; top: calc(50% - 3px); background: #60A5FA; }
+.signup-complete-orbit span:nth-child(3) { bottom: 8px; left: calc(50% - 3px); background: #A78BFA; }
+.signup-complete-orbit span:nth-child(4) { left: 14px; top: calc(50% - 3px); }
+
+.signup-complete-icon {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 78px;
+  height: 78px;
+  margin-bottom: 22px;
+  border: 1px solid rgba(110,231,183,.65);
+  border-radius: 26px;
+  background: linear-gradient(145deg, rgba(52,211,153,.24), rgba(37,99,235,.18));
+  color: #6EE7B7;
+  box-shadow: 0 0 0 8px rgba(52,211,153,.06), 0 0 42px rgba(52,211,153,.28), inset 0 1px 0 rgba(255,255,255,.16);
+  animation: signupCheckPop .7s cubic-bezier(.16,1.4,.3,1) .12s both;
+}
+
+.signup-complete-kicker {
+  position: relative;
+  z-index: 1;
+  margin: 0 0 8px;
+  color: #6EE7B7;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .16em;
+}
+
+.signup-complete-title {
+  position: relative;
+  z-index: 1;
+  max-width: 340px;
+  margin: 0;
+  color: var(--tx, #F8FAFC);
+  font-size: 24px;
+  line-height: 1.2;
+  letter-spacing: -.45px;
+}
+
+.signup-complete-copy {
+  position: relative;
+  z-index: 1;
+  max-width: 330px;
+  margin: 10px 0 22px;
+  color: var(--tx2, #94A3B8);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.signup-countdown-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(100%, 330px);
+  padding: 12px 14px;
+  border: 1px solid rgba(76,141,255,.24);
+  border-radius: 14px;
+  background: linear-gradient(110deg, rgba(76,141,255,.13), rgba(52,211,153,.08));
+  color: var(--tx2, #CBD5E1);
+  font-size: 12px;
+  text-align: left;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+}
+.signup-countdown-card b { color: #BFD3FF; }
+.signup-countdown-number {
+  display: grid;
+  flex: 0 0 36px;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(96,165,250,.48);
+  border-radius: 11px;
+  background: rgba(15,23,42,.62);
+  color: #DBEAFE;
+  font-size: 17px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.signup-countdown-track {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 330px);
+  height: 3px;
+  margin-top: 12px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(255,255,255,.08);
+}
+.signup-countdown-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #34D399, #60A5FA);
+  box-shadow: 0 0 12px rgba(96,165,250,.7);
+  transition: width 1s linear;
+}
+
+@keyframes signupCompleteReveal { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes signupCheckPop { from { opacity: 0; transform: scale(.55) rotate(-12deg); } to { opacity: 1; transform: scale(1) rotate(0); } }
+@keyframes signupOrbitFloat { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .signup-complete-state,
+  .signup-complete-icon,
+  .signup-complete-orbit { animation: none; }
+  .signup-countdown-track i { transition: none; }
+}
+
 /* Demo Dividers & Buttons */
 .otp-stage-success .confirmed-icon-aura {
   transform: scale(1.08);
