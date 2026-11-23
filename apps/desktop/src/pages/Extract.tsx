@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { useAppState, useDispatch } from '../state/store';
-import { fetchClientDocuments, processDocumentExtraction, uploadDocument, type DocumentItem } from '../lib/api';
-import { isUsingLocalOpenRouterKey, validateOpenRouterExtractionFile, type OpenRouterFallbackProgress } from '../lib/openRouter';
+import { fetchClientDocuments, processDocumentExtraction, resolveAiProvider, uploadDocument, type DocumentItem } from '../lib/api';
+import { validateOpenRouterExtractionFile, type OpenRouterFallbackProgress } from '../lib/openRouter';
 import { emitToast } from '../lib/toast';
 
 type RunStep = 'idle' | 'uploading' | 'extracting' | 'saving' | 'done' | 'error';
@@ -117,7 +117,7 @@ export function ExtractPage() {
     const timeoutId = window.setTimeout(() => { timeoutReached.current = true; controller.abort(); }, 90_000);
     let uploadedId = '';
     try {
-      const useLocalOpenRouter = isUsingLocalOpenRouterKey();
+      const useLocalOpenRouter = await resolveAiProvider() === 'local';
       if (useLocalOpenRouter) validateOpenRouterExtractionFile(file);
       setStep('uploading');
       const upload = await uploadDocument({ clientId: client.id, fileName: file.name, fileType: normalizedFileType(file), category, fileBase64: await fileToBase64(file, controller.signal), source: 'Upload', signal: controller.signal });

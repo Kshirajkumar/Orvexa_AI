@@ -10,6 +10,21 @@ import {
 } from './openRouter';
 import { hasOpenRouterApiKey } from './secureCredentials';
 
+// ─── AI Provider Resolution ──────────────────────────────────────────────────
+// Single source of truth: always prefer a saved Credential-Manager key over
+// the localStorage toggle. Falls through to the backend when neither is set.
+// Call this async function at every AI call site instead of the sync
+// isUsingLocalOpenRouterKey() check so the Credential Manager is consulted.
+export async function resolveAiProvider(): Promise<'local' | 'backend'> {
+  try {
+    if (await hasOpenRouterApiKey()) return 'local';
+  } catch {
+    // Credential Manager unavailable (e.g. web browser preview) — fall through.
+  }
+  if (isUsingLocalOpenRouterKey()) return 'local';
+  return 'backend';
+}
+
 // The desktop app always uses the deployed backend. Keep this fixed so local
 // Vite/Tauri environment variables cannot silently redirect production app
 // traffic to a different or unavailable backend.
@@ -1128,10 +1143,14 @@ export async function processDocumentExtraction(
   clientName?: string,
   createdAt?: string,
   clientId?: string,
-  useLocalKey = isUsingLocalOpenRouterKey(),
+  useLocalKey?: boolean,
   signal?: AbortSignal,
 ) {
-  if (useLocalKey) {
+  // If the caller did not explicitly set useLocalKey, resolve it now.
+  // This ensures a saved Credential-Manager key is always preferred even when
+  // the localStorage toggle has not been set.
+  const shouldUseLocal = useLocalKey ?? (await resolveAiProvider() === 'local');
+  if (shouldUseLocal) {
     if (!file) {
       throw new Error('The local OpenRouter key needs the original image. Choose a JPG, PNG, WEBP, or GIF image and retry.');
     }
@@ -1352,7 +1371,7 @@ export async function generateNoticeResponse(payload: {
   noticeText: string;
   section?: string;
 }, onFallback?: OpenRouterFallbackCallback) {
-  if (isUsingLocalOpenRouterKey()) {
+  if (await resolveAiProvider() === 'local') {
     const result = await generateOpenRouterNoticeResponse(payload, onFallback);
     return {
       success: true,
@@ -1535,8 +1554,7 @@ export async function sendChatMessage(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   onFallback?: OpenRouterFallbackCallback,
 ) {
-  const hasSavedLocalKey = await hasOpenRouterApiKey();
-  if (hasSavedLocalKey || isUsingLocalOpenRouterKey()) {
+  if (await resolveAiProvider() === 'local') {
     const result = await sendOpenRouterChat(messages, onFallback);
     return { text: result.text, model: result.model };
   }
