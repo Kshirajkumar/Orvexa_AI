@@ -22,7 +22,7 @@ const { supabase, isConnected, SUPABASE_SERVER_KEY } = require('../db/supabase')
 const { ACCOUNT_ROLE, getAccountRole, isClientAccount } = require('../lib/accountRoles');
 const { requireAuth } = require('../middleware/requireAuth');
 const { deleteAccountStorage, deleteAccountVaultSecrets, purgeAccountCompletely } = require('../lib/accountDeletion');
-const { isResendConfigured, sendEmailVerificationCode } = require('../lib/resend');
+const { isResendConfigured, getResendConfigurationIssue, sendEmailVerificationCode } = require('../lib/resend');
 const ALLOWED_PRACTICE_TYPES = new Set(['Chartered Accountant (CA)', 'Individual']);
 const ACCOUNT_DELETE_CONFIRMATION = 'DELETE MY ACCOUNT';
 const ACCOUNT_DELETE_CHALLENGE_LIFETIME_SECONDS = 5 * 60;
@@ -297,8 +297,11 @@ router.post('/signup', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Practice category must be Chartered Accountant (CA) or Individual.' });
     }
 
-    if (!isResendConfigured()) {
-      return res.status(503).json({ success: false, message: 'Email verification is temporarily unavailable. Ask the administrator to configure Resend on the backend.' });
+    if (!isResendConfigured() || getResendConfigurationIssue()) {
+      return res.status(503).json({
+        success: false,
+        message: getResendConfigurationIssue() || 'Email verification is temporarily unavailable. Ask the administrator to configure Resend on the backend.',
+      });
     }
 
     const { data: supaAuth, error: supaErr } = await supabase.auth.admin.createUser({
