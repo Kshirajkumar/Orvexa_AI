@@ -440,56 +440,47 @@ router.post('/login', async (req, res) => {
     }
 
     // ── STEP 1: Check whether an account exists for this email ──────────
-    // Use the admin API (service-role key) to look up the user by email.
-    // This avoids a failed signInWithPassword being the first indicator —
-    // we give a friendlier, more actionable message when no account exists.
-    const { data: adminLookup, error: lookupErr } = await supabase.auth.admin.listUsers({
-      page: 1,
-      perPage: 1,
-    });
+    // If the server-role key is configured, query admin.listUsers to check existence.
+    const hasServiceKey = typeof process.env.SUPABASE_SECRET_KEY === 'string'
+      && process.env.SUPABASE_SECRET_KEY.trim().length > 20
+      && !process.env.SUPABASE_SECRET_KEY.trim().startsWith('your_');
 
-    // listUsers doesn't support email filter directly, so we use getUserByEmail via admin API
-    // which is the correct Supabase admin method.
-    let existingUser = null;
-    try {
-      const { data: found, error: findErr } = await supabase
-        .from('auth.users')
-        .select('id, email')
-        .eq('email', cleanEmail)
-        .maybeSingle();
-      // The above is a direct table query that only works if RLS is bypassed (service key).
-      // We use the admin API as the reliable alternative below.
-      existingUser = found;
-    } catch (_) {
-      // Fall through — we'll rely on the admin lookup below
-    }
-
-    // Reliable method: use admin.getUserByEmail (Supabase v2 admin API)
-    if (!existingUser) {
+    if (hasServiceKey && supabase?.auth?.admin) {
       try {
-        const { data: adminUser } = await supabase.auth.admin.getUserByEmail(cleanEmail);
-        existingUser = adminUser?.user || null;
-      } catch (_) {
-        // If admin lookup is unavailable (e.g. anon key instead of service key),
-        // fall through and let signInWithPassword handle it normally.
-      }
-    }
+        let existingUser = null;
+        let lookupSucceeded = false;
+        let page = 1;
+        let hasMore = true;
 
-    // If we confirmed the account does NOT exist, stop here with a clear message.
-    if (existingUser === null && lookupErr === null) {
-      // Only return "no account" if we are confident the lookup ran with a service key.
-      // We detect this by checking whether the admin namespace was reachable.
-      // If lookupErr is set, we cannot be sure — fall through to signInWithPassword.
-      const hasServiceKey = typeof process.env.SUPABASE_SECRET_KEY === 'string'
-        && process.env.SUPABASE_SECRET_KEY.trim().length > 20
-        && !process.env.SUPABASE_SECRET_KEY.trim().startsWith('your_');
+        while (hasMore && !existingUser && page <= 5) {
+          const { data: listData, error: listErr } = await supabase.auth.admin.listUsers({
+            page,
+            perPage: 200,
+          });
+          if (listErr) {
+            lookupSucceeded = false;
+            break;
+          }
+          lookupSucceeded = true;
+          const users = listData?.users || [];
+          existingUser = users.find(u => u.email && u.email.toLowerCase() === cleanEmail) || null;
+          if (existingUser || users.length < 200) {
+            hasMore = false;
+          } else {
+            page += 1;
+          }
+        }
 
-      if (hasServiceKey) {
-        return res.status(404).json({
-          success: false,
-          accountNotFound: true,
-          message: `No account found for "${cleanEmail}". Please sign up to create your practice workspace.`
-        });
+        // Only return 404 if lookup completed successfully and definitely did not find the email
+        if (lookupSucceeded && !existingUser) {
+          return res.status(404).json({
+            success: false,
+            accountNotFound: true,
+            message: `No account found for "${cleanEmail}". Please sign up to create your practice workspace.`
+          });
+        }
+      } catch (err) {
+        // If admin enumeration fails for any reason, safely fall through to signInWithPassword
       }
     }
 
