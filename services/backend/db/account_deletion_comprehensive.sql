@@ -1,16 +1,4 @@
--- ============================================================================
--- TaxFlow.AI / Orvexa_AI — Comprehensive Account & Client Deletion Migration
--- ============================================================================
--- Ensures complete, production-grade cascade deletion of a CA user account,
--- all owned clients, all client portal access records, document metadata,
--- extraction runs, logs, tasks, messages, and associated database rows.
---
--- Run this in Supabase SQL Editor. It is idempotent and safe to execute multiple times.
--- ============================================================================
-
-BEGIN;
-
--- 1. Ensure foreign key on client_user_profiles(ca_user_id) cascades instead of restricting.
+-- 1. Ensure foreign key on client_user_profiles(ca_user_id) cascades instead of restricting
 DO $$
 DECLARE
   v_con RECORD;
@@ -30,7 +18,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- 2. Ensure all foreign keys referencing auth.users in public schema cascade or set null appropriately.
+-- 2. Ensure all foreign keys referencing auth.users in public schema cascade or set null appropriately
 DO $$
 DECLARE
   fk RECORD;
@@ -52,7 +40,7 @@ BEGIN
     WHERE c.contype = 'f'
       AND c.confrelid = 'auth.users'::regclass
       AND child_ns.nspname = 'public'
-      AND c.confdeltype IN ('a', 'r', 'd') -- NO ACTION, RESTRICT, or SET DEFAULT
+      AND c.confdeltype IN ('a', 'r', 'd')
   LOOP
     IF array_length(fk.conkey, 1) = 1 THEN
       SELECT a.attname, a.attnotnull
@@ -68,7 +56,7 @@ BEGIN
           ELSE 'ON DELETE SET NULL'
         END;
 
-        EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I', fk.child_schema, fk.child_table, fk.conname);
+        EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I', fk.child_schema, fk.child_table, fk.conname);
         EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES auth.users(id) %s',
           fk.child_schema, fk.child_table, fk.conname, child_column, action_sql);
       END IF;
@@ -277,6 +265,4 @@ $$;
 
 REVOKE ALL ON FUNCTION public.delete_ca_user_all_data(UUID) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.delete_ca_user_all_data(UUID) TO service_role;
-
-COMMIT;
 NOTIFY pgrst, 'reload schema';
