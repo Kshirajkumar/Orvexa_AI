@@ -59,7 +59,7 @@ CREATE POLICY message_templates_service_role
 INSERT INTO public.message_templates (user_id, template_key, name, cat, body, protected)
 VALUES
   (NULL, 'website_link', 'Website link', 'Links', 'Hello {name}, you can visit our client portal and website at: {portalLink}', true),
-  (NULL, 'portal_link', 'Client portal website link', 'Client portal', 'Hello {name}, you can sign in to your TaxFlow client portal and upload your requested documents here: {portalLink}', true),
+  (NULL, 'portal_link', 'Client portal website link', 'Client portal', 'Hello {name}, you can sign in to your Orvexa client portal and upload your requested documents here: {portalLink}', true),
   (NULL, 'docs', 'GST documents request', 'Utility', 'Hello {name}, please upload your {period} sales & purchase invoices through your secure client portal: {portalLink}. Deadline: {due}.', true),
   (NULL, 'pending', 'Missing document', 'Utility', 'Hi {name}, we have not received the {doc} for {period} yet. Please upload it through your secure client portal: {portalLink}.', true),
   (NULL, 'itr', 'ITR documents', 'Utility', 'Hi {name}, to file your ITR please upload Form 16 / 26AS, bank interest certificates, and investment proofs through your secure client portal: {portalLink}.', true),

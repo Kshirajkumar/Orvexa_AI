@@ -155,7 +155,7 @@ function getClientPortalLink(inviteToken) {
 
 function createTelegramWelcome(clientName) {
   return [
-    `Welcome to TaxFlow, ${clientName}! Your private Telegram chat is connected.`,
+    `Welcome to Orvexa, ${clientName}! Your private Telegram chat is connected.`,
     '',
     'Privacy reminder: use Telegram for ordinary messages and questions only. Do not send tax, financial, identity, or other sensitive documents here. Upload files only through your secure client portal.',
     '',
@@ -167,7 +167,7 @@ function createTelegramWelcome(clientName) {
 function createTelegramPortalAccessMessage(portalAccountExists, portalLink) {
   return portalAccountExists
     ? [
-      'Your TaxFlow client portal account is already active.',
+      'Your Orvexa client portal account is already active.',
       `Open your secure portal here: ${portalLink}`,
       '',
       'Sign in with the email address and password you already created. Upload documents only through the secure portal.',
@@ -312,7 +312,7 @@ async function notifyClientPortalEmailChanged(client, { previousEmail, updatedEm
   if (!botToken()) throw new Error('Telegram bot is not configured.');
 
   const body = [
-    'Important: your CA updated the email address for your TaxFlow client portal.',
+    'Important: your CA updated the email address for your Orvexa client portal.',
     `Previous email: ${previousEmail || 'Not set'}`,
     `New portal email: ${updatedEmail}`,
     '',
@@ -427,8 +427,8 @@ async function sendTelegramMediaPrivacyReply(client, chatId, update) {
     : getClientPortalLink(await getOrCreateTelegramPortalInvite(client, { createdBy: client.user_id }));
   const body = [
     'For your privacy and security, please do not send documents, photos, or files in Telegram.',
-    'The TaxFlow bot does not download or process media sent here.',
-    'Upload them only through your private TaxFlow Client Portal:',
+    'The Orvexa bot does not download or process media sent here.',
+    'Upload them only through your private Orvexa Client Portal:',
     portalLink,
     '',
     portalAccountExists
@@ -849,6 +849,78 @@ router.post('/send', requireAuth, async (req, res) => {
       throw error;
     }
   } catch (error) { return res.status(500).json({ success: false, message: error.message }); }
+});
+
+const TELEGRAM_EDIT_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+router.patch('/clients/:clientId/messages/:messageId', requireAuth, async (req, res) => {
+  try {
+    const { clientId, messageId } = req.params;
+    const { message } = req.body || {};
+    const trimmed = typeof message === 'string' ? message.trim() : '';
+    if (!trimmed || trimmed.length > 4096) {
+      return res.status(400).json({ success: false, message: 'Message must be between 1 and 4096 characters.' });
+    }
+    if (!isConnected || !(await assertOwnedClient(req.user.id, clientId))) {
+      return res.status(404).json({ success: false, message: 'Client not found.' });
+    }
+    const { data: existing, error: fetchError } = await supabase
+      .from('telegram_messages')
+      .select('*')
+      .eq('id', messageId)
+      .eq('client_id', clientId)
+      .maybeSingle();
+    if (fetchError) throw fetchError;
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Message not found.' });
+    }
+    if (existing.direction !== 'outbound' || existing.delivery_status !== 'sent' || existing.message_type !== 'text' || !existing.provider_response_id) {
+      return res.status(422).json({ success: false, message: 'Only sent outbound text messages can be edited.' });
+    }
+    const createdAtMs = new Date(existing.created_at).getTime();
+    if (!Number.isFinite(createdAtMs) || Date.now() - createdAtMs > TELEGRAM_EDIT_WINDOW_MS) {
+      return res.status(422).json({ success: false, message: 'Telegram allows editing sent messages only within 48 hours.' });
+    }
+    const { data: newerInbound, error: inboundError } = await supabase
+      .from('telegram_messages')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('direction', 'inbound')
+      .gt('created_at', existing.created_at)
+      .limit(1);
+    if (inboundError) throw inboundError;
+    if (Array.isArray(newerInbound) && newerInbound.length > 0) {
+      return res.status(422).json({ success: false, message: 'This message can no longer be edited because the client has already replied.' });
+    }
+
+    try {
+      await telegramCall('editMessageText', {
+        chat_id: existing.chat_id,
+        message_id: Number(existing.provider_response_id),
+        text: trimmed,
+      });
+    } catch (tgError) {
+      const msg = String(tgError?.message || '');
+      if (!/message is not modified/i.test(msg)) {
+        if (/message can't be edited|message to edit not found|too old/i.test(msg)) {
+          return res.status(422).json({ success: false, message: 'Telegram no longer allows editing this message.' });
+        }
+        throw tgError;
+      }
+    }
+
+    const { data: updated, error: updateError } = await supabase
+      .from('telegram_messages')
+      .update({ body: redactPortalInviteLinks(trimmed) })
+      .eq('id', messageId)
+      .eq('client_id', clientId)
+      .select('*')
+      .single();
+    if (updateError) throw updateError;
+    return res.json({ success: true, data: updated });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 router.post('/clients/:clientId/send-file', requireAuth, (_req, res) => {

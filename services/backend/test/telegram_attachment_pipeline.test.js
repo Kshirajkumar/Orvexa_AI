@@ -198,14 +198,14 @@ test('Telegram media updates receive a private portal link without downloading o
     if (String(url).startsWith('http://127.0.0.1:')) return oldFetch(url, init);
     const call = { url: String(url), body: JSON.parse(init.body) };
     telegramCalls.push(call);
-    if (failNextMediaReply && call.body.text.includes('The TaxFlow bot does not download')) {
+    if (failNextMediaReply && call.body.text.includes('The Orvexa bot does not download')) {
       failNextMediaReply = false;
       return new Response(JSON.stringify({ ok: false, description: 'Temporary Telegram failure' }), {
         status: 503,
         headers: { 'content-type': 'application/json' }
       });
     }
-    if (blockNextMediaReply && call.body.text.includes('The TaxFlow bot does not download')) {
+    if (blockNextMediaReply && call.body.text.includes('The Orvexa bot does not download')) {
       blockNextMediaReply = false;
       markMediaReplyStarted();
       await blockedMediaReply;
@@ -290,7 +290,9 @@ test('Telegram media updates receive a private portal link without downloading o
   assert.equal(telegramCalls[telegramCalls.length - 1].body.text, telegramCalls[0].body.text);
   assert.ok(telegramCalls.every((call) => call.url.endsWith('/sendMessage')));
   assert.ok(telegramCalls.every((call) => /do not send documents, photos, or files/i.test(call.body.text)));
-  assert.ok(telegramCalls.every((call) => /does not download or process media/i.test(call.body.text)));
+  assert.ok(telegramCalls.every((call) => /The Orvexa bot does not download or process media/i.test(call.body.text)));
+  assert.ok(telegramCalls.every((call) => /private Orvexa Client Portal/i.test(call.body.text)));
+  assert.ok(telegramCalls.every((call) => !/taxflow/i.test(call.body.text.replace(/https:\/\/taxflow\.example[^\s]*/g, ''))));
   assert.ok(telegramCalls.every((call) => /https:\/\/taxflow\.example\/portal#invite=/.test(call.body.text)));
   assert.ok(telegramCalls.every((call) => /create your account using the email address registered with your CA/i.test(call.body.text)));
   assert.ok(telegramCalls.every((call) => /sign in to the portal whenever you need to upload files/i.test(call.body.text)));
@@ -466,6 +468,7 @@ test('Telegram media updates receive a private portal link without downloading o
   assert.doesNotMatch(registeredClientReply, /#invite=/);
   assert.match(registeredClientReply, /Sign in with the email address and password you already created/i);
   assert.doesNotMatch(registeredClientReply, /This invitation is private/i);
+  assert.doesNotMatch(registeredClientReply.replace(/https:\/\/taxflow\.example[^\s]*/g, ''), /taxflow/i);
   assert.equal(tables.client_portal_invites.length, 1, 'registered clients do not receive a new invitation');
 });
 
@@ -550,7 +553,9 @@ test('Telegram sends a welcome then a private portal invitation and retries only
   assert.equal(tables.client_portal_invites[0].invited_email, 'client@example.com');
   assert.equal(tables.client_portal_invites[0].created_by, 'staff-1');
   assert.equal(telegramCalls.length, 2);
+  assert.match(telegramCalls[0].body.text, /Welcome to Orvexa,/);
   assert.match(telegramCalls[0].body.text, /do not send tax, financial, identity, or other sensitive documents/i);
+  assert.doesNotMatch(telegramCalls[0].body.text.replace(/https:\/\/taxflow\.example[^\s]*/g, ''), /taxflow/i);
   assert.match(telegramCalls[0].body.text, /next message/i);
   assert.doesNotMatch(telegramCalls[0].body.text, /#invite=/);
   assert.match(telegramCalls[1].body.text, /https:\/\/taxflow\.example\/portal/);
@@ -839,6 +844,8 @@ test('client email-change Telegram notices explain the reset and redact the invi
   assert.deepEqual(result, { sent: true });
   assert.equal(telegramCalls.length, 1);
   assert.equal(telegramCalls[0].body.chat_id, 'private-chat-123');
+  assert.match(telegramCalls[0].body.text, /Orvexa client portal/i);
+  assert.doesNotMatch(telegramCalls[0].body.text.replace(/https:\/\/taxflow\.example[^\s]*/g, ''), /taxflow/i);
   assert.match(telegramCalls[0].body.text, /old@example\.com/);
   assert.match(telegramCalls[0].body.text, /new@example\.com/);
   assert.match(telegramCalls[0].body.text, /previous portal login has been disconnected/i);
