@@ -1350,6 +1350,36 @@ export async function sendTelegramMessage(clientId: string, message: string, req
   return json.data;
 }
 
+export async function editTelegramMessage(clientId: string, messageId: string, message: string): Promise<TelegramMessage> {
+  const { response: res, json } = await fetchTelegramJson(
+    `${API_BASE_URL}/telegram/clients/${encodeURIComponent(clientId)}/messages/${encodeURIComponent(messageId)}`,
+    { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ message }) },
+    30000,
+    'Telegram message edit',
+  );
+  if (!res.ok || !json.success) throw new Error(json.message || `Unable to edit Telegram message (HTTP ${res.status}).`);
+  if (!json.data || typeof json.data.id !== 'string') {
+    throw new Error('Telegram edited the message, but the backend did not return the updated message.');
+  }
+  return json.data;
+}
+
+export async function deleteTelegramMessage(
+  clientId: string,
+  messageId: string,
+  scope: 'unsend' | 'local' = 'unsend',
+): Promise<{ id: string; unsentFromTelegram: boolean }> {
+  const query = scope === 'local' ? '?scope=local' : '';
+  const { response: res, json } = await fetchTelegramJson(
+    `${API_BASE_URL}/telegram/clients/${encodeURIComponent(clientId)}/messages/${encodeURIComponent(messageId)}${query}`,
+    { method: 'DELETE', headers: authHeaders() },
+    30000,
+    'Telegram message delete',
+  );
+  if (!res.ok || !json.success) throw new Error(json.message || `Unable to delete Telegram message (HTTP ${res.status}).`);
+  return (json.data as { id: string; unsentFromTelegram: boolean }) || { id: messageId, unsentFromTelegram: false };
+}
+
 export interface TelegramUnreadSummary {
   counts: Record<string, number>;
   total: number;

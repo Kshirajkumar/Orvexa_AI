@@ -35,7 +35,7 @@ h1,h2,h3,p{margin:0}
 .ic{flex:none;display:block}
 
 /* ---------- window frame ---------- */
-.app{height:100vh;min-width:980px;min-height:640px;display:grid;grid-template-rows:40px minmax(0,1fr)}
+.app{height:100vh;height:100dvh;min-width:980px;min-height:0;overflow:hidden;display:grid;grid-template-rows:40px minmax(0,1fr)}
 .titlebar{display:grid;grid-template-columns:auto minmax(180px,440px) auto minmax(30px,1fr) auto;align-items:center;gap:16px;background:var(--bg2);border-bottom:1px solid var(--line);padding-left:12px;user-select:none}
 .brand{display:flex;align-items:center;gap:9px;font-weight:700}
 .brand small{font-weight:500;color:var(--tx3);font-size:12px}
@@ -571,24 +571,26 @@ button.file-artifact-main:hover .file-artifact-copy>b{color:var(--blue)}
 .telegram-composer-send:hover:not(:disabled){transform:scale(1.05);box-shadow:0 7px 18px color-mix(in srgb,var(--blue) 32%,transparent)}
 .telegram-composer-send:disabled{background:var(--card2);color:var(--tx3);box-shadow:none}
 .telegram-composer-hint{padding-left:14px;color:var(--tx3);font-size:9px;line-height:1.3}
-.telegram-template-menu{position:absolute;z-index:180;left:0;bottom:calc(100% + 12px);display:flex;width:min(390px,calc(100vw - 44px));max-height:min(420px,calc(100vh - 160px));flex-direction:column;overflow:auto;padding:7px;border:1px solid var(--line2);border-radius:14px;background:var(--panel);box-shadow:0 16px 42px rgba(0,0,0,.25);animation:tgTemplateMenuIn .16s ease both}
-.telegram-template-menu-heading{display:flex;flex-direction:column;gap:3px;padding:10px 10px 9px;border-bottom:1px solid var(--line)}
+.telegram-template-menu{position:absolute;z-index:180;left:0;bottom:calc(100% + 12px);display:flex;width:min(400px,calc(100vw - 44px));max-height:min(430px,calc(100vh - 160px));flex-direction:column;overflow:auto;padding:8px;border:1px solid color-mix(in srgb,var(--tx) 14%,var(--line2));border-radius:18px;background:linear-gradient(180deg,color-mix(in srgb,var(--panel) 84%,transparent),color-mix(in srgb,var(--card) 78%,transparent));box-shadow:0 20px 48px rgba(0,0,0,.32),inset 0 1px 0 color-mix(in srgb,#fff 16%,transparent);backdrop-filter:blur(28px) saturate(190%);-webkit-backdrop-filter:blur(28px) saturate(190%);animation:tgTemplateMenuIn .16s cubic-bezier(.2,.8,.2,1) both}
+.telegram-template-menu-heading{display:flex;flex-direction:column;gap:4px;padding:10px 10px 9px;border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
 .telegram-template-menu-heading>b{color:var(--tx);font-size:11.5px}
-.telegram-template-menu-heading>small{color:var(--tx3);font-size:9.5px}
-.telegram-template-search{flex:none;width:100%;height:34px;margin:8px 0 5px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);color:var(--tx);font:inherit;font-size:10px}
-.telegram-template-search:focus{border-color:var(--blue);outline:0;box-shadow:0 0 0 3px color-mix(in srgb,var(--blue) 10%,transparent)}
+.telegram-template-menu-heading>small{color:var(--tx3);font-size:9.5px;line-height:1.35}
+.telegram-template-search{flex:none;width:100%;height:34px;margin:8px 0 5px;padding:0 11px;border:1px solid color-mix(in srgb,var(--line2) 75%,transparent);border-radius:11px;background:color-mix(in srgb,var(--bg2) 72%,transparent);color:var(--tx);font:inherit;font-size:10.5px;transition:border-color .16s ease,box-shadow .16s ease}
+.telegram-template-search:focus{border-color:var(--blue);outline:0;box-shadow:0 0 0 3px color-mix(in srgb,var(--blue) 14%,transparent)}
 .telegram-template-empty{padding:12px 10px;color:var(--tx3);font-size:10px;line-height:1.45}
 .telegram-template-empty.error{color:var(--red)}
 .wa-template-trigger{width:38px;height:38px;border:1px solid var(--line2);border-radius:10px;background:color-mix(in srgb,var(--card) 80%,var(--panel));color:var(--blue)}
-.telegram-template-option{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:8px;align-items:center;width:100%;padding:9px 8px;border:0;border-radius:9px;background:transparent;color:var(--tx);text-align:left;cursor:pointer;transition:background .15s ease,transform .15s ease}
-.telegram-template-option:hover,.telegram-template-option:focus-visible{background:color-mix(in srgb,var(--blue) 8%,var(--card));outline:0}
-.telegram-template-option:active{transform:scale(.99)}
-.telegram-template-option-icon{display:grid;width:28px;height:28px;place-items:center;border:1px solid color-mix(in srgb,var(--blue) 20%,var(--line));border-radius:9px;background:color-mix(in srgb,var(--blue) 9%,var(--card));color:var(--blue)}
+.telegram-template-option{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:8px;align-items:center;width:100%;padding:9px 8px;border:0;border-radius:11px;background:transparent;color:var(--tx);text-align:left;cursor:pointer;transition:background .15s ease,transform .15s ease,opacity .15s ease}
+.telegram-template-option:hover:not(:disabled),.telegram-template-option:focus-visible:not(:disabled){background:color-mix(in srgb,var(--blue) 12%,transparent);outline:0}
+.telegram-template-option:active:not(:disabled){transform:scale(.99)}
+.telegram-template-option.is-locked{opacity:.58;cursor:not-allowed}
+.telegram-template-option.is-locked .telegram-template-option-icon{border-color:color-mix(in srgb,var(--amber) 30%,var(--line));background:color-mix(in srgb,var(--amber) 10%,transparent);color:var(--amber)}
+.telegram-template-option-icon{display:grid;width:28px;height:28px;place-items:center;border:1px solid color-mix(in srgb,var(--blue) 20%,var(--line));border-radius:9px;background:color-mix(in srgb,var(--blue) 10%,var(--card));color:var(--blue)}
 .telegram-template-option>span:nth-child(2){display:flex;min-width:0;flex-direction:column;gap:3px}
 .telegram-template-option b{overflow:hidden;font-size:10.5px;text-overflow:ellipsis;white-space:nowrap}
 .telegram-template-option small{display:-webkit-box;overflow:hidden;color:var(--tx3);font-size:9px;line-height:1.35;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 .telegram-template-option .chip{padding:3px 6px;font-size:8.5px}
-.telegram-template-menu-footer{display:flex;align-items:center;justify-content:center;padding:8px 4px 4px;border-top:1px solid var(--line);margin-top:6px}
+.telegram-template-menu-footer{display:flex;align-items:center;justify-content:center;padding:8px 4px 4px;border-top:1px solid color-mix(in srgb,var(--line) 70%,transparent);margin-top:6px}
 .telegram-template-menu-footer button{width:100%;justify-content:center;font-size:10px;color:var(--blue);font-weight:600}
 @keyframes tgTemplateMenuIn{from{opacity:0;transform:translateY(5px) scale(.99)}to{opacity:1;transform:none}}
 .telegram-state{display:flex;align-items:center;gap:8px;flex-direction:column}.telegram-state>span:not(.spin){max-width:420px;line-height:1.45}.telegram-state.error{color:var(--red)}.telegram-state.error b{color:var(--red)}.telegram-state.error .btn{margin-top:5px}.telegram-diagnostic-details{display:flex;flex-direction:column;gap:5px;width:min(520px,100%);text-align:left;color:var(--tx2);font-size:11px;line-height:1.45}.telegram-diagnostic-details summary{color:var(--tx);cursor:pointer;font-weight:700}.telegram-diagnostic-details>span{overflow-wrap:anywhere}.telegram-migration-help{width:min(520px,100%);padding:10px 12px;border:1px solid var(--line2);border-radius:10px;background:var(--panel);color:var(--tx2);text-align:left;font-size:11px;line-height:1.5}.telegram-migration-help summary{color:var(--tx);font-weight:700;cursor:pointer}.telegram-migration-help p{margin:9px 0}.telegram-migration-command{display:block;overflow-wrap:anywhere;padding:8px;border-radius:7px;background:var(--bg2);color:var(--tx);font-family:monospace}.telegram-migration-help>span[role=status]{display:block;margin-top:6px}.telegram-notice{align-self:center;max-width:min(560px,90%);padding:7px 12px;border:1px solid color-mix(in srgb,var(--green) 30%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--green) 8%,transparent);color:var(--tx2);font-size:11.5px;text-align:center}.telegram-diagnostics-warning{display:flex;flex-direction:column;gap:6px;border-color:color-mix(in srgb,var(--amber) 42%,var(--line));background:color-mix(in srgb,var(--amber) 10%,transparent);text-align:left}.telegram-diagnostics-warning b{color:var(--amber)}.telegram-diagnostics-warning .btn{align-self:flex-end}.telegram-approval{z-index:150}.telegram-approval-box{width:min(520px,100%);padding:24px}.telegram-approval-box h2{margin:4px 0 7px;font-size:18px}.telegram-approval-copy{color:var(--tx2);font-size:12px;line-height:1.5}.telegram-approval-message{margin:16px 0;padding:13px 14px;max-height:180px;overflow:auto;white-space:pre-wrap;word-break:break-word;border:1px solid var(--line2);border-radius:10px;background:var(--panel);color:var(--tx);font-size:13px;line-height:1.55}.telegram-approval-actions{display:flex;justify-content:flex-end;gap:8px}.spin-light{border-color:rgba(255,255,255,.38);border-top-color:#fff}
@@ -5003,19 +5005,36 @@ body.sidebar-collapsed.chat-hidden .shell {
 }
 @media(prefers-reduced-motion:reduce){.main-inbox .wa-c,.main-inbox .wa-shortcut,.main-inbox .wa-compose-launcher,.main-inbox .wa-compose-collapse{transition:none!important}.main-inbox .wa-compose-dock.expanded{animation:none!important}}
 
-/* Clean fixed reply composer: preserve templates and sending, simplify the chrome. */
+/* Apple OS Liquid Glass reply composer + inline sent-message edit controls */
 .main-inbox .wa-compose-dock,
-.main-inbox .wa-compose-dock.expanded{position:relative;right:auto;bottom:auto;left:auto;flex:none;width:auto;max-width:none;max-height:none;margin:0;overflow:visible;padding:8px 12px 10px;border:0;border-top:1px solid var(--line);border-radius:0;background:var(--bg2);box-shadow:0 -10px 24px color-mix(in srgb,#000 18%,transparent);backdrop-filter:none;animation:none}
+.main-inbox .wa-compose-dock.expanded{position:relative;right:auto;bottom:auto;left:auto;flex:none;width:auto;max-width:none;max-height:none;margin:0;overflow:visible;padding:10px 14px 12px;border:0;border-top:1px solid color-mix(in srgb,var(--line) 55%,transparent);border-radius:0;background:linear-gradient(180deg,color-mix(in srgb,var(--bg) 45%,transparent),color-mix(in srgb,var(--bg2) 82%,transparent));box-shadow:none;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);animation:none}
 .main-inbox #wa-thread{padding-bottom:14px}
 .main-inbox .wa-f.telegram-composer{padding:0}
-.main-inbox .telegram-composer-pill{min-height:44px;gap:6px;padding:4px 7px;border:1px solid var(--line2);border-radius:13px;background:var(--panel);box-shadow:none}
-.main-inbox .telegram-composer-input.inp{height:34px;min-height:34px;padding:7px 8px;font-size:11px}
-.main-inbox .telegram-composer-action{width:30px;height:30px}
-.main-inbox .telegram-composer-send{width:30px;height:30px;border-radius:8px;box-shadow:none}
+.main-inbox .telegram-composer-pill{position:relative;min-height:48px;gap:8px;padding:5px 7px;border:1px solid color-mix(in srgb,var(--tx) 14%,var(--line2));border-radius:26px;background:linear-gradient(180deg,color-mix(in srgb,var(--panel) 78%,transparent),color-mix(in srgb,var(--card) 68%,transparent));box-shadow:0 12px 32px color-mix(in srgb,#000 22%,transparent),0 2px 8px color-mix(in srgb,var(--blue) 8%,transparent),inset 0 1px 0 color-mix(in srgb,#fff 18%,transparent);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);transition:border-color .2s ease,box-shadow .2s ease,transform .2s ease}
+.main-inbox .telegram-composer-pill:hover{border-color:color-mix(in srgb,var(--tx) 22%,var(--line2))}
+.main-inbox .telegram-composer-pill:focus-within{border-color:color-mix(in srgb,var(--blue) 68%,var(--line2));box-shadow:0 0 0 3px color-mix(in srgb,var(--blue) 14%,transparent),0 14px 36px color-mix(in srgb,var(--blue) 14%,transparent),inset 0 1px 0 color-mix(in srgb,#fff 22%,transparent)}
+.main-inbox .telegram-composer-input.inp{height:36px;min-height:36px;max-height:168px;padding:8px 6px;font-size:12.5px;line-height:1.45;color:var(--tx)}
+.main-inbox .telegram-composer-input.inp::placeholder{color:var(--tx3)}
+.main-inbox .telegram-composer-action{width:34px;height:34px;border:1px solid color-mix(in srgb,var(--tx) 10%,var(--line));border-radius:50%;background:color-mix(in srgb,var(--card2) 60%,transparent);color:var(--tx2);box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 12%,transparent);transition:background .16s ease,color .16s ease,border-color .16s ease,transform .16s ease}
+.main-inbox .telegram-composer-action:hover:not(:disabled),.main-inbox .telegram-composer-action.is-open{background:color-mix(in srgb,var(--blue) 16%,var(--card));border-color:color-mix(in srgb,var(--blue) 45%,var(--line2));color:var(--blue);transform:scale(1.04)}
+.main-inbox .telegram-composer-send{width:34px;height:34px;border-radius:50%;background:linear-gradient(155deg,var(--blue),var(--blue2));color:#fff;box-shadow:0 4px 14px color-mix(in srgb,var(--blue) 36%,transparent),inset 0 1px 0 rgba(255,255,255,.28);transition:transform .16s ease,box-shadow .16s ease,opacity .16s ease}
+.main-inbox .telegram-composer-send:hover:not(:disabled){transform:scale(1.06);box-shadow:0 6px 18px color-mix(in srgb,var(--blue) 45%,transparent),inset 0 1px 0 rgba(255,255,255,.32)}
+.main-inbox .telegram-composer-send:active:not(:disabled){transform:scale(.96)}
+.main-inbox .telegram-composer-send:disabled{background:color-mix(in srgb,var(--card2) 70%,transparent);color:var(--tx3);box-shadow:none}
 .main-inbox .telegram-composer-hint{display:none}
 .main-inbox .wa-f:not(.telegram-composer){gap:6px;align-items:center;padding:0;background:transparent}
 .main-inbox .wa-f .wa-compose-input{height:44px;min-height:44px;padding:8px 11px;border-radius:13px;background:var(--panel);font-size:11px}
 .main-inbox .wa-f>.btn.pri{width:36px;height:36px;min-width:36px;border-radius:9px}
+.tg-msg-edit-btn{display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:1px 6px;border:1px solid color-mix(in srgb,#fff 18%,transparent);border-radius:99px;background:color-mix(in srgb,#fff 10%,transparent);color:inherit;font:inherit;font-size:9.5px;opacity:.75;cursor:pointer;transition:opacity .15s ease,background .15s ease}
+.msg:hover .tg-msg-edit-btn,.tg-msg-edit-btn:focus-visible{opacity:1;background:color-mix(in srgb,#fff 20%,transparent)}
+.tg-inline-edit-box{display:flex;flex-direction:column;gap:7px;min-width:220px}
+.tg-inline-edit-input{width:100%;min-height:46px;padding:7px 9px;border:1px solid color-mix(in srgb,#fff 26%,transparent);border-radius:10px;background:color-mix(in srgb,var(--bg) 35%,transparent);color:inherit;font:inherit;font-size:12px;line-height:1.4;resize:vertical;outline:0}
+.tg-inline-edit-actions{display:flex;justify-content:flex-end;gap:6px}
+.tg-inline-edit-cancel,.tg-inline-edit-save{padding:4px 10px;border-radius:99px;font:inherit;font-size:10.5px;font-weight:600;cursor:pointer;border:1px solid transparent}
+.tg-inline-edit-cancel{background:color-mix(in srgb,#fff 12%,transparent);color:inherit}
+.tg-inline-edit-save{background:#fff;color:var(--blue2)}
+.tg-inline-edit-save:disabled{opacity:.5;cursor:not-allowed}
+@media(prefers-reduced-motion:reduce){.main-inbox .telegram-composer-pill,.main-inbox .telegram-composer-action,.main-inbox .telegram-composer-send,.telegram-template-menu{transition:none!important;animation:none!important}}
 
 .brand-logo{position:relative;display:block;flex:none;aspect-ratio:246 / 42}
 .brand-logo img{position:absolute;inset:0;display:block;width:100%;height:100%;transition:opacity .24s ease,transform .24s ease}

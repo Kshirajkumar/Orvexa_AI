@@ -14,7 +14,10 @@ import {
   createTemplate,
   updateTemplate,
   deleteTemplate,
+  fetchClientPortalAccess,
   inviteClientToPortal,
+  updateClientPortalAccess,
+  revokeClientPortalAccess,
   fetchSupportedCountryTimezones,
   fetchTelegramSchedules,
   createTelegramSchedule,
@@ -23,214 +26,30 @@ import {
   type TelegramMessage,
   type TelegramPreview,
   type MessageTemplate,
+  type ClientPortalAccess,
   type SupportedCountryTimezone,
   type TelegramMessageSchedule,
 } from '../lib/api';
 import { useAppState, useDispatch } from '../state/store';
 import { nextMsgId } from '../lib/messageIds';
-import { missing } from '../lib/domain';
-import { fDate, fTime, fDT, until, agoT, dayDiff, vnow, toInput } from '../lib/format';
+import { until, vnow } from '../lib/format';
 import type { ChatMsg, Reminder } from '../types';
-
-const TELEGRAM_MIGRATION_COMMAND = 'Set-Location .\\services\\backend; npm run migrate:telegram';
-
-const TEMPLATE_COUNTRIES = [
-  { code: 'IN', name: 'India' },
-  { code: 'US', name: 'United States' },
-  { code: 'AE', name: 'United Arab Emirates' },
-  { code: 'SG', name: 'Singapore' },
-  { code: 'GB', name: 'United Kingdom' },
-] as const;
-
-type TemplateCountryCode = typeof TEMPLATE_COUNTRIES[number]['code'];
-
-function builtInTemplate(countryCode: TemplateCountryCode, key: string, name: string, cat: string, body: string): MessageTemplate {
-  return {
-    id: `default-${countryCode}-${key}`,
-    user_id: null,
-    template_key: key,
-    name,
-    cat,
-    body,
-    protected: true,
-    source: 'default',
-    country_code: countryCode,
-  };
-}
-
-const BUILT_IN_TEMPLATES: Record<TemplateCountryCode, MessageTemplate[]> = {
-  IN: [
-    builtInTemplate('IN', 'website_link', 'Website link', 'Links', 'Hello {name}, you can visit our client portal and website at: {portalLink}'),
-    builtInTemplate('IN', 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, please review your tax documents and upload pending files securely here: {portalLink}'),
-    builtInTemplate('IN', 'itr_return', 'ITR filing documents', 'Income tax', 'Hello {name}, please upload Form 16, 26AS/AIS, bank interest certificates, and investment proofs for your ITR: {portalLink}'),
-    builtInTemplate('IN', 'gst_return', 'GST return documents', 'GST', 'Hello {name}, please upload your sales and purchase invoices, GSTR-2B, and expense records for {period}: {portalLink}'),
-    builtInTemplate('IN', 'tds_form16', 'TDS / Form 16 request', 'TDS', 'Hello {name}, please upload your Form 16, TDS certificates, and 26AS/AIS for {period}: {portalLink}'),
-    builtInTemplate('IN', 'missing_document', 'Missing document follow-up', 'Utility', 'Hello {name}, we are still waiting for your {doc} for {period}. Please upload it securely here: {portalLink}'),
-    builtInTemplate('IN', 'fee_reminder', 'Professional fee reminder', 'Payment', 'Hello {name}, this is a reminder for the professional fee invoice for {period}. Please complete payment at your convenience.'),
-  ],
-  US: [
-    builtInTemplate('US', 'website_link', 'Website link', 'Links', 'Hello {name}, you can visit our client portal and website at: {portalLink}'),
-    builtInTemplate('US', 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, please review your tax documents and upload pending files securely here: {portalLink}'),
-    builtInTemplate('US', 'individual_return', 'Individual tax return documents', 'Income tax', 'Hello {name}, please upload your W-2, 1099s, mortgage interest, deductions, and investment statements for {period}: {portalLink}'),
-    builtInTemplate('US', 'business_return', 'Business tax return documents', 'Business tax', 'Hello {name}, please upload your income statement, balance sheet, bank statements, and 1099 records for {period}: {portalLink}'),
-    builtInTemplate('US', 'estimated_tax', 'Quarterly estimated tax reminder', 'Payment', 'Hello {name}, your quarterly estimated tax payment is due on {due}. Please review the payment details with your CA.'),
-    builtInTemplate('US', 'missing_document', 'Missing document follow-up', 'Utility', 'Hello {name}, we are still waiting for your {doc} for {period}. Please upload it securely here: {portalLink}'),
-    builtInTemplate('US', 'fee_reminder', 'Professional fee reminder', 'Payment', 'Hello {name}, this is a reminder for the professional fee invoice for {period}. Please complete payment at your convenience.'),
-  ],
-  AE: [
-    builtInTemplate('AE', 'website_link', 'Website link', 'Links', 'Hello {name}, you can visit our client portal and website at: {portalLink}'),
-    builtInTemplate('AE', 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, please review your tax documents and upload pending files securely here: {portalLink}'),
-    builtInTemplate('AE', 'vat_return', 'VAT return documents', 'VAT', 'Hello {name}, please upload your sales invoices, purchase invoices, VAT summary, and supporting records for {period}: {portalLink}'),
-    builtInTemplate('AE', 'corporate_tax', 'Corporate tax documents', 'Corporate tax', 'Hello {name}, please upload your financial statements, trial balance, and corporate tax records for {period}: {portalLink}'),
-    builtInTemplate('AE', 'trn_documents', 'TRN and registration documents', 'Compliance', 'Hello {name}, please upload your TRN certificate, trade licence, and registration documents securely here: {portalLink}'),
-    builtInTemplate('AE', 'missing_document', 'Missing document follow-up', 'Utility', 'Hello {name}, we are still waiting for your {doc} for {period}. Please upload it securely here: {portalLink}'),
-    builtInTemplate('AE', 'fee_reminder', 'Professional fee reminder', 'Payment', 'Hello {name}, this is a reminder for the professional fee invoice for {period}. Please complete payment at your convenience.'),
-  ],
-  SG: [
-    builtInTemplate('SG', 'website_link', 'Website link', 'Links', 'Hello {name}, you can visit our client portal and website at: {portalLink}'),
-    builtInTemplate('SG', 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, please review your tax documents and upload pending files securely here: {portalLink}'),
-    builtInTemplate('SG', 'gst_return', 'GST return documents', 'GST', 'Hello {name}, please upload your sales records, purchase invoices, GST reconciliation, and supporting records for {period}: {portalLink}'),
-    builtInTemplate('SG', 'corporate_tax', 'Corporate income tax documents', 'Income tax', 'Hello {name}, please upload your financial statements, tax computation, and supporting records for {period}: {portalLink}'),
-    builtInTemplate('SG', 'ir8a', 'IR8A / payroll documents', 'Payroll', 'Hello {name}, please upload your IR8A, payroll summary, CPF records, and employee details for {period}: {portalLink}'),
-    builtInTemplate('SG', 'missing_document', 'Missing document follow-up', 'Utility', 'Hello {name}, we are still waiting for your {doc} for {period}. Please upload it securely here: {portalLink}'),
-    builtInTemplate('SG', 'fee_reminder', 'Professional fee reminder', 'Payment', 'Hello {name}, this is a reminder for the professional fee invoice for {period}. Please complete payment at your convenience.'),
-  ],
-  GB: [
-    builtInTemplate('GB', 'website_link', 'Website link', 'Links', 'Hello {name}, you can visit our client portal and website at: {portalLink}'),
-    builtInTemplate('GB', 'portal_invite', 'Secure portal invitation', 'Client portal', 'Hello {name}, please review your tax documents and upload pending files securely here: {portalLink}'),
-    builtInTemplate('GB', 'self_assessment', 'Self Assessment documents', 'Income tax', 'Hello {name}, please upload your P60/P45, P11D, bank interest, dividend, and investment records for {period}: {portalLink}'),
-    builtInTemplate('GB', 'vat_return', 'VAT return documents', 'VAT', 'Hello {name}, please upload your sales invoices, purchase invoices, VAT reports, and MTD records for {period}: {portalLink}'),
-    builtInTemplate('GB', 'mtd', 'Making Tax Digital records', 'Compliance', 'Hello {name}, please upload your digital bookkeeping reports and supporting records for {period}: {portalLink}'),
-    builtInTemplate('GB', 'missing_document', 'Missing document follow-up', 'Utility', 'Hello {name}, we are still waiting for your {doc} for {period}. Please upload it securely here: {portalLink}'),
-    builtInTemplate('GB', 'fee_reminder', 'Professional fee reminder', 'Payment', 'Hello {name}, this is a reminder for the professional fee invoice for {period}. Please complete payment at your convenience.'),
-  ],
-};
-
-function needsTelegramMigrationHelp(messages: string[]) {
-  return messages.some((message) => /database table .* missing|database setup.*incomplete|migrations? are missing|required telegram database object/i.test(message));
-}
-
-function TelegramMigrationHelp({ copied, copyError, onCopy }: { copied: boolean; copyError: string; onCopy: () => void }) {
-  return (
-    <details className="telegram-migration-help">
-      <summary>How to fix the database setup</summary>
-      <p>From the Orvexa project folder, run this in PowerShell. Ensure <code>DATABASE_URL</code> is set in <code>services/backend/.env</code> for the same Supabase project used by the deployed backend.</p>
-      <code className="telegram-migration-command">{TELEGRAM_MIGRATION_COMMAND}</code>
-      <button className="btn sm" onClick={onCopy}>{copied ? 'Command copied' : 'Copy PowerShell command'}</button>
-      {copyError && <span role="status">{copyError}</span>}
-      <p>Do not share your database URL or password. If the command reports a database login error, correct the credentials in the backend environment before retrying.</p>
-    </details>
-  );
-}
-
-function dayLabel(d: Date) {
-  const n = dayDiff(vnow(), d);
-  return n === 0 ? 'Today' : n === 1 ? 'Yesterday' : fDate(d);
-}
-
-function scheduledTimeLabel(schedule: TelegramMessageSchedule) {
-  const value = schedule.next_run_at || schedule.scheduled_at;
-  if (!value) return 'No upcoming send';
-  return new Intl.DateTimeFormat(undefined, {
-    timeZone: schedule.timezone_name,
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
-}
-
-
-
-function getTemplateIcon(template: MessageTemplate) {
-  if (template.template_key === 'website_link' || template.template_key === 'portal_link') return 'globe';
-  if (template.template_key === 'portal_invite') return 'lock';
-  if (template.template_key === 'docs') return 'scan';
-  if (template.template_key === 'pending') return 'info';
-  if (template.template_key === 'itr') return 'table';
-  if (template.template_key === 'payment_reminder') return 'rupee';
-  if (template.template_key === 'status_update') return 'check';
-  if (template.template_key === 'onboarding') return 'users';
-  if (template.cat === 'Payment') return 'rupee';
-  if (template.cat === 'Client portal') return 'globe';
-  if (template.cat === 'Links') return 'link';
-  if (template.cat === 'Filing') return 'scan';
-  if (template.cat === 'Reminder') return 'bell';
-  return 'file';
-}
-
-function fillTpl(body: string, name: string, portalLink?: string) {
-  const link = portalLink || 'https://orvvexa.vercel.app/portal';
-  return body.replace(/\{(\w+)\}/g, (_, k) => {
-    if (k === 'name') return name;
-    if (k === 'period') return 'August 2026';
-    if (k === 'due') return '20 Sep 2026';
-    if (k === 'filing') return 'GSTR-3B';
-    if (k === 'doc') return 'bank statement';
-    if (k === 'portalLink' || k === 'websiteLink' || k === 'link') return link;
-    return '—';
-  });
-}
-
-async function fillPortalTemplate(template: MessageTemplate, client: { id: string; contact: string }) {
-  const clientName = client.contact ? client.contact.split(' ')[0] : 'Client';
-  const defaultPortalUrl = 'https://orvvexa.vercel.app/portal';
-  let portalLink = defaultPortalUrl;
-
-  // Only the specific 1-on-1 "portal_invite" needs an invitation token generated:
-  if (template.template_key === 'portal_invite') {
-    const invitation = await inviteClientToPortal(client.id);
-    if (!invitation?.link) throw new Error('The client portal link could not be resolved. Please open the client profile and check portal access.');
-    portalLink = invitation.link;
-  } else {
-    // For "website_link" and all other templates, directly use the public portal website link:
-    portalLink = defaultPortalUrl;
-  }
-  return fillTpl(template.body, clientName, portalLink);
-}
-
-function TemplateCardSkeleton() {
-  return (
-    <article className="card tpl wa-template-skeleton-card" aria-hidden="true">
-      <div className="wa-template-skeleton-header">
-        <div className="wa-skeleton-shimmer wa-template-skeleton-icon" />
-        <div className="wa-skeleton-shimmer wa-template-skeleton-title" />
-        <div className="wa-skeleton-shimmer wa-template-skeleton-chip" />
-      </div>
-      <div className="wa-template-skeleton-body">
-        <div className="wa-skeleton-shimmer wa-template-skeleton-line" style={{ width: '92%' }} />
-        <div className="wa-skeleton-shimmer wa-template-skeleton-line" style={{ width: '78%' }} />
-        <div className="wa-skeleton-shimmer wa-template-skeleton-line" style={{ width: '60%' }} />
-      </div>
-      <div className="wa-template-skeleton-footer">
-        <div className="wa-skeleton-shimmer wa-template-skeleton-btn" style={{ width: 64 }} />
-        <div className="wa-skeleton-shimmer wa-template-skeleton-btn" style={{ width: 92 }} />
-      </div>
-    </article>
-  );
-}
-
-function ScheduleCardSkeleton() {
-  return (
-    <article className="card wa-reminder-card wa-sched-skeleton" aria-hidden="true">
-      <div className="wa-reminder-time">
-        <div className="wa-skeleton-shimmer" style={{ height: 18, width: 46, borderRadius: 6, marginBottom: 5 }} />
-        <div className="wa-skeleton-shimmer" style={{ height: 10, width: 62, borderRadius: 4 }} />
-      </div>
-      <div className="wa-reminder-content" style={{ flex: 1 }}>
-        <div className="wa-reminder-client">
-          <div className="wa-skeleton-shimmer" style={{ width: 22, height: 22, borderRadius: '50%' }} />
-          <div className="wa-skeleton-shimmer" style={{ height: 13, width: 110, borderRadius: 5 }} />
-          <div className="wa-skeleton-shimmer" style={{ height: 18, width: 44, borderRadius: 99 }} />
-        </div>
-        <div className="wa-skeleton-shimmer" style={{ height: 10, width: '80%', borderRadius: 4, marginTop: 7 }} />
-        <div className="wa-skeleton-shimmer" style={{ height: 10, width: '60%', borderRadius: 4, marginTop: 5 }} />
-      </div>
-      <div className="wa-reminder-actions">
-        <div className="wa-skeleton-shimmer" style={{ height: 20, width: 52, borderRadius: 99 }} />
-        <div className="wa-skeleton-shimmer" style={{ height: 28, width: 60, borderRadius: 7 }} />
-      </div>
-    </article>
-  );
-}
+import {
+  TELEGRAM_MIGRATION_COMMAND,
+  BUILT_IN_TEMPLATES,
+  type TemplateCountryCode,
+  getTemplateIcon,
+  templateUsesPortalLink,
+  fillTpl,
+  fillPortalTemplate,
+} from '../components/inbox/types';
+import { InboxTopBar } from '../components/inbox/InboxTopBar';
+import { ConversationList } from '../components/inbox/ConversationList';
+import { MessageThread } from '../components/inbox/MessageThread';
+import { RemindersPanel } from '../components/inbox/RemindersPanel';
+import { TemplatesPanel } from '../components/inbox/TemplatesPanel';
+import { ScheduleReminderModal } from '../components/inbox/ScheduleReminderModal';
+import '../styles/inbox.css';
 
 function TemplateDropdownSkeleton() {
   return (
@@ -244,8 +63,6 @@ function TemplateDropdownSkeleton() {
     </div>
   );
 }
-
-
 function sameTelegramMessages(a: TelegramMessage[], b: TelegramMessage[]) {
   return a.length === b.length && a.every((message, index) => {
     const next = b[index];
@@ -335,17 +152,14 @@ export function WhatsAppPage() {
   const [scheduleNotice, setScheduleNotice] = useState('');
   const [scheduleActionId, setScheduleActionId] = useState('');
   const [contactsCollapsed, setContactsCollapsed] = useState(false);
-  const [telegramDraft, setTelegramDraft] = useState('');
-  const [telegramRequestId, setTelegramRequestId] = useState('');
   const [telegramRetry, setTelegramRetry] = useState(0);
   const [telegramStatusRetry, setTelegramStatusRetry] = useState(0);
-  /** Text staged inline in the thread waiting for approval — NOT yet sent */
-  const [pendingTelegramMsg, setPendingTelegramMsg] = useState('');
-  const [pendingTelegramClientId, setPendingTelegramClientId] = useState('');
-  /** Whether the approval card is currently in inline-edit mode */
-  const [isEditingPending, setIsEditingPending] = useState(false);
-  /** Holds the in-progress edit text while editing mode is active */
-  const [editText, setEditText] = useState('');
+  const [portalAccess, setPortalAccess] = useState<ClientPortalAccess | null>(null);
+  const [portalAccessClientId, setPortalAccessClientId] = useState('');
+  const [portalAccessLoading, setPortalAccessLoading] = useState(false);
+  const [portalActionLoading, setPortalActionLoading] = useState(false);
+  const [portalActionMessage, setPortalActionMessage] = useState('');
+  const [portalActionError, setPortalActionError] = useState('');
   /** Unread counts mapped by client_id */
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [telegramPreviews, setTelegramPreviews] = useState<Record<string, TelegramPreview>>({});
@@ -357,7 +171,6 @@ export function WhatsAppPage() {
   const [whatsAppError, setWhatsAppError] = useState('');
   const [whatsAppSending, setWhatsAppSending] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
-  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
   const telegramMessageInputRef = useRef<HTMLTextAreaElement>(null);
   const whatsAppMessageInputRef = useRef<HTMLTextAreaElement>(null);
   const telegramTemplateMenuRef = useRef<HTMLDivElement>(null);
@@ -372,9 +185,13 @@ export function WhatsAppPage() {
   const privateTemplates = templates.filter((t) => Boolean(t.user_id));
   const defaultTemplatesList = dbDefaultTemplates.length > 0 ? dbDefaultTemplates : builtInTemplates;
   const visibleTemplates = [...defaultTemplatesList, ...privateTemplates];
-  const pendingTelegramClient = s.clients.find((client) => client.id === pendingTelegramClientId);
-  const pendingTelegramForCurrentClient = !!pendingTelegramMsg && pendingTelegramClientId === c?.id;
-  const pendingTelegramForOtherClient = !!pendingTelegramMsg && !!pendingTelegramClientId && pendingTelegramClientId !== c?.id;
+  const hasCreatedPortalAccount = Boolean(
+    c && portalAccess && portalAccessClientId === c.id && (portalAccess.status === 'account_created' || portalAccess.linked)
+  );
+  const isTemplateLockedForClient = useCallback(
+    (template: MessageTemplate) => !hasCreatedPortalAccount && templateUsesPortalLink(template) && template.template_key !== 'portal_invite',
+    [hasCreatedPortalAccount],
+  );
   const visibleClients = s.clients.filter((client) => client.name.toLocaleLowerCase().includes(clientSearch.trim().toLocaleLowerCase()));
   const thread = c ? (s.threads[c.id] || []).slice().sort((a, b) => a.at.getTime() - b.at.getTime()) : [];
   const isTelegramConversationLoading = channel === 'telegram' && !!c && telegramConversationClientId !== c.id;
@@ -386,7 +203,35 @@ export function WhatsAppPage() {
     setComposerExpanded(true);
     setTelegramLinkToShare('');
     setTelegramInfo('');
+    setPortalActionMessage('');
+    setPortalActionError('');
   }, [channel, c?.id]);
+
+  useEffect(() => {
+    if (!c?.id) {
+      setPortalAccess(null);
+      setPortalAccessClientId('');
+      setPortalAccessLoading(false);
+      return undefined;
+    }
+    let active = true;
+    setPortalAccessLoading(true);
+    fetchClientPortalAccess(c.id)
+      .then((access) => {
+        if (!active) return;
+        setPortalAccess(access);
+        setPortalAccessClientId(c.id);
+      })
+      .catch(() => {
+        if (!active) return;
+        setPortalAccess(null);
+        setPortalAccessClientId(c.id);
+      })
+      .finally(() => {
+        if (active) setPortalAccessLoading(false);
+      });
+    return () => { active = false; };
+  }, [c?.id]);
 
   useLayoutEffect(() => {
     if (!composerExpanded) return;
@@ -512,7 +357,7 @@ export function WhatsAppPage() {
   useEffect(() => {
     if (!shouldFollowThreadRef.current) return;
     scrollThreadToLatest('auto');
-  }, [thread.length, telegramMessages, pendingTelegramMsg, isEditingPending, telegramConversationClientId, s.ui.wa.tab, scrollThreadToLatest]);
+  }, [thread.length, telegramMessages, telegramConversationClientId, s.ui.wa.tab, scrollThreadToLatest]);
 
   useEffect(() => {
     if (!telegramTemplatesOpen) return undefined;
@@ -684,7 +529,8 @@ export function WhatsAppPage() {
     setTemplateError('');
     setTemplateApplyError('');
     try {
-      const message = await fillPortalTemplate(template, c);
+      const activePortalAccess = portalAccessClientId === c.id ? portalAccess : null;
+      const message = await fillPortalTemplate(template, c, activePortalAccess);
       setInput(message);
       if (openChats) {
         setComposerExpanded(true);
@@ -796,124 +642,137 @@ export function WhatsAppPage() {
     }
   }
 
-  function requestTelegramSend() {
-    const text = input.trim();
-    if (!text || telegramSending || pendingTelegramMsg || !c) return;
+  async function sendTelegramDirect(overrideText?: string) {
+    const text = (overrideText ?? input).trim();
+    if (!text || telegramSending || !c) return;
     if (!telegramReady || !isTelegramLinkedForCurrentClient || isTelegramConversationLoading) {
       setTelegramError('Telegram is not ready or this client is not linked. Please check the connection and try again.');
       return;
     }
-    setTelegramError('');
-    setTelegramInfo('');
-    setTelegramRequestId(crypto.randomUUID());
-    setTelegramDraft(text);
-    setPendingTelegramMsg(text);
-    setPendingTelegramClientId(c.id);
-    setInput('');
-    scrollThreadToLatest();
-  }
-
-  async function confirmTelegramSend() {
-    const messageText = telegramDraft;
-    if (!messageText || telegramSending || !c || pendingTelegramClientId !== c.id) return;
-    const targetClientId = pendingTelegramClientId;
-    const requestId = telegramRequestId || crypto.randomUUID();
+    const targetClientId = c.id;
+    const requestId = crypto.randomUUID();
+    if (overrideText === undefined) setInput('');
     setTelegramSending(true);
     setTelegramError('');
-    setTelegramInfo('Sending message through Telegram…');
+    setTelegramInfo('');
+    const optimisticMessage: TelegramMessage = {
+      id: `local-${requestId}`,
+      client_id: targetClientId,
+      provider_message_id: `taxflow:${requestId}`,
+      direction: 'outbound',
+      chat_id: '',
+      body: text,
+      message_type: 'text',
+      delivery_status: 'sending',
+      created_at: new Date().toISOString(),
+    };
+    setTelegramMessages((current) => mergeTelegramMessages(
+      [optimisticMessage],
+      current,
+      targetClientId,
+    ));
+    scrollThreadToLatest();
     try {
-      const optimisticMessage: TelegramMessage = {
-        id: `local-${requestId}`,
-        client_id: targetClientId,
-        provider_message_id: `taxflow:${requestId}`,
-        direction: 'outbound',
-        chat_id: '',
-        body: messageText,
-        message_type: 'text',
-        delivery_status: 'sending',
-        created_at: new Date().toISOString(),
-      };
-      setTelegramMessages((current) => mergeTelegramMessages(
-        [optimisticMessage],
-        current,
-        targetClientId,
-      ));
-      scrollThreadToLatest();
-      setPendingTelegramMsg('');
-      setPendingTelegramClientId('');
-      setTelegramDraft('');
-      setTelegramRequestId('');
-      setIsEditingPending(false);
-      setEditText('');
-
-      const sentMessage = await sendTelegramMessage(targetClientId, messageText, requestId);
+      const sentMessage = await sendTelegramMessage(targetClientId, text, requestId);
       setTelegramMessages((current) => mergeTelegramMessages([sentMessage], current, targetClientId));
-      setPendingTelegramMsg('');
-      setPendingTelegramClientId('');
-      setTelegramDraft('');
-      setTelegramRequestId('');
-      setTelegramInfo('Message sent through Telegram.');
-      setTelegramSending(false);
-
       try {
         setTelegramPreviews(await fetchTelegramPreviews());
       } catch (error) {
         console.warn('Failed to refresh Telegram preview after sending', error);
       }
     } catch (error) {
-      setTelegramInfo('');
       setTelegramMessages((current) => current.map((message) =>
         message.provider_message_id === `taxflow:${requestId}`
           ? { ...message, delivery_status: 'failed' }
           : message
       ));
-      setPendingTelegramMsg('');
-      setPendingTelegramClientId('');
-      setTelegramDraft('');
-      setTelegramRequestId('');
-      setIsEditingPending(false);
-      setEditText('');
       setTelegramError(error instanceof Error ? error.message : 'Unable to send Telegram message. Please try again.');
     } finally {
       setTelegramSending(false);
     }
   }
 
-  function cancelTelegramPending() {
-    setPendingTelegramMsg('');
-    setPendingTelegramClientId('');
-    setTelegramDraft('');
-    setTelegramRequestId('');
-    setTelegramError('');
-    setTelegramInfo('');
-    setIsEditingPending(false);
-    setEditText('');
+  async function pauseOrResumePortal(action: 'pause' | 'resume') {
+    if (!c || portalActionLoading) return;
+    const verb = action === 'pause' ? 'Pause' : 'Resume';
+    if (!window.confirm(`${verb} client portal access for ${c.name}?`)) return;
+    setPortalActionLoading(true);
+    setPortalActionMessage('');
+    setPortalActionError('');
+    try {
+      const result = await updateClientPortalAccess(c.id, action);
+      setPortalAccess((prev) => ({
+        enabled: action === 'resume',
+        email: prev?.email ?? null,
+        createdAt: prev?.createdAt ?? null,
+        linked: action === 'resume',
+        status: action === 'resume' ? 'account_created' : 'paused',
+        portalLink: action === 'resume' ? (prev?.portalLink || 'https://orvvexa.vercel.app/portal') : null,
+        telegramLinked: prev?.telegramLinked ?? isTelegramLinkedForCurrentClient,
+      }));
+      setPortalActionMessage(
+        action === 'pause'
+          ? 'Portal access paused. Account and documents are preserved; sign-in is blocked until resumed.'
+          : `Portal access resumed (${result.status}).`,
+      );
+    } catch (error) {
+      setPortalActionError(error instanceof Error ? error.message : `Could not ${action} portal access.`);
+    } finally {
+      setPortalActionLoading(false);
+    }
   }
 
-  /** Enter inline-edit mode for the pending message */
-  const startEditingPending = useCallback(() => {
-    setEditText(pendingTelegramMsg);
-    setIsEditingPending(true);
-    // Focus the textarea on next paint
-    requestAnimationFrame(() => editTextareaRef.current?.focus());
-  }, [pendingTelegramMsg]);
-
-  /** Commit the edited text — updates both the visible bubble and the draft to be sent */
-  function commitEdit() {
-    const trimmed = editText.trim();
-    if (!trimmed) return; // guard: empty message not allowed
-    setPendingTelegramMsg(trimmed);
-    setTelegramDraft(trimmed);
-    // Regenerate request ID so a re-edit can't collide with a previous idempotency key
-    setTelegramRequestId(crypto.randomUUID());
-    setIsEditingPending(false);
-    setEditText('');
+  async function revokePortal() {
+    if (!c || portalActionLoading) return;
+    if (!window.confirm(`Revoke client portal access permanently for ${c.name}? This deletes their portal account.`)) return;
+    setPortalActionLoading(true);
+    setPortalActionMessage('');
+    setPortalActionError('');
+    try {
+      await revokeClientPortalAccess(c.id);
+      setPortalAccess((prev) => ({
+        enabled: false,
+        email: prev?.email ?? null,
+        createdAt: null,
+        linked: false,
+        status: 'revoked',
+        portalLink: null,
+        telegramLinked: prev?.telegramLinked ?? isTelegramLinkedForCurrentClient,
+      }));
+      setPortalActionMessage('Portal access was permanently revoked and the portal account was deleted.');
+    } catch (error) {
+      setPortalActionError(error instanceof Error ? error.message : 'Could not revoke portal access.');
+    } finally {
+      setPortalActionLoading(false);
+    }
   }
 
-  /** Abort inline-edit and return to the approval view without changing anything */
-  function abortEdit() {
-    setIsEditingPending(false);
-    setEditText('');
+  async function invitePortal() {
+    if (!c || portalActionLoading) return;
+    setPortalActionLoading(true);
+    setPortalActionMessage('');
+    setPortalActionError('');
+    try {
+      const result = await inviteClientToPortal(c.id);
+      setPortalAccess((prev) => ({
+        enabled: true,
+        email: result.email || prev?.email || null,
+        createdAt: prev?.createdAt ?? null,
+        linked: result.status === 'account_created',
+        status: result.status === 'account_created' ? 'account_created' : 'invitation_pending',
+        portalLink: result.link,
+        telegramLinked: prev?.telegramLinked ?? isTelegramLinkedForCurrentClient,
+      }));
+      setPortalActionMessage(
+        result.status === 'account_created'
+          ? 'Client portal account is already active.'
+          : `Portal invitation created for ${result.email}.`,
+      );
+    } catch (error) {
+      setPortalActionError(error instanceof Error ? error.message : 'Could not create portal invitation.');
+    } finally {
+      setPortalActionLoading(false);
+    }
   }
 
   const scheduled = s.reminders.filter((r) => r.status === 'scheduled').sort((a, b) => a.at.getTime() - b.at.getTime());
@@ -938,7 +797,7 @@ export function WhatsAppPage() {
     const text = input.trim();
     if (!text) return;
     if (channel === 'telegram') {
-      requestTelegramSend();
+      await sendTelegramDirect();
       return;
     }
     if (channel === 'whatsapp') {
@@ -1061,11 +920,20 @@ export function WhatsAppPage() {
     return (
       <div className="telegram-template-menu" id="message-template-menu" role="menu" aria-label="Message templates">
         <div className="telegram-template-menu-heading">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
             <b>Message templates</b>
-            <span className="chip sm blue">{visibleTemplates.length} total</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className={'chip sm ' + (portalAccessLoading ? 'amber' : hasCreatedPortalAccount ? 'green' : 'amber')}>
+                {portalAccessLoading ? 'Checking portal…' : hasCreatedPortalAccount ? 'Portal Active' : 'Portal Not Created'}
+              </span>
+              <span className="chip sm blue">{visibleTemplates.length}</span>
+            </div>
           </div>
-          <small>Click any template to insert it into your chat composer</small>
+          <small>
+            {hasCreatedPortalAccount
+              ? 'Click any template to insert it into your message box'
+              : 'Website portal link templates are locked until this client creates their portal account'}
+          </small>
         </div>
         <input
           className="telegram-template-search"
@@ -1095,26 +963,31 @@ export function WhatsAppPage() {
                   <span>Built-in Templates (Country)</span>
                   <span className="chip sm green" style={{ marginLeft: 'auto', fontSize: '10px' }}>{defaultTemplates.length}</span>
                 </div>
-                {defaultTemplates.map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    role="menuitem"
-                    className="telegram-template-option"
-                    onClick={() => {
-                      void applyTemplate(template);
-                      setTelegramTemplatesOpen(false);
-                    }}
-                    disabled={!!applyingTemplateId}
-                  >
-                    <span className="telegram-template-option-icon"><Icon name={getTemplateIcon(template)} size={14} /></span>
-                    <span>
-                      <b>{applyingTemplateId === template.id ? 'Preparing…' : template.name}</b>
-                      <small>{fillTpl(template.body, clientFirstName)}</small>
-                    </span>
-                    <span className="chip sm green">Default Template</span>
-                  </button>
-                ))}
+                {defaultTemplates.map((template) => {
+                  const locked = isTemplateLockedForClient(template);
+                  return (
+                    <button
+                      key={template.id}
+                      type="button"
+                      role="menuitem"
+                      className={'telegram-template-option' + (locked ? ' is-locked' : '')}
+                      title={locked ? 'Client has not created their portal account yet' : undefined}
+                      onClick={() => {
+                        if (locked) return;
+                        void applyTemplate(template);
+                        setTelegramTemplatesOpen(false);
+                      }}
+                      disabled={locked || !!applyingTemplateId}
+                    >
+                      <span className="telegram-template-option-icon"><Icon name={locked ? 'lock' : getTemplateIcon(template)} size={14} /></span>
+                      <span>
+                        <b>{applyingTemplateId === template.id ? 'Preparing…' : template.name}</b>
+                        <small>{locked ? 'Requires client portal account creation before sending portal link' : fillTpl(template.body, clientFirstName, portalAccess?.portalLink || undefined)}</small>
+                      </span>
+                      <span className={'chip sm ' + (locked ? 'amber' : 'green')}>{locked ? 'Portal required' : 'Default'}</span>
+                    </button>
+                  );
+                })}
               </div>
             )}
 
@@ -1126,26 +999,31 @@ export function WhatsAppPage() {
                   <span>Your Private Templates</span>
                   <span className="chip sm violet" style={{ marginLeft: 'auto', fontSize: '10px' }}>{privateTemplates.length}</span>
                 </div>
-                {privateTemplatesList.map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    role="menuitem"
-                    className="telegram-template-option"
-                    onClick={() => {
-                      void applyTemplate(template);
-                      setTelegramTemplatesOpen(false);
-                    }}
-                    disabled={!!applyingTemplateId}
-                  >
-                    <span className="telegram-template-option-icon"><Icon name={getTemplateIcon(template)} size={14} /></span>
-                    <span>
-                      <b>{applyingTemplateId === template.id ? 'Preparing…' : template.name}</b>
-                      <small>{fillTpl(template.body, clientFirstName)}</small>
-                    </span>
-                    <span className="chip sm violet">Your Private Template</span>
-                  </button>
-                ))}
+                {privateTemplatesList.map((template) => {
+                  const locked = isTemplateLockedForClient(template);
+                  return (
+                    <button
+                      key={template.id}
+                      type="button"
+                      role="menuitem"
+                      className={'telegram-template-option' + (locked ? ' is-locked' : '')}
+                      title={locked ? 'Client has not created their portal account yet' : undefined}
+                      onClick={() => {
+                        if (locked) return;
+                        void applyTemplate(template);
+                        setTelegramTemplatesOpen(false);
+                      }}
+                      disabled={locked || !!applyingTemplateId}
+                    >
+                      <span className="telegram-template-option-icon"><Icon name={locked ? 'lock' : getTemplateIcon(template)} size={14} /></span>
+                      <span>
+                        <b>{applyingTemplateId === template.id ? 'Preparing…' : template.name}</b>
+                        <small>{locked ? 'Requires client portal account creation before sending portal link' : fillTpl(template.body, clientFirstName, portalAccess?.portalLink || undefined)}</small>
+                      </span>
+                      <span className={'chip sm ' + (locked ? 'amber' : 'violet')}>{locked ? 'Portal required' : 'Private'}</span>
+                    </button>
+                  );
+                })}
               </div>
             )}
 
@@ -1170,1040 +1048,179 @@ export function WhatsAppPage() {
     );
   };
 
+
   return (
     <div className="inbox-page">
-      <div className="ph inbox-page-head" data-tour="inbox-intro">
-        <div><span className="eyebrow">MESSAGES</span><p>Conversations, files, and follow-ups in one focused workspace.</p></div>
-        <button className="btn sm" onClick={() => setShowSchedule(true)}><Icon name="plus" size={14} />Schedule reminder</button>
-      </div>
+      <div className="inbox-shell">
+        <InboxTopBar
+          channel={channel}
+          onChannelChange={setChannel}
+          activeTab={s.ui.wa.tab}
+          onTabChange={(tab) => dispatch({ type: 'WA_TAB', tab })}
+          activeSchedulesCount={activeTelegramSchedules.length}
+          telegramLoading={telegramLoading}
+          telegramReady={telegramReady}
+          telegramBot={telegramBot}
+          isTelegramConversationLoading={isTelegramConversationLoading}
+          isTelegramLinkedForCurrentClient={isTelegramLinkedForCurrentClient}
+          totalUnreadAcrossClients={totalUnreadAcrossClients}
+          telegramConnecting={telegramConnecting}
+          onConnectTelegram={() => void connectTelegram()}
+          whatsAppLoading={whatsAppLoading}
+          whatsAppReady={whatsAppReady}
+          onOpenSchedule={() => {
+            setScheduleError('');
+            setScheduleNotice('');
+            setShowSchedule(true);
+          }}
+        />
 
-      <div className="card wa-top" data-tour="inbox-controls">
-        <label className="wa-channel-control" htmlFor="inbox-channel"><span>Channel</span><select id="inbox-channel" className="sel" value={channel} onChange={(e) => setChannel(e.target.value as 'whatsapp' | 'telegram')}>
-          <option value="telegram">Telegram</option>
-          <option value="whatsapp">WhatsApp</option>
-        </select></label>
-        {channel === 'telegram' && (
-          <>
-            <span className={'chip ' + (telegramLoading ? 'amber' : telegramReady ? 'green' : 'amber')}>
-              <i className="sdot" style={{ margin: '0 2px 0 0' }} />
-              {telegramLoading ? 'Checking Telegram…' : telegramReady ? `@${telegramBot}` : 'Telegram unavailable'}
-            </span>
-            <span className={'chip wa-linked-status ' + (isTelegramConversationLoading ? 'amber' : isTelegramLinkedForCurrentClient ? 'green' : 'amber')}>
-              {isTelegramConversationLoading ? 'Loading chat…' : isTelegramLinkedForCurrentClient ? 'Client linked' : 'Client not linked'}
-            </span>
-            {totalUnreadAcrossClients > 0 && (
-              <span className="chip wa-total-unread-pill" title={`${totalUnreadAcrossClients} unread message${totalUnreadAcrossClients > 1 ? 's' : ''} across all connected clients`}>
-                <span className="wa-unread-glow-dot" />
-                {totalUnreadAcrossClients} unread {totalUnreadAcrossClients === 1 ? 'message' : 'messages'}
-              </span>
-            )}
-          </>
-        )}
-        {channel === 'whatsapp' && (
-          <>
-            <span className={'chip ' + (whatsAppLoading ? 'amber' : whatsAppReady ? 'green' : 'amber')}>
-              <i className="sdot" style={{ margin: '0 2px 0 0' }} />
-              {whatsAppLoading ? 'Checking WhatsApp…' : whatsAppReady ? 'WhatsApp connected' : 'WhatsApp not configured'}
-            </span>
-          </>
-        )}
-        <div className="tabs inbox-tabs" role="tablist" aria-label="Client inbox sections">
-          {(['chats', 'reminders', 'templates'] as const).map((tab) => (
-            <button
-              key={tab}
-              id={`inbox-tab-${tab}`}
-              data-tour={`nav-wa-${tab}`}
-              type="button"
-              role="tab"
-              aria-selected={s.ui.wa.tab === tab}
-              aria-controls={`inbox-panel-${tab}`}
-              className={s.ui.wa.tab === tab ? 'on' : ''}
-              onClick={() => dispatch({ type: 'WA_TAB', tab })}
-            >
-              {tab === 'chats' ? 'Chats' : tab === 'reminders' ? `Scheduled reminders (${activeTelegramSchedules.length})` : 'Templates'}
-            </button>
-          ))}
-        </div>
-        <span className="sp" />
-        <button type="button" className="btn sm inbox-schedule-btn" onClick={() => setShowSchedule(true)}>
-          <Icon name="plus" size={13} />Schedule
-        </button>
-        {channel === 'telegram' && <button className="btn sm wa-connect-btn" onClick={() => void connectTelegram()} disabled={telegramLoading || isTelegramConversationLoading || telegramConnecting || !telegramReady}>
-          {telegramConnecting && <span className="spin" />}
-          {telegramConnecting ? 'Connecting…' : isTelegramLinkedForCurrentClient ? 'Reconnect client' : 'Connect client'}
-        </button>}
-        {!whatsAppReady && channel === 'whatsapp' && <small className="wa-config-note">Configure Meta API credentials on the backend.</small>}
-      </div>
+        {s.ui.wa.tab === 'chats' && (
+          <div
+            className={`st-inbox-grid${contactsCollapsed ? ' contacts-collapsed' : ''}`}
+            id="inbox-panel-chats"
+            role="tabpanel"
+            aria-labelledby="inbox-tab-chats"
+          >
+            <ConversationList
+              clients={visibleClients}
+              selectedClientId={c.id}
+              clientSearch={clientSearch}
+              onClientSearchChange={setClientSearch}
+              channel={channel}
+              threads={s.threads}
+              checks={s.checks}
+              telegramPreviews={telegramPreviews}
+              unreadCounts={unreadCounts}
+              onSelectClient={(clientId) => {
+                setTemplateApplyError('');
+                dispatch({ type: 'WA_CLIENT', id: clientId });
+              }}
+            />
 
-      {s.ui.wa.tab === 'chats' && <div className={`card wa${contactsCollapsed ? ' contacts-collapsed' : ''}`} id="inbox-panel-chats" role="tabpanel" aria-labelledby="inbox-tab-chats">
-          <div className="wa-l" data-tour="inbox-conversations">
-            <div className="wa-list-head">
-              <div><b>Conversations</b><span>{visibleClients.length} clients</span></div>
-              <label className="wa-client-search"><Icon name="search" size={13} /><input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Find a client" aria-label="Filter clients" /></label>
-            </div>
-            {visibleClients.map((cl) => {
-              const th = s.threads[cl.id] || [];
-              const whatsappLast = th
-                .filter((message) => message.f !== 'sys')
-                .reduce<ChatMsg | undefined>((latest, message) => (
-                  !latest || message.at > latest.at ? message : latest
-                ), undefined);
-              const telegramLast = telegramPreviews[cl.id];
-              const previewText = channel === 'telegram'
-                ? telegramLast?.body
-                : whatsappLast?.file ? `Attachment: ${whatsappLast.file}` : whatsappLast?.t;
-              const previewAt = channel === 'telegram'
-                ? telegramLast?.created_at ? new Date(telegramLast.created_at) : undefined
-                : whatsappLast?.at;
-              const m = missing(s.checks, cl.id).length;
-              const clUnread = unreadCounts[cl.id] || 0;
-              const clientPreview = clUnread > 0
-                ? `${clUnread} New Message${clUnread === 1 ? '' : 's'}`
-                : previewText || 'No messages yet';
-              const isSelected = s.ui.wa.client === cl.id;
-              return (
-                <button
-                  type="button"
-                  key={cl.id}
-                  className={'wa-c' + (isSelected ? ' on' : '') + (clUnread > 0 ? ' has-unread' : '')}
-                  aria-label={`${cl.name}${clUnread ? `, ${clUnread} unread messages` : ''}`}
-                  aria-pressed={isSelected}
-                  title={cl.name}
-                  onClick={() => {
-                    setTemplateApplyError('');
-                    dispatch({ type: 'WA_CLIENT', id: cl.id });
-                  }}
-                >
-                  <span className="av" style={{ ['--t' as any]: cl.tone }}>
-                    {cl.short.slice(0, 2).toUpperCase()}
-                    {clUnread > 0 && <span className="wa-c-unread-dot" />}
-                  </span>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div className="row">
-                      <span className={'nm' + (clUnread > 0 ? ' unread-nm' : '')} title={cl.name}>{cl.name}</span>
-                      <span className="sp" />
-                      <span className="tm">{previewAt ? agoT(previewAt) : ''}</span>
-                    </div>
-                    <div className="row">
-                      <span className={'pv' + (clUnread > 0 ? ' unread-pv' : '')} title={clientPreview}>
-                        {clientPreview}
-                      </span>
-                      {clUnread > 0 ? (
-                        <span className="wa-unread-chip" title={`${clUnread} unread Telegram message${clUnread > 1 ? 's' : ''}`} aria-label={`${clUnread} unread Telegram message${clUnread > 1 ? 's' : ''}`}>
-                          {clUnread}
-                        </span>
-                      ) : m ? (
-                        <span className="chip amber" style={{ marginLeft: 'auto', padding: '0 7px' }}>{m}</span>
-                      ) : null}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          <div className={`wa-r${composerExpanded ? ' composer-open' : ''}`}>
-            <div className="wa-h">
-              <div className="row">
-                <button
-                  type="button"
-                  className="wa-contacts-toggle"
-                  onClick={() => setContactsCollapsed((collapsed) => !collapsed)}
-                  aria-label={contactsCollapsed ? 'Show conversations list' : 'Collapse conversations list'}
-                  aria-expanded={!contactsCollapsed}
-                  title={contactsCollapsed ? 'Show conversations' : 'Collapse conversations'}
-                >
-                  <Icon name="chev" size={15} />
-                </button>
-                <span className="av lg wa-chat-avatar" style={{ ['--t' as any]: c.tone }}>{c.short.slice(0, 2).toUpperCase()}</span>
-                <div className="wa-chat-identity">
-                  <b>{c.name}</b>
-                  <small className="wa-chat-subtitle">
-                    <i className={channel === 'telegram'
-                      ? (isTelegramLinkedForCurrentClient ? 'connected' : 'disconnected')
-                      : (whatsAppLoading ? 'pending' : whatsAppReady ? 'connected' : 'disconnected')} />
-                    {channel === 'telegram'
-                      ? `${isTelegramLinkedForCurrentClient ? 'Telegram connected' : 'Telegram not linked'} · ${c.name} · ${c.phone}`
-                      : `${whatsAppLoading ? 'Checking WhatsApp' : whatsAppReady ? 'WhatsApp connected' : 'WhatsApp unavailable'} · ${c.contact} · ${c.phone}`}
-                  </small>
-                </div>
-                <span className="sp" />
-              </div>
-              <div className="ckl">
-                {s.checks[c.id]?.map((x, i) => (
-                  <span key={i} className={'chip ' + (x.ok ? 'green' : 'amber')}><Icon name={x.ok ? 'check' : 'clock'} size={12} />{x.n}</span>
-                ))}
-              </div>
-            </div>
-            <div
-              id="wa-thread"
-              ref={threadRef}
-              aria-busy={channel === 'telegram' && isTelegramConversationLoading}
-              onScroll={(event) => {
-                const element = event.currentTarget;
+            <MessageThread
+              client={c}
+              channel={channel}
+              onSwitchChannel={setChannel}
+              contactsCollapsed={contactsCollapsed}
+              onToggleContacts={() => setContactsCollapsed((collapsed) => !collapsed)}
+              checks={s.checks[c.id] || []}
+              threadRef={threadRef}
+              onThreadScroll={(element) => {
                 shouldFollowThreadRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 96;
               }}
-            >
-              {templateApplyError && (
-                <div className="empty error" role="alert">
-                  <b>Secure portal invitation could not be prepared</b>
-                  <span>{templateApplyError}</span>
-                  <button className="btn sm" onClick={() => setTemplateApplyError('')}>Dismiss</button>
-                </div>
-              )}
-              {channel === 'telegram' && isTelegramConversationLoading && (
-                <div className="tg-conversation-skeleton" role="status" aria-live="polite" aria-label={`Loading Telegram conversation with ${c.name}`}>
-                  <div className="tg-skeleton-heading"><span className="tg-skeleton-dot" /><span>Loading conversation history</span></div>
-                  <div className="tg-skeleton-message incoming"><i /><i /><i /></div>
-                  <div className="tg-skeleton-message outgoing"><i /><i /></div>
-                  <div className="tg-skeleton-message incoming short"><i /><i /></div>
-                  <div className="tg-skeleton-message outgoing short"><i /><i /><i /></div>
-                </div>
-              )}
-              {channel === 'telegram' && telegramStatusError && (
-                <div className="empty telegram-state error" role="alert">
-                  <b>Telegram integration setup needs attention</b>
-                  <span>Telegram could not complete its service health check. This does not delete or invalidate {c.name}'s stored conversation.</span>
-                  <details className="telegram-diagnostic-details">
-                    <summary>View technical details</summary>
-                    <span>{telegramStatusError}</span>
-                  </details>
-                  {needsTelegramMigrationHelp([telegramStatusError]) && (
-                    <TelegramMigrationHelp
-                      copied={telegramMigrationCommandCopied}
-                      copyError={telegramMigrationCopyError}
-                      onCopy={() => void copyTelegramMigrationCommand()}
-                    />
-                  )}
-                  <button className="btn sm" onClick={() => setTelegramStatusRetry((value) => value + 1)}>Check again</button>
-                </div>
-              )}
-              {channel === 'telegram' && !telegramStatusError && telegramDiagnostics.length > 0 && (
-                <div className="telegram-notice telegram-diagnostics-warning" role="status" aria-live="polite">
-                  <b>Telegram delivery needs attention</b>
-                  <span>Stored messages remain available. New inbound or outbound delivery may be delayed until the webhook is healthy.</span>
-                  <details className="telegram-diagnostic-details">
-                    <summary>View details ({telegramDiagnostics.length})</summary>
-                    {telegramDiagnostics.map((warning) => <span key={warning}>{warning}</span>)}
-                  </details>
-                  <button className="btn sm" onClick={() => setTelegramStatusRetry((value) => value + 1)}>Check again</button>
-                </div>
-              )}
-              {channel === 'whatsapp' && (!whatsAppReady || whatsAppError) && (
-                <div className="empty whatsapp-state error">
-                  <b>WhatsApp API is not connected</b>
-                  <span>{whatsAppError || 'WhatsApp Business API requires WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID in the backend environment. Switch to Telegram to message clients with live two-way sync.'}</span>
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                    <button className="btn sm pri" onClick={() => setChannel('telegram')}>Switch to Telegram (Connected)</button>
-                    {whatsAppError && <button className="btn sm" onClick={() => setWhatsAppError('')}>Dismiss</button>}
-                  </div>
-                </div>
-              )}
-              {channel === 'telegram' && telegramConversationClientId === c.id && telegramError && (
-                <div className="empty telegram-state error">
-                  <b>Telegram action needs attention</b>
-                  <span>{telegramError}</span>
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                    <button className="btn sm" onClick={() => { setTelegramError(''); setTelegramRetry((value) => value + 1); setTelegramStatusRetry((value) => value + 1); }}>Retry connection</button>
-                    {/session|expired|invalid|unauthorized|log in/i.test(telegramError) && (
-                      <button className="btn sm pri" onClick={() => dispatch({ type: 'LOGOUT' })}>Log in again</button>
-                    )}
-                  </div>
-                  {needsTelegramMigrationHelp([telegramError]) && (
-                    <TelegramMigrationHelp
-                      copied={telegramMigrationCommandCopied}
-                      copyError={telegramMigrationCopyError}
-                      onCopy={() => void copyTelegramMigrationCommand()}
-                    />
-                  )}
-                </div>
-              )}
-              {channel === 'telegram' && !isTelegramConversationLoading && telegramConversationClientId === c.id && !telegramError && !isTelegramLinkedForCurrentClient && (
-                <div className="tg-unlinked-state" role="status">
-                  <div className="tg-unlinked-art">
-                    <span className="tg-unlinked-orbit orbit-one" />
-                    <span className="tg-unlinked-orbit orbit-two" />
-                    <span className="tg-unlinked-icon"><Icon name="send" size={23} /></span>
-                    <span className="tg-unlinked-lock"><Icon name="lock" size={13} /></span>
-                  </div>
-                  <span className="eyebrow">PRIVATE CLIENT CONNECTION</span>
-                  <h3>{telegramReady ? `Connect ${c.short} to Telegram` : 'Telegram is unavailable'}</h3>
-                  <p>
-                    {telegramReady
-                      ? `Link ${c.name} with your Telegram bot to securely load this conversation and exchange messages here.`
-                      : 'The Telegram bot is not available right now. Check the backend connection and try again.'}
-                  </p>
-                  {telegramReady && (
-                    <button className="btn sm pri" onClick={() => void connectTelegram()} disabled={telegramConnecting}>
-                      {telegramConnecting ? <><span className="spin spin-light" />Creating secure link…</> : <><Icon name="link" size={13} />Connect client</>}
-                    </button>
-                  )}
-                  <small>Messages will appear in this conversation after the client completes the Telegram link.</small>
-                </div>
-              )}
-              {channel === 'telegram' && !isTelegramConversationLoading && isTelegramLinkedForCurrentClient && !telegramError && telegramMessages.length === 0 && !pendingTelegramForCurrentClient && (
-                <div className="tg-conversation-empty" role="status">
-                  <span><Icon name="chat" size={20} /></span>
-                  <b>No messages yet</b>
-                  <small>This Telegram conversation is connected. Send a message to start the conversation.</small>
-                </div>
-              )}
-              {channel === 'telegram' && pendingTelegramForOtherClient && pendingTelegramClient && (
-                <div className="telegram-notice tg-pending-client-notice">
-                  <span>A message for {pendingTelegramClient.short} is waiting for your approval.</span>
-                  <button className="btn sm" onClick={() => dispatch({ type: 'WA_CLIENT', id: pendingTelegramClient.id })}>Review message</button>
-                </div>
-              )}
-              {channel === 'telegram' && telegramConversationClientId === c.id && !isTelegramConversationLoading && telegramInfo && (
-                <div className="telegram-notice" role="status">
-                  {telegramInfo}
-                  {telegramLinkToShare && (
-                    <div className="row" style={{ gap: 8, marginTop: 8 }}>
-                      <input className="inp" aria-label={`Telegram connection link for ${c.name}`} readOnly value={telegramLinkToShare} onFocus={(event) => event.currentTarget.select()} />
-                      <button className="btn sm" onClick={() => void copyTelegramLink()}>Copy link</button>
-                    </div>
-                  )}
-                </div>
-              )}
-              {channel === 'telegram' && telegramRefreshWarning && (
-                <div className="telegram-notice telegram-refresh-warning" role="status">{telegramRefreshWarning}</div>
-              )}
-              {channel === 'telegram' && isTelegramLinkedForCurrentClient && !isTelegramConversationLoading && telegramMessages.map((m) => {
-                return (
-                  <div key={m.provider_message_id || m.id} className={'msg ' + (m.direction === 'outbound' ? 'me' : 'cl')}>
-                    <div className="wa-message-body">{m.body}</div>
-                    <span className="mt">
-                      {fTime(new Date(m.created_at))} · {
-                        m.delivery_status === 'sending' || m.delivery_status === 'queued'
-                          ? 'Sending…'
-                          : m.delivery_status === 'failed'
-                            ? 'Delivery failed'
-                            : m.delivery_status === 'sent' ? 'Sent' : m.delivery_status
-                      }
-                    </span>
-                  </div>
-                );
-              })}
-              {channel === 'telegram' && pendingTelegramForCurrentClient && (
-                <div className="tg-pending-group">
-
-                  {/* ── Message bubble (muted while pending / editing) ── */}
-                  <div className={`msg me tg-pending-bubble${isEditingPending ? ' tg-pending-bubble--editing' : ''}`}>
-                    <div>{pendingTelegramMsg}</div>
-                    <span className="mt">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display:'inline', verticalAlign:'middle', marginRight:3 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                      {isEditingPending ? 'Editing…' : 'Pending approval'}
-                    </span>
-                  </div>
-
-                  {/* ── Approval / Edit card ── */}
-                  <div className={`tg-approval-card${isEditingPending ? ' tg-approval-card--editing' : ''}`}>
-
-                    {isEditingPending ? (
-                      /* ── EDIT MODE ── */
-                      <>
-                        <div className="tg-edit-header">
-                          <span className="tg-approval-icon tg-approval-icon--edit">
-                            {/* Pencil icon */}
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                          </span>
-                          <div className="tg-approval-text">
-                            <b>Edit your message</b>
-                            <span>Press Enter or click Update to re-review. Shift + Enter adds a new line.</span>
-                          </div>
-                        </div>
-                        <div className="tg-edit-body">
-                          <textarea
-                            ref={editTextareaRef}
-                            className="tg-edit-textarea"
-                            value={editText}
-                            onChange={(e) => setEditText(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                if (editText.trim()) commitEdit();
-                              } else if (e.key === 'Escape') {
-                                abortEdit();
-                              }
-                            }}
-                            rows={3}
-                            maxLength={4096}
-                            aria-label="Edit pending Telegram message"
-                          />
-                          {editText.trim() === '' && (
-                            <p className="tg-edit-error">
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                              Message cannot be empty.
-                            </p>
-                          )}
-                        </div>
-                        <div className="tg-approval-actions">
-                          <button className="tg-cancel-btn" onClick={abortEdit}>
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                            Back
-                          </button>
-                          <button
-                            className="tg-approve-btn tg-update-btn"
-                            onClick={commitEdit}
-                            disabled={!editText.trim()}
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                            Update
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      /* ── REVIEW MODE ── */
-                      <>
-                        <div className="tg-approval-header">
-                          <span className="tg-approval-icon">
-                            {/* Phone icon */}
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.65 3.47 2 2 0 0 1 3.62 1.27h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l.72-.72a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                          </span>
-                          <div className="tg-approval-text">
-                            <b>Review before sending via Telegram</b>
-                            <span>Message not delivered yet. Approve, edit, or discard.</span>
-                          </div>
-                        </div>
-                        <div className="tg-approval-actions">
-                          {/* Discard */}
-                          <button className="tg-cancel-btn" onClick={cancelTelegramPending} disabled={telegramSending}>
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                            Discard
-                          </button>
-                          {/* Edit */}
-                          <button className="tg-edit-btn" onClick={startEditingPending} disabled={telegramSending}>
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                            Edit
-                          </button>
-                          {/* Approve & Send */}
-                          <button className="tg-approve-btn" onClick={() => void confirmTelegramSend()} disabled={telegramSending}>
-                            {telegramSending
-                              ? <><span className="tg-spin" />Sending…</>
-                              : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Approve &amp; Send</>
-                            }
-                          </button>
-                        </div>
-                      </>
-                    )}
-
-                  </div>
-                </div>
-              )}
-
-              {channel === 'whatsapp' && (() => {
-                let last = '';
-                return thread.map((m) => {
-                  const dl = dayLabel(m.at);
-                  const sep = dl !== last ? (last = dl, <div key={'sep' + m.id} className="dsep">{dl}</div>) : null;
-                  return (
-                    <>
-                      {sep}
-                      {m.f === 'sys' ? (
-                        <div key={m.id} className="sys"><Icon name="bolt" size={12} />{m.t}</div>
-                      ) : (
-                        <div key={m.id} className={'msg ' + m.f}>
-                          {m.file && (
-                            <div className="att"><Icon name="file" size={18} /><div><div className="mono" style={{ fontSize: 11.5 }}>{m.file}</div><div style={{ fontSize: 10.5, opacity: 0.75 }}>Captured to client folder</div></div></div>
-                          )}
-                          {m.t}
-                          <span className="mt">{fTime(m.at)}{m.auto ? ' · automated' : ''}</span>
-                        </div>
-                      )}
-                    </>
-                  );
-                });
-              })()}
-              {channel === 'whatsapp' && scheduled.filter((r) => r.client === c.id).length > 0 && <div className="dsep">Scheduled</div>}
-              {channel === 'whatsapp' && scheduled.filter((r) => r.client === c.id).map((r) => (
-                <div key={r.id} className="msg me sched">
-                  <div className="sh">
-                    <Icon name="clock" size={13} /><span>{fDT(r.at)} · {until(r.at)}</span>
-                    {r.approve ? <span className="chip amber">Needs your approval</span> : <span className="chip green">Auto-send</span>}
-                  </div>
-                  {r.text}
-                  <div className="sa">
-                    {r.approve && <button className="btn sm" onClick={() => dispatch({ type: 'REM_APPROVE', id: r.id })}>Approve</button>}
-                    <button className="btn sm" onClick={() => void sendReminder(r)} disabled={sendingReminderId === r.id || whatsAppLoading || !whatsAppReady}>
-                      {sendingReminderId === r.id ? 'Sending…' : 'Send now'}
-                    </button>
-                    <button className="btn sm gh" onClick={() => dispatch({ type: 'REM_CANCEL', id: r.id })}>Cancel</button>
-                  </div>
-                  {reminderSendErrors[r.id] && <small className="wa-reminder-error">{reminderSendErrors[r.id]}</small>}
-                </div>
-              ))}
-            </div>
-            <div className="wa-compose-dock expanded">
-              {(
-                <>
-                  {channel === 'telegram' ? (
-                <div className="wa-f telegram-composer">
-                <div className="telegram-composer-pill">
-                  <div className="telegram-template-anchor" ref={telegramTemplateMenuRef}>
-                    <button
-                      type="button"
-                      className="telegram-composer-action telegram-template-trigger"
-                      aria-label="Insert a message template"
-                      aria-expanded={telegramTemplatesOpen}
-                      aria-controls="message-template-menu"
-                      title="Choose a message template"
-                      onClick={() => setTelegramTemplatesOpen((open) => !open)}
-                      disabled={telegramSending || !!pendingTelegramMsg || isEditingPending}
-                    >
-                      <Icon name="file" size={17} />
-                    </button>
-                    {telegramTemplatesOpen && renderTemplateDropdown()}
-                  </div>
-                    <textarea
-                    ref={telegramMessageInputRef}
-                    className="inp telegram-composer-input"
-                    value={input}
-                    onChange={(event) => setInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Escape') setTelegramTemplatesOpen(false);
-                      if (event.key === 'Enter' && !event.shiftKey) {
-                        event.preventDefault();
-                        requestTelegramSend();
-                      }
-                      if (event.key === 'Escape') setComposerExpanded(false);
-                    }}
-                    placeholder={
-                      pendingTelegramForOtherClient
-                        ? `Review the pending message for ${pendingTelegramClient?.short || 'another client'} first…`
-                        : pendingTelegramForCurrentClient || isEditingPending
-                          ? isEditingPending
-                            ? 'Finish editing the message above first…'
-                            : 'Approve, edit, or discard the pending message first…'
-                          : `Message ${c.name} via Telegram`
-                    }
-                    disabled={telegramSending || telegramLoading || isTelegramConversationLoading || !!pendingTelegramMsg || isEditingPending}
-                    aria-label="Message input"
-                  />
-                    <button
-                    type="button"
-                    className="telegram-composer-send"
-                    onClick={requestTelegramSend}
-                    disabled={!input.trim() || !telegramReady || !isTelegramLinkedForCurrentClient || isTelegramConversationLoading || telegramSending || telegramLoading || !!pendingTelegramMsg || isEditingPending}
-                    aria-label="Review message before sending"
-                    title="Review message"
-                  >
-                    {telegramSending ? <span className="spin spin-light" /> : <Icon name="send" size={17} />}
-                  </button>
-                </div>
-                <small className="telegram-composer-hint">Messages are reviewed before they are sent.</small>
-              </div>
-            ) : (
-              <div className="wa-f">
-                <div className="telegram-template-anchor" ref={telegramTemplateMenuRef}>
-                  <button
-                    type="button"
-                    className="telegram-composer-action telegram-template-trigger wa-template-trigger"
-                    aria-label="Insert a message template"
-                    aria-expanded={telegramTemplatesOpen}
-                    aria-controls="message-template-menu"
-                    title="Choose a message template"
-                    onClick={() => setTelegramTemplatesOpen((open) => !open)}
-                    disabled={!!applyingTemplateId || whatsAppSending}
-                  >
-                    <Icon name="file" size={17} />
-                  </button>
-                  {telegramTemplatesOpen && renderTemplateDropdown()}
-                </div>
-                <textarea
-                  ref={whatsAppMessageInputRef}
-                  className="inp wa-compose-input"
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
-                      event.preventDefault();
-                      void send();
-                    }
-                    if (event.key === 'Escape') setComposerExpanded(false);
-                  }}
-                  placeholder={whatsAppLoading
-                    ? 'Checking WhatsApp API status…'
-                    : !whatsAppReady
-                      ? 'WhatsApp API not configured (switch to Telegram or add env vars)'
-                    : `Message ${c.name} via WhatsApp`}
-                  disabled={whatsAppLoading || !whatsAppReady || whatsAppSending}
-                  aria-label="Message input"
-                />
-                <button
-                  type="button"
-                  className="btn pri"
-                  onClick={() => void send()}
-                  disabled={!input.trim() || whatsAppLoading || !whatsAppReady || whatsAppSending}
-                  aria-label="Send message"
-                >
-                  {whatsAppSending ? <span className="spin spin-light" /> : <Icon name="send" size={15} />}
-                </button>
-              </div>
-            )}
-                </>
-              )}
-            </div>
+              telegramReady={telegramReady}
+              isTelegramConversationLoading={isTelegramConversationLoading}
+              isTelegramLinkedForCurrentClient={isTelegramLinkedForCurrentClient}
+              telegramConversationClientId={telegramConversationClientId}
+              telegramStatusError={telegramStatusError}
+              telegramDiagnostics={telegramDiagnostics}
+              telegramError={telegramError}
+              telegramRefreshWarning={telegramRefreshWarning}
+              telegramInfo={telegramInfo}
+              telegramLinkToShare={telegramLinkToShare}
+              telegramConnecting={telegramConnecting}
+              telegramSending={telegramSending}
+              telegramLoading={telegramLoading}
+              telegramMessages={telegramMessages}
+              telegramMigrationCommandCopied={telegramMigrationCommandCopied}
+              telegramMigrationCopyError={telegramMigrationCopyError}
+              onCopyMigrationCommand={() => void copyTelegramMigrationCommand()}
+              onRetryStatus={() => setTelegramStatusRetry((n) => n + 1)}
+              onRetryConversation={() => setTelegramRetry((n) => n + 1)}
+              onClearTelegramError={() => setTelegramError('')}
+              onLogout={() => dispatch({ type: 'LOGOUT' })}
+              onConnectTelegram={() => void connectTelegram()}
+              onCopyTelegramLink={() => void copyTelegramLink()}
+              portalAccess={portalAccessClientId === c.id ? portalAccess : null}
+              portalAccessLoading={portalAccessLoading}
+              portalActionLoading={portalActionLoading}
+              portalActionMessage={portalActionMessage}
+              portalActionError={portalActionError}
+              onPauseResumePortal={(action) => void pauseOrResumePortal(action)}
+              onRevokePortal={() => void revokePortal()}
+              onInvitePortal={() => void invitePortal()}
+              whatsAppReady={whatsAppReady}
+              whatsAppLoading={whatsAppLoading}
+              whatsAppError={whatsAppError}
+              whatsAppSending={whatsAppSending}
+              onClearWhatsAppError={() => setWhatsAppError('')}
+              thread={thread}
+              scheduledReminders={scheduled.filter((r) => r.client === c.id)}
+              sendingReminderId={sendingReminderId}
+              reminderSendErrors={reminderSendErrors}
+              onApproveReminder={(id) => dispatch({ type: 'REM_APPROVE', id })}
+              onSendReminderNow={(r) => void sendReminder(r)}
+              onCancelReminder={(id) => dispatch({ type: 'REM_CANCEL', id })}
+              input={input}
+              onInputChange={setInput}
+              onSend={() => void (channel === 'telegram' ? sendTelegramDirect() : send())}
+              composerExpanded={composerExpanded}
+              onCollapseComposer={() => setComposerExpanded(false)}
+              telegramMessageInputRef={telegramMessageInputRef}
+              whatsAppMessageInputRef={whatsAppMessageInputRef}
+              telegramTemplatesOpen={telegramTemplatesOpen}
+              onToggleTemplates={() => setTelegramTemplatesOpen((open) => !open)}
+              onCloseTemplates={() => setTelegramTemplatesOpen(false)}
+              telegramTemplateMenuRef={telegramTemplateMenuRef}
+              applyingTemplateId={applyingTemplateId}
+              templateApplyError={templateApplyError}
+              onDismissTemplateApplyError={() => setTemplateApplyError('')}
+              renderTemplateDropdown={renderTemplateDropdown}
+            />
           </div>
-        </div>}
+        )}
 
-      {s.ui.wa.tab === 'reminders' && (
-        <div className="wa-reminders" data-tour="inbox-reminders" id="inbox-panel-reminders" role="tabpanel" aria-labelledby="inbox-tab-reminders">
+        {s.ui.wa.tab === 'reminders' && (
+          <RemindersPanel
+            schedules={telegramSchedules}
+            loading={schedulesLoading}
+            notice={scheduleNotice}
+            error={scheduleError}
+            actionId={scheduleActionId}
+            onRefresh={() => void loadTelegramSchedules()}
+            onOpenSchedule={() => {
+              setScheduleError('');
+              setScheduleNotice('');
+              setShowSchedule(true);
+            }}
+            onDismissNotice={() => setScheduleNotice('')}
+            onDismissError={() => setScheduleError('')}
+            onCancelSchedule={(schedule) => void cancelTelegramReminder(schedule)}
+            onRetrySchedule={(schedule) => void retryTelegramReminder(schedule)}
+          />
+        )}
 
-          {/* Header row */}
-          <div className="wa-reminders-header">
-            <div className="wa-reminder-notice wa-reminders-banner">
-              <Icon name="clock" size={14} />
-              <span>Scheduled reminders are delivered automatically through the client's linked Telegram chat, using the client-country time zone.</span>
-            </div>
-            <div className="wa-reminders-actions-row">
-              <button
-                className="btn sm"
-                onClick={() => void loadTelegramSchedules()}
-                disabled={schedulesLoading}
-                title="Refresh schedules"
-              >
-                {schedulesLoading ? <span className="spin" /> : <Icon name="refresh" size={13} />}
-                {schedulesLoading ? 'Refreshing…' : 'Refresh'}
-              </button>
-              <button
-                className="btn sm pri"
-                onClick={() => { setScheduleError(''); setScheduleNotice(''); setShowSchedule(true); }}
-              >
-                <Icon name="plus" size={13} />Schedule Telegram reminder
-              </button>
-            </div>
-          </div>
-
-          {/* Success notice */}
-          {scheduleNotice && (
-            <div className="wa-reminders-notice-card wa-reminders-notice-success" role="status">
-              <Icon name="check" size={14} />{scheduleNotice}
-              <button className="btn sm gh wa-reminders-notice-dismiss" onClick={() => setScheduleNotice('')}>✕</button>
-            </div>
-          )}
-
-          {/* Error notice — suppress raw 404 strings */}
-          {scheduleError && (
-            <div className="wa-reminders-notice-card wa-reminders-notice-error" role="alert">
-              <Icon name="info" size={14} />
-              <span>{scheduleError}</span>
-              <button className="btn sm gh wa-reminders-notice-dismiss" onClick={() => setScheduleError('')}>✕</button>
-            </div>
-          )}
-
-          {/* Skeleton loading */}
-          {schedulesLoading && !telegramSchedules.length && (
-            <div className="wa-reminder-list" role="status" aria-label="Loading schedules">
-              <ScheduleCardSkeleton />
-              <ScheduleCardSkeleton />
-              <ScheduleCardSkeleton />
-            </div>
-          )}
-
-          {/* Empty state */}
-          {!schedulesLoading && !telegramSchedules.length && (
-            <div className="card wa-tab-empty">
-              <span className="wa-tab-empty-icon"><Icon name="clock" size={28} /></span>
-              <b>No saved Telegram reminders</b>
-              <span>Choose a client, message and client-local send time to schedule a one-time or daily reminder.</span>
-              <button
-                className="btn pri"
-                style={{ marginTop: 10 }}
-                onClick={() => { setScheduleError(''); setScheduleNotice(''); setShowSchedule(true); }}
-              >
-                <Icon name="plus" size={13} />Create your first reminder
-              </button>
-            </div>
-          )}
-
-          {/* Schedules list */}
-          {!schedulesLoading && telegramSchedules.length > 0 && (
-            <div className="wa-reminder-list">
-              {telegramSchedules.map((schedule) => (
-                <article className="card wa-reminder-card" key={schedule.id}>
-                  <div className="wa-reminder-time">
-                    <b>{schedule.repeat_mode === 'daily' ? schedule.local_time?.slice(0, 5) : scheduledTimeLabel(schedule)}</b>
-                    <small>{schedule.repeat_mode === 'daily' ? 'Every day' : schedule.status === 'active' ? 'One-time send' : schedule.status}</small>
-                  </div>
-                  <div className="wa-reminder-content">
-                    <div className="wa-reminder-client">
-                      <span className="av"><Icon name="users" size={13} /></span>
-                      <b>{schedule.client?.name || 'Client'}</b>
-                      <span className="chip blue">{schedule.repeat_mode === 'daily' ? 'Daily' : 'One time'}</span>
-                      <span className="chip">{schedule.timezone_name}</span>
-                    </div>
-                    <small className="mut">Next send: {scheduledTimeLabel(schedule)} · {schedule.occurrence_count} sent</small>
-                    <p>{schedule.message_body}</p>
-                    {schedule.last_error && <small className="wa-reminder-error">{schedule.last_error}</small>}
-                  </div>
-                  <div className="wa-reminder-actions">
-                    <span className={`chip ${schedule.status === 'active' ? 'green' : schedule.status === 'failed' ? 'red' : 'blue'}`}>{schedule.status}</span>
-                    {schedule.status === 'active' && (
-                      <button className="btn sm gh" onClick={() => void cancelTelegramReminder(schedule)} disabled={scheduleActionId === schedule.id}>
-                        Cancel
-                      </button>
-                    )}
-                    {schedule.status === 'failed' && (
-                      <button className="btn sm" onClick={() => void retryTelegramReminder(schedule)} disabled={scheduleActionId === schedule.id}>
-                        {scheduleActionId === schedule.id ? 'Retrying…' : 'Retry'}
-                      </button>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {s.ui.wa.tab === 'templates' && (
-        <div id="inbox-panel-templates" data-tour="inbox-templates" role="tabpanel" aria-labelledby="inbox-tab-templates">
-
-          {/* Tab header */}
-          <div className="wa-tpl-header">
-            <div className="wa-tpl-header-left">
-              <span className="wa-tpl-header-icon"><Icon name="file" size={18} /></span>
-              <div>
-                <h2 className="wa-tpl-title">Message Templates</h2>
-                <p className="wa-tpl-subtitle">Built-in templates are available by country. Private templates are loaded only for your account.</p>
-              </div>
-            </div>
-            {!templateEditorOpen && (
-              <button className="btn pri" onClick={() => startTemplateEdit()}>
-                <Icon name="plus" size={14} />New template
-              </button>
-            )}
-          </div>
-
-          {/* Error banner */}
-          {templateError && (
-            <div className="wa-reminders-notice-card wa-reminders-notice-error" role="alert">
-              <Icon name="info" size={14} />
-              <span>{templateError}</span>
-              <button className="btn sm gh wa-reminders-notice-dismiss" onClick={() => setTemplateError('')}>✕</button>
-            </div>
-          )}
-
-          {/* Template editor modal (mid-size floating card with close button) */}
-          {templateEditorOpen && (
-            <div
-              className="modal"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="template-modal-title"
-              onClick={(e) => {
-                if (e.target === e.currentTarget && !templateSaving) {
-                  setTemplateEditorOpen(false);
-                  setEditingTemplate(null);
-                  setTemplateError('');
-                }
-              }}
-            >
-              <section className="mbox wa-tpl-editor-modal-card" style={{ width: 'min(760px, 94vw)', maxHeight: '90vh', overflowY: 'auto' }} role="form" aria-label="Template Editor">
-                <div className="wa-tpl-editor-heading" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
-                  <div className="wa-tpl-editor-heading-left">
-                    <span className="wa-tpl-editor-icon">
-                      <Icon name={editingTemplate ? 'pencil' : 'spark'} size={18} />
-                    </span>
-                    <div>
-                      <h3 className="wa-tpl-editor-title" id="template-modal-title">
-                        {editingTemplate ? `Editing: ${editingTemplate.name}` : 'Create New Template'}
-                        <span className="chip violet sm"><Icon name="lock" size={10} /> Your Private Template</span>
-                      </h3>
-                      <p className="wa-tpl-editor-sub">
-                        Saved privately to your account · Loaded and visible only for you
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, fontSize: 14 }}
-                    onClick={() => {
-                      setTemplateEditorOpen(false);
-                      setEditingTemplate(null);
-                      setTemplateError('');
-                    }}
-                    disabled={templateSaving}
-                    aria-label="Close template editor"
-                    title="Close"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                {/* Form Grid: Name & Category */}
-                <div className="wa-tpl-form-grid">
-                  <div className="wa-tpl-input-wrap">
-                    <label htmlFor="template-name">
-                      <Icon name="file" size={13} /> Template Name
-                    </label>
-                    <input
-                      id="template-name"
-                      className="inp"
-                      maxLength={200}
-                      placeholder="e.g. Monthly GST Filing Reminder"
-                      value={templateForm.name}
-                      onChange={(e) => setTemplateForm((c) => ({ ...c, name: e.target.value }))}
-                    />
-                  </div>
-                  <div className="wa-tpl-input-wrap">
-                    <label htmlFor="template-category">
-                      <Icon name="sliders" size={13} /> Category Section
-                    </label>
-                    <select
-                      id="template-category"
-                      className="sel"
-                      value={templateForm.cat}
-                      onChange={(e) => setTemplateForm((c) => ({ ...c, cat: e.target.value }))}
-                    >
-                      {['Client portal', 'Utility', 'Links', 'Filing', 'Payment', 'Reminder', 'General'].map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Dynamic Variables Instruction Banner (Big, Clear, Prominent) */}
-                <div className="wa-tpl-instruction-banner">
-                  <div className="wa-tpl-instruction-header">
-                    <span className="wa-tpl-instruction-badge">
-                      <Icon name="spark" size={11} /> Auto-Personalization
-                    </span>
-                    <span className="wa-tpl-instruction-title">Dynamic Client Message Placeholders</span>
-                  </div>
-                  <p className="wa-tpl-instruction-text">
-                    When sending messages or reminders, Orvexa automatically replaces these <strong>&#123;tags&#125;</strong> with the selected client's actual data. <strong>Click any placeholder below to insert it at your cursor:</strong>
-                  </p>
-                  <div className="wa-tpl-tokens-grid">
-                    {([
-                      ['{name}', 'Client Name', 'Replaced with client first name (e.g. Rajesh)'],
-                      ['{portalLink}', 'Portal / Website Link', 'Client portal website or private link'],
-                      ['{period}', 'Filing Period', 'Filing period (e.g. August 2026)'],
-                      ['{due}', 'Due Date', 'Upcoming deadline date (e.g. 20 Sep 2026)'],
-                      ['{doc}', 'Document Name', 'Requested document (e.g. bank statement)'],
-                      ['{filing}', 'Filing Type', 'Form or filing type (e.g. GSTR-3B, ITR-1)'],
-                    ] as const).map(([token, label, desc]) => (
-                      <button
-                        key={token}
-                        type="button"
-                        className="wa-tpl-token-card"
-                        title={`Click to insert ${token} at cursor position`}
-                        onClick={() => insertToken(token)}
-                      >
-                        <div className="wa-tpl-token-card-top">
-                          <code className="wa-tpl-token-code">{token}</code>
-                          <span className="wa-tpl-token-name">{label}</span>
-                        </div>
-                        <span className="wa-tpl-token-desc">{desc}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="wa-tpl-instruction-footer">
-                    <Icon name="info" size={12} />
-                    <span>Use <code>{'{portalLink}'}</code> to automatically attach the client portal link in your message.</span>
-                  </div>
-                </div>
-
-                {/* Split Editor: Message Body Textarea & Live Preview */}
-                <div className="wa-tpl-body-preview-grid">
-                  <div className="wa-tpl-input-wrap">
-                    <label htmlFor="template-body">
-                      <Icon name="chat" size={13} /> Message Body Text
-                      <span className="wa-tpl-char-count">{templateForm.body.length} / 5000 characters</span>
-                    </label>
-                    <textarea
-                      ref={templateBodyRef}
-                      id="template-body"
-                      className="inp"
-                      rows={7}
-                      maxLength={5000}
-                      placeholder="Type your message text here. Click the placeholders above to insert {name}, {portalLink}, etc."
-                      value={templateForm.body}
-                      onChange={(e) => setTemplateForm((c) => ({ ...c, body: e.target.value }))}
-                    />
-                  </div>
-                  <div className="wa-tpl-live-preview">
-                    <div className="wa-tpl-preview-header">
-                      <Icon name="globe" size={13} />
-                      <span>Live Client Message Preview</span>
-                    </div>
-                    <div className="wa-tpl-preview-bubble">
-                      {templateForm.body.trim()
-                        ? fillTpl(templateForm.body, c?.contact?.split(' ')[0] || 'Rajesh')
-                        : <span className="wa-tpl-preview-empty">Your personalized message preview will appear here in real-time as you type...</span>}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="wa-tpl-editor-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
-                  <button
-                    type="button"
-                    className="btn gh"
-                    onClick={() => { setTemplateEditorOpen(false); setEditingTemplate(null); setTemplateError(''); }}
-                    disabled={templateSaving}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="btn pri"
-                    onClick={() => void saveTemplate()}
-                    disabled={templateSaving || !templateForm.name.trim() || !templateForm.body.trim()}
-                  >
-                    {templateSaving
-                      ? <><span className="spin spin-light" />Saving…</>
-                      : <><Icon name="check" size={13} />{editingTemplate ? 'Update template' : 'Save Private Template'}</>}
-                  </button>
-                </div>
-              </section>
-            </div>
-          )}
-
-          {/* Skeleton loading */}
-          {templatesLoading && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div className="wa-tpl-section-label" style={{ opacity: 0.7 }}>
-                <div className="wa-skeleton-shimmer" style={{ width: 140, height: 26, borderRadius: 20 }} />
-                <div className="wa-skeleton-shimmer" style={{ width: 180, height: 14, borderRadius: 4 }} />
-              </div>
-              <div className="wa-template-grid" role="status" aria-label="Loading templates">
-                {[...Array(6)].map((_, i) => <TemplateCardSkeleton key={i} />)}
-              </div>
-            </div>
-          )}
-
-          {/* Empty state */}
-          {/* Shared defaults section */}
-          {!templatesLoading && defaultTemplatesList.length > 0 && (
-            <>
-              <div className="wa-tpl-section-label">
-                <span className="wa-tpl-section-badge green">
-                  <Icon name="globe" size={12} /> Shared Default Templates
-                </span>
-                <span className="wa-tpl-section-desc">
-                  {dbDefaultTemplates.length > 0
-                    ? 'Loaded from database · Shared with all users in your practice'
-                    : 'Built into Orvexa · Select a country to change the message set'}
-                </span>
-              </div>
-              {dbDefaultTemplates.length === 0 && (
-                <div className="wa-tpl-country-control" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, maxWidth: 340 }}>
-                  <label className="f" htmlFor="template-country">Template country</label>
-                  <select id="template-country" className="sel" value={templateCountry} onChange={(event) => setTemplateCountry(event.target.value as TemplateCountryCode)}>
-                    {TEMPLATE_COUNTRIES.map((country) => <option key={country.code} value={country.code}>{country.name}</option>)}
-                  </select>
-                </div>
-              )}
-              <div className="wa-template-grid">
-                {defaultTemplatesList.map((template) => (
-                  <article className="card tpl wa-template-card wa-template-card--shared" key={template.id}>
-                    <div className="wa-template-card-header">
-                      <span className="wa-tpl-card-icon">
-                        <Icon name={getTemplateIcon(template)} size={16} />
-                      </span>
-                      <div className="wa-tpl-card-meta">
-                        <b className="wa-tpl-card-name">{template.name}</b>
-                        <div className="wa-tpl-card-chips">
-                          <span className="chip blue sm">{template.cat}</span>
-                          <span className="chip green sm"><Icon name="globe" size={10} /> Shared Default</span>
-                        </div>
-                      </div>
-                    </div>
-                    <p className="wa-tpl-card-preview">
-                      {fillTpl(template.body, c?.contact?.split(' ')[0] || 'Client')}
-                    </p>
-                    <div className="wa-template-footer">
-                      <span className="sp" />
-                      <button
-                        className="btn sm pri"
-                        onClick={() => void applyTemplate(template, true)}
-                        disabled={!!applyingTemplateId}
-                      >
-                        {applyingTemplateId === template.id
-                          ? <><span className="spin spin-light" />Preparing…</>
-                          : <><Icon name="send" size={12} />Use in Chat</>}
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </>
-          )}
-
-          {/* Private templates section */}
-          {!templatesLoading && (
-            <>
-              <div className="wa-tpl-section-label">
-                <span className="wa-tpl-section-badge violet">
-                  <Icon name="lock" size={12} /> Your Private Templates
-                </span>
-                <span className="wa-tpl-section-desc">Only visible and loaded for your account</span>
-              </div>
-              {privateTemplates.length === 0 ? (
-                <div className="wa-private-tpl-empty">
-                  <div className="wa-private-tpl-empty-icon"><Icon name="lock" size={22} /></div>
-                  <div className="wa-private-tpl-empty-text">
-                    <b>No private templates created yet</b>
-                    <p>Templates you create with "+ New template" are saved privately to your account and loaded exclusively for you.</p>
-                  </div>
-                  <button className="btn sm pri" onClick={() => startTemplateEdit()}>
-                    <Icon name="plus" size={13} />Create Private Template
-                  </button>
-                </div>
-              ) : (
-                <div className="wa-template-grid">
-                  {privateTemplates.map((template) => (
-                    <article className="card tpl wa-template-card wa-template-card--private" key={template.id}>
-                      <div className="wa-template-card-header">
-                        <span className="wa-tpl-card-icon">
-                          <Icon name={getTemplateIcon(template)} size={16} />
-                        </span>
-                        <div className="wa-tpl-card-meta">
-                          <b className="wa-tpl-card-name">{template.name}</b>
-                          <div className="wa-tpl-card-chips">
-                            <span className="chip blue sm">{template.cat}</span>
-                            <span className="chip violet sm"><Icon name="lock" size={10} /> Your Private Template</span>
-                          </div>
-                        </div>
-                      </div>
-                      <p className="wa-tpl-card-preview">
-                        {fillTpl(template.body, c?.contact?.split(' ')[0] || 'Client')}
-                      </p>
-                      <div className="wa-template-footer">
-                        <button className="btn sm" onClick={() => startTemplateEdit(template)}>
-                          <Icon name="pencil" size={12} />Edit
-                        </button>
-                        <button
-                          className="btn sm gh"
-                          onClick={() => void removeTemplate(template)}
-                          disabled={template.protected}
-                          title={template.protected ? 'Protected templates cannot be deleted' : 'Delete template'}
-                        >
-                          <Icon name="trash" size={12} />Delete
-                        </button>
-                        <span className="sp" />
-                        <button
-                          className="btn sm pri"
-                          onClick={() => void applyTemplate(template, true)}
-                          disabled={!!applyingTemplateId}
-                        >
-                          {applyingTemplateId === template.id
-                            ? <><span className="spin spin-light" />Preparing…</>
-                            : <><Icon name="send" size={12} />Use in Chat</>}
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
+        {s.ui.wa.tab === 'templates' && (
+          <TemplatesPanel
+            client={c}
+            templatesLoading={templatesLoading}
+            templateError={templateError}
+            onDismissError={() => setTemplateError('')}
+            defaultTemplatesList={defaultTemplatesList}
+            dbDefaultTemplatesCount={dbDefaultTemplates.length}
+            privateTemplates={privateTemplates}
+            templateCountry={templateCountry}
+            onTemplateCountryChange={setTemplateCountry}
+            applyingTemplateId={applyingTemplateId}
+            onApplyTemplate={(template) => void applyTemplate(template, true)}
+            onStartEdit={startTemplateEdit}
+            onRemoveTemplate={(template) => void removeTemplate(template)}
+            templateEditorOpen={templateEditorOpen}
+            editingTemplate={editingTemplate}
+            templateForm={templateForm}
+            onTemplateFormChange={setTemplateForm}
+            templateSaving={templateSaving}
+            templateBodyRef={templateBodyRef}
+            onInsertToken={insertToken}
+            onCloseEditor={() => setTemplateEditorOpen(false)}
+            onSaveTemplate={() => void saveTemplate()}
+          />
+        )}
+      </div>
 
       {showSchedule && (
-        <ScheduleModal
+        <ScheduleReminderModal
           onClose={() => setShowSchedule(false)}
           defaultClient={c.id}
           clients={s.clients}
@@ -2214,209 +1231,6 @@ export function WhatsAppPage() {
           onSave={saveTelegramReminder}
         />
       )}
-
-    </div>
-  );
-}
-
-function localDateTimeInput(date: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
-  const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}T10:00`;
-}
-
-function ScheduleModal({
-  onClose,
-  defaultClient,
-  clients,
-  templates,
-  timezones,
-  error,
-  saving,
-  onSave,
-}: {
-  onClose: () => void;
-  defaultClient: string;
-  clients: Array<{ id: string; name: string; contact: string; countryId?: string }>;
-  templates: MessageTemplate[];
-  timezones: SupportedCountryTimezone[];
-  error: string;
-  saving: boolean;
-  onSave: (data: {
-    clientId: string;
-    templateId?: string;
-    messageBody: string;
-    repeatMode: 'once' | 'daily';
-    timezoneName: string;
-    scheduledLocal?: string;
-    localTime?: string;
-  }) => Promise<void>;
-}) {
-  const [clientId, setClientId] = useState(defaultClient || clients[0]?.id || '');
-  const [templateId, setTemplateId] = useState(templates[0]?.id || '');
-  const [repeatMode, setRepeatMode] = useState<'once' | 'daily'>('once');
-  const [timezoneName, setTimezoneName] = useState('');
-  const [localTime, setLocalTime] = useState('10:00');
-  const [now, setNow] = useState(() => new Date());
-  const selectedClient = clients.find((client) => client.id === clientId);
-  const availableTimezones = timezones.filter((timezone) => timezone.country_id === selectedClient?.countryId);
-  const selectedTemplate = templates.find((template) => template.id === templateId);
-  const [scheduledLocal, setScheduledLocal] = useState(() => localDateTimeInput(new Date(Date.now() + 86_400_000), 'UTC'));
-  const [messageBody, setMessageBody] = useState(selectedTemplate?.body || '');
-
-  useEffect(() => {
-    const countryTimezone = availableTimezones.find((timezone) => timezone.timezone_name === timezoneName)
-      || availableTimezones.find((timezone) => timezone.is_default)
-      || availableTimezones[0];
-    if (countryTimezone && timezoneName !== countryTimezone.timezone_name) {
-      setTimezoneName(countryTimezone.timezone_name);
-      setScheduledLocal(localDateTimeInput(new Date(Date.now() + 86_400_000), countryTimezone.timezone_name));
-    }
-  }, [availableTimezones, timezoneName]);
-
-  useEffect(() => {
-    if (selectedTemplate) setMessageBody(selectedTemplate.body);
-  }, [selectedTemplate]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  return (
-    <div className="modal" role="dialog" aria-modal="true" aria-labelledby="schedule-modal-title" onClick={(event) => event.target === event.currentTarget && !saving && onClose()}>
-      <div className="mbox wa-schedule-modal">
-        <div className="wa-schedule-heading">
-          <span className="wa-schedule-icon"><Icon name="clock" size={18} /></span>
-          <div><h2 id="schedule-modal-title">Schedule a Telegram reminder</h2><p>Saved on the server and sent automatically in the client’s country time.</p></div>
-        </div>
-        <div className="mgrid">
-          <div className="mrow">
-            <label className="f" htmlFor="schedule-client">Client</label>
-            <select id="schedule-client" className="sel" value={clientId} onChange={(event) => setClientId(event.target.value)}>
-              {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
-            </select>
-          </div>
-          <div className="mrow">
-            <label className="f" htmlFor="schedule-template">Message template</label>
-            <select
-              id="schedule-template"
-              className="sel"
-              value={templateId}
-              onChange={(event) => {
-                const nextId = event.target.value;
-                setTemplateId(nextId);
-                const nextTpl = templates.find((t) => t.id === nextId);
-                if (nextTpl) {
-                  setMessageBody(nextTpl.body);
-                }
-              }}
-            >
-              <option value="">✍️ Custom reminder text</option>
-              {templates.filter((t) => !t.user_id).length > 0 && (
-                <optgroup label="🌐 Built-in Templates (Country)">
-                  {templates.filter((t) => !t.user_id).map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name} ({template.cat})
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {templates.filter((t) => !!t.user_id).length > 0 && (
-                <optgroup label="🔒 Your Private Templates">
-                  {templates.filter((t) => !!t.user_id).map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name} ({template.cat})
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-          </div>
-        </div>
-        <div className="wa-schedule-repeat" role="group" aria-label="Repeat schedule">
-          <button type="button" className={repeatMode === 'once' ? 'on' : ''} onClick={() => setRepeatMode('once')}><Icon name="cal" size={14} />One time</button>
-          <button type="button" className={repeatMode === 'daily' ? 'on' : ''} onClick={() => setRepeatMode('daily')}><Icon name="refresh" size={14} />Every day</button>
-        </div>
-        <div className="mgrid">
-          <div className="mrow">
-            <label className="f" htmlFor="schedule-timezone">Client time zone</label>
-            <select id="schedule-timezone" className="sel" value={timezoneName} onChange={(event) => setTimezoneName(event.target.value)} disabled={!availableTimezones.length}>
-              {availableTimezones.map((timezone) => <option key={timezone.timezone_name} value={timezone.timezone_name}>{timezone.timezone_name}{timezone.is_default ? ' · Country default' : ''}</option>)}
-            </select>
-            {selectedClient && <small>Country: {timezones.find((timezone) => timezone.country_id === selectedClient.countryId)?.country_name || 'Not configured'}</small>}
-          </div>
-          <div className="mrow">
-            <label className="f" htmlFor={repeatMode === 'once' ? 'schedule-datetime' : 'schedule-daily-time'}>{repeatMode === 'once' ? 'Send at client local time' : 'Send every day at'}</label>
-            {repeatMode === 'once'
-              ? <input id="schedule-datetime" className="inp" type="datetime-local" value={scheduledLocal} onChange={(event) => setScheduledLocal(event.target.value)} />
-              : <input id="schedule-daily-time" className="inp" type="time" value={localTime} onChange={(event) => setLocalTime(event.target.value)} />}
-            {timezoneName && <small>Current client time: {new Intl.DateTimeFormat(undefined, { timeZone: timezoneName, dateStyle: 'medium', timeStyle: 'medium' }).format(now)}</small>}
-          </div>
-        </div>
-        <details className="wa-timezone-clocks">
-          <summary>Live clocks for supported client countries</summary>
-          <div className="wa-timezone-table-wrap">
-            <table className="wa-timezone-table">
-              <thead><tr><th>Country</th><th>Time zone</th><th>Local time</th></tr></thead>
-              <tbody>{timezones.map((timezone) => (
-                <tr key={timezone.timezone_name}>
-                  <td>{timezone.country_name}</td>
-                  <td>{timezone.timezone_name}{timezone.is_default ? ' · Default' : ''}</td>
-                  <td><time dateTime={now.toISOString()}>{new Intl.DateTimeFormat(undefined, { timeZone: timezone.timezone_name, dateStyle: 'medium', timeStyle: 'medium' }).format(now)}</time></td>
-                </tr>
-              ))}</tbody>
-            </table>
-            {!timezones.length && <p className="mut">Apply the inbox automation SQL migration to load country time zones.</p>}
-          </div>
-        </details>
-        <div className="mrow">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-            <label className="f" htmlFor="schedule-message-body" style={{ margin: 0 }}>Message text</label>
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              {(['{name}', '{portalLink}', '{period}', '{due}'] as const).map((token) => (
-                <button
-                  key={token}
-                  type="button"
-                  className="btn xs gh"
-                  style={{ padding: '2px 6px', fontSize: '11px', fontFamily: 'monospace' }}
-                  title={`Insert ${token}`}
-                  onClick={() => setMessageBody((prev) => prev ? `${prev} ${token}` : token)}
-                >
-                  +{token}
-                </button>
-              ))}
-            </div>
-          </div>
-          <textarea id="schedule-message-body" className="inp" rows={4} maxLength={4096} value={messageBody} onChange={(event) => setMessageBody(event.target.value)} />
-          <small>Use {'{name}'} for the client name and {'{portalLink}'} for the secure client portal. At send time, Orvexa automatically resolves the client’s real data and portal link.</small>
-        </div>
-        {error && <div className="ob-error" role="alert">{error}</div>}
-        <div className="row wa-schedule-actions">
-          <span className="wa-reminder-notice"><Icon name="lock" size={12} />Private to this CA · Telegram only</span>
-          <span className="sp" />
-          <button className="btn gh" onClick={onClose} disabled={saving}>Cancel</button>
-          <button
-            className="btn pri"
-            disabled={saving || !clientId || !messageBody.trim() || !timezoneName || !availableTimezones.length || (repeatMode === 'once' && !scheduledLocal)}
-            onClick={() => void onSave({
-              clientId,
-              ...(templateId ? { templateId } : {}),
-              messageBody: messageBody.trim(),
-              repeatMode,
-              timezoneName,
-              ...(repeatMode === 'once' ? { scheduledLocal } : { localTime }),
-            })}
-          >
-            {saving ? <><span className="spin spin-light" />Saving…</> : <><Icon name="clock" size={14} />Save schedule</>}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

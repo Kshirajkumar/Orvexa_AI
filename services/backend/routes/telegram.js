@@ -923,6 +923,64 @@ router.patch('/clients/:clientId/messages/:messageId', requireAuth, async (req, 
   }
 });
 
+router.delete('/clients/:clientId/messages/:messageId', requireAuth, async (req, res) => {
+  try {
+    const { clientId, messageId } = req.params;
+    const localOnly = req.query.scope === 'local';
+    if (!isConnected || !(await assertOwnedClient(req.user.id, clientId))) {
+      return res.status(404).json({ success: false, message: 'Client not found.' });
+    }
+    const { data: existing, error: fetchError } = await supabase
+      .from('telegram_messages')
+      .select('*')
+      .eq('id', messageId)
+      .eq('client_id', clientId)
+      .maybeSingle();
+    if (fetchError) throw fetchError;
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Message not found.' });
+    }
+
+    let unsentFromTelegram = false;
+    const isSentOutbound = existing.direction === 'outbound'
+      && existing.delivery_status === 'sent'
+      && Boolean(existing.provider_response_id);
+
+    if (isSentOutbound && !localOnly) {
+      const createdAtMs = new Date(existing.created_at).getTime();
+      if (!Number.isFinite(createdAtMs) || Date.now() - createdAtMs > TELEGRAM_EDIT_WINDOW_MS) {
+        return res.status(422).json({ success: false, message: 'Telegram allows unsending sent messages only within 48 hours.' });
+      }
+      try {
+        await telegramCall('deleteMessage', {
+          chat_id: existing.chat_id,
+          message_id: Number(existing.provider_response_id),
+        });
+        unsentFromTelegram = true;
+      } catch (tgError) {
+        const msg = String(tgError?.message || '');
+        if (!/message to delete not found/i.test(msg)) {
+          if (/message can't be deleted|too old/i.test(msg)) {
+            return res.status(422).json({ success: false, message: 'Telegram no longer allows unsending this message.' });
+          }
+          throw tgError;
+        }
+      }
+    }
+
+    const { error: deleteError } = await supabase
+      .from('telegram_messages')
+      .delete()
+      .eq('id', messageId)
+      .eq('client_id', clientId);
+    if (deleteError) throw deleteError;
+
+    return res.json({ success: true, data: { id: messageId, unsentFromTelegram } });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 router.post('/clients/:clientId/send-file', requireAuth, (_req, res) => {
   return res.status(410).json({
     success: false,
