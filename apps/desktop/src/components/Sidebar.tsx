@@ -87,21 +87,11 @@ export function Sidebar() {
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          <span className="sidebar-toggle-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              {collapsed ? (
-                <>
-                  <line x1="3" y1="6" x2="21" y2="6" />
-                  <line x1="3" y1="12" x2="21" y2="12" />
-                  <line x1="3" y1="18" x2="21" y2="18" />
-                </>
-              ) : (
-                <>
-                  <line x1="3" y1="6" x2="21" y2="6" />
-                  <line x1="3" y1="12" x2="15" y2="12" />
-                  <line x1="3" y1="18" x2="21" y2="18" />
-                </>
-              )}
+          <span className="sidebar-toggle-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="4" y1="6" x2="20" y2="6" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="18" x2="20" y2="18" />
             </svg>
           </span>
           {!collapsed && <span className="sidebar-toggle-label">Collapse</span>}
@@ -154,10 +144,9 @@ export function Sidebar() {
           onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); dispatch({ type: 'GO', page: 'profile' }); } }}
         >
           <div className="me-avatar-wrap">
-            <span className="av me-av" style={{ ['--t' as any]: '#4C8DFF' }}>
+            <span className="av me-av">
               {initials}
             </span>
-            <span className="me-status-dot" title="Online" />
           </div>
           {!collapsed && (
             <div className="me-info">
@@ -165,7 +154,6 @@ export function Sidebar() {
                 {s.currentUser?.name || 'Personal workspace'}
               </b>
               <small className="me-role">
-                <span className="me-role-dot" />
                 <span className="me-role-text">{s.currentUser?.role || 'Managing Partner'}</span>
               </small>
             </div>

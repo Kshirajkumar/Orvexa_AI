@@ -798,7 +798,7 @@ export async function searchTelegramMessages(query: string, signal?: AbortSignal
   return Array.isArray(json.data) ? json.data : [];
 }
 
-export async function fetchCloudDocumentFile(documentId: string, versionId?: string): Promise<Blob> {
+export async function fetchCloudDocumentFile(documentId: string, versionId?: string, signal?: AbortSignal): Promise<Blob> {
   let res: Response;
   try {
     const fileRoute = versionId
@@ -806,8 +806,10 @@ export async function fetchCloudDocumentFile(documentId: string, versionId?: str
       : `/documents/${encodeURIComponent(documentId)}/file`;
     res = await fetch(`${API_BASE_URL}${fileRoute}`, {
       headers: authHeaders(),
+      signal,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new Error('The backend is unavailable. The cloud document could not be opened.');
   }
   if (!res.ok) {
@@ -821,9 +823,9 @@ export async function fetchCloudDocumentFile(documentId: string, versionId?: str
   return res.blob();
 }
 
-export async function fetchClientDocumentTree(clientId: string): Promise<DocumentTreeResponse> {
+export async function fetchClientDocumentTree(clientId: string, signal?: AbortSignal): Promise<DocumentTreeResponse> {
   const headers = authHeaders();
-  const res = await fetch(`${API_BASE_URL}/clients/${encodeURIComponent(clientId)}/documents/tree`, { headers });
+  const res = await fetch(`${API_BASE_URL}/clients/${encodeURIComponent(clientId)}/documents/tree`, { headers, signal });
   let json: any;
   try { json = await res.json(); } catch { throw new Error(`Cloud document listing returned an invalid response (HTTP ${res.status}).`); }
   if (!res.ok || !json.success) throw new Error(json.message || `Could not load cloud documents (HTTP ${res.status}).`);
@@ -910,32 +912,57 @@ export async function updateCloudDocumentDetails(documentId: string, details: { 
   if (!res.ok || !json.success) throw new Error(json.message || `Could not update document details (HTTP ${res.status}).`);
 }
 
-export async function fetchStorageCleanupJob(jobId: string): Promise<StorageCleanupJob> {
-  const res = await fetch(`${API_BASE_URL}/storage-cleanup/${encodeURIComponent(jobId)}`, { headers: authHeaders() });
+export const BACKEND_CONNECTING_MESSAGE =
+  'Connecting to the backend service… Establishing a secure connection can take a few moments. This is not an issue with your account or the app—please try again in a few seconds.';
+
+async function fetchCleanupJson(url: string, init: RequestInit, fallbackError: string): Promise<any> {
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch {
+    throw new Error(BACKEND_CONNECTING_MESSAGE);
+  }
   let json: any;
-  try { json = await res.json(); } catch { throw new Error(`Cleanup status returned an invalid response (HTTP ${res.status}).`); }
-  if (!res.ok || !json.success || !json.data) throw new Error(json.message || `Could not load cleanup status (HTTP ${res.status}).`);
+  try {
+    json = await res.json();
+  } catch {
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      throw new Error(BACKEND_CONNECTING_MESSAGE);
+    }
+    throw new Error(`${fallbackError} (HTTP ${res.status}).`);
+  }
+  if (!res.ok || !json.success) {
+    throw new Error(json.message || `${fallbackError} (HTTP ${res.status}).`);
+  }
+  return json;
+}
+
+export async function fetchStorageCleanupJob(jobId: string): Promise<StorageCleanupJob> {
+  const json = await fetchCleanupJson(
+    `${API_BASE_URL}/storage-cleanup/${encodeURIComponent(jobId)}`,
+    { headers: authHeaders() },
+    'Could not load cleanup status',
+  );
+  if (!json.data) throw new Error('Could not load cleanup status.');
   return json.data;
 }
 
 export async function fetchStorageCleanupJobs(): Promise<StorageCleanupJob[]> {
-  const res = await fetch(`${API_BASE_URL}/storage-cleanup`, { headers: authHeaders() });
-  let json: any;
-  try { json = await res.json(); } catch { throw new Error(`Cleanup jobs returned an invalid response (HTTP ${res.status}).`); }
-  if (!res.ok || !json.success || !Array.isArray(json.data)) {
-    throw new Error(json.message || `Could not load cleanup jobs (HTTP ${res.status}).`);
-  }
+  const json = await fetchCleanupJson(
+    `${API_BASE_URL}/storage-cleanup`,
+    { headers: authHeaders() },
+    'Could not load cleanup jobs',
+  );
+  if (!Array.isArray(json.data)) throw new Error('Could not load cleanup jobs.');
   return json.data;
 }
 
 export async function retryStorageCleanupJob(jobId: string): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}/storage-cleanup/${encodeURIComponent(jobId)}/retry`, {
-    method: 'POST',
-    headers: authHeaders(),
-  });
-  let json: any;
-  try { json = await res.json(); } catch { throw new Error(`Cleanup retry returned an invalid response (HTTP ${res.status}).`); }
-  if (!res.ok || !json.success) throw new Error(json.message || `Could not retry cleanup (HTTP ${res.status}).`);
+  await fetchCleanupJson(
+    `${API_BASE_URL}/storage-cleanup/${encodeURIComponent(jobId)}/retry`,
+    { method: 'POST', headers: authHeaders() },
+    'Could not retry cleanup',
+  );
 }
 
 export async function deleteCloudDocument(documentId: string): Promise<StorageCleanupJob> {

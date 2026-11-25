@@ -58,15 +58,21 @@ export function ClientsPage() {
   const [editForm, setEditForm] = React.useState({ name: '', entityType: 'Individual', pan: '', gstin: '', phone: '', email: '', countryId: '', filingTypes: [] as string[] });
   const [form, setForm] = React.useState<ClientFormValues>({ name: '', entityType: 'Individual', pan: '', gstin: '', phone: '', email: '', countryId: '', filingTypes: [] });
   const update = (key: keyof ClientFormValues, value: string | string[]) => setForm(prev => ({ ...prev, [key]: value }));
-  React.useEffect(() => {
-    let disposed = false;
-    fetchStorageCleanupJobs().then(jobs => {
-      if (!disposed) setCleanupJobs(jobs);
-    }).catch(err => {
-      if (!disposed) setCleanupError(err instanceof Error ? err.message : 'Could not load cloud cleanup jobs.');
-    });
-    return () => { disposed = true; };
+  const loadCleanupJobs = React.useCallback(async () => {
+    setCleanupLoading(true);
+    setCleanupError('');
+    try {
+      const jobs = await fetchStorageCleanupJobs();
+      setCleanupJobs(jobs);
+    } catch (err) {
+      setCleanupError(err instanceof Error ? err.message : 'Could not load cloud cleanup jobs.');
+    } finally {
+      setCleanupLoading(false);
+    }
   }, []);
+  React.useEffect(() => {
+    void loadCleanupJobs();
+  }, [loadCleanupJobs]);
   React.useEffect(() => {
     let disposed = false;
     if (!selectedClient) return undefined;
@@ -353,7 +359,9 @@ export function ClientsPage() {
       <div className="ph" data-tour="clients-intro"><div><p>Everyone you file for, with their services and current workload.</p></div><button className="btn pri" onClick={() => setShowAdd(true)}>+ Add client</button></div>
       {(cleanupJobs.length > 0 || cleanupError) && <div className="vault-lifecycle-panel card" aria-label="Client cleanup jobs">
         <div><b>Client cloud cleanup</b><small>Deletion is queued in Supabase; it retries automatically if Storage is temporarily unavailable.</small></div>
-        {cleanupError && <span className="ob-error" role="alert">{cleanupError}</span>}
+        {cleanupError && (cleanupError.startsWith('Connecting to the backend')
+          ? <div className="ob-notice" role="status"><span>{cleanupError}</span><button className="btn sm" onClick={() => void loadCleanupJobs()} disabled={cleanupLoading}>{cleanupLoading ? 'Connecting…' : 'Retry'}</button></div>
+          : <span className="ob-error" role="alert">{cleanupError}</span>)}
         {cleanupSuccess && <span className="ob-success" role="status">{cleanupSuccess}</span>}
         {cleanupJobs.map(job => <div className="vault-cleanup-row" key={job.id} role="status">
           <span><b>{job.message}</b><small>Status: {job.status}</small>{job.error_message && job.status !== 'completed' && <small className="ob-error">Reason: {job.error_message}</small>}</span>

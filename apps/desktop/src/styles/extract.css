@@ -1,0 +1,575 @@
+/* ==========================================================================
+   INVOICE EXTRACTION WORKSPACE — Structured 4-Step Enterprise Layout
+   ========================================================================== */
+.extract-workspace {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  animation: extractIn 0.28s ease both;
+}
+
+.extract-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.38fr) minmax(300px, 0.92fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.extract-left-col {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.extract-setup-card,
+.extract-source-card,
+.extract-progress-card,
+.extract-result-card {
+  min-width: 0;
+  overflow: visible;
+}
+
+.extract-setup-card {
+  position: relative;
+  z-index: 4;
+}
+
+.extract-source-card {
+  position: relative;
+  z-index: 2;
+}
+
+.extract-result-card {
+  grid-column: 1 / -1;
+}
+
+/* Step 01: Client & Type */
+.extract-client-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.extract-client-field {
+  min-width: 0;
+}
+
+.extract-client-select {
+  margin-bottom: 0;
+}
+
+.extract-client-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--tx2);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.extract-client-meta-pill .ic {
+  color: var(--blue);
+  flex: none;
+}
+
+.extract-client-meta-pill strong {
+  color: var(--tx);
+  font-weight: 600;
+}
+
+.extract-suggested-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.extract-suggested-label {
+  font-size: 11px;
+  color: var(--tx3);
+  font-weight: 600;
+  margin-right: 2px;
+}
+
+.extract-suggested-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--tx2);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+
+.extract-suggested-pill:hover:not(:disabled) {
+  border-color: var(--line2);
+  background: var(--card2);
+  color: var(--tx);
+}
+
+.extract-suggested-pill.active {
+  border-color: color-mix(in srgb, var(--cyan) 50%, var(--line2));
+  background: color-mix(in srgb, var(--cyan) 12%, var(--panel));
+  color: var(--cyan);
+}
+
+.extract-workspace .category-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.extract-workspace .category-choice {
+  min-height: 54px;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+/* Step 02: Document Source */
+.extract-source-card .card-h {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.extract-workspace .extract-source-tabs {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  gap: 4px;
+  margin-bottom: 0;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.extract-workspace .extract-source-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--tx2);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.extract-workspace .extract-source-tab:hover {
+  color: var(--tx);
+  background: var(--card);
+}
+
+.extract-workspace .extract-source-tab.active {
+  border-color: color-mix(in srgb, var(--cyan) 45%, var(--line2));
+  background: color-mix(in srgb, var(--cyan) 12%, var(--card));
+  color: var(--tx);
+}
+
+/* Clean Cloud Raw Browser — Zero Horizontal Scroll */
+.extract-workspace .cloud-raw-browser {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.extract-workspace .cloud-raw-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.extract-workspace .cloud-raw-folder-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tx);
+  white-space: nowrap;
+}
+
+.extract-workspace .cloud-raw-search {
+  flex: 1 1 180px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--tx2);
+}
+
+.extract-workspace .cloud-raw-search:focus-within {
+  border-color: var(--blue);
+}
+
+.extract-workspace .cloud-raw-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.extract-workspace .cloud-raw-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line2) transparent;
+}
+
+.extract-workspace .cloud-raw-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.extract-workspace .cloud-raw-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.extract-workspace .cloud-raw-list::-webkit-scrollbar-thumb {
+  background: var(--line2);
+  border-radius: 99px;
+}
+
+.extract-workspace .cloud-raw-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--card);
+  color: var(--tx);
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.extract-workspace .cloud-raw-item:hover:not(:disabled) {
+  border-color: var(--line2);
+  background: var(--card2);
+}
+
+.extract-workspace .cloud-raw-item.selected {
+  border-color: var(--cyan);
+  background: color-mix(in srgb, var(--cyan) 9%, var(--card));
+}
+
+.extract-workspace .cloud-raw-check {
+  margin-top: 0;
+}
+
+.extract-workspace .cloud-raw-file-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--blue) 12%, var(--panel));
+  color: var(--blue);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.extract-workspace .cloud-raw-item.selected .cloud-raw-file-icon {
+  background: color-mix(in srgb, var(--cyan) 15%, var(--panel));
+  color: var(--cyan);
+}
+
+.extract-workspace .cloud-raw-item-body {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 3px;
+}
+
+.extract-workspace .cloud-raw-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.extract-workspace .cloud-raw-item-top b {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.extract-workspace .cloud-raw-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--tx3);
+  min-width: 0;
+}
+
+.extract-workspace .cloud-raw-path {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Action Bar at bottom of Step 02 */
+.extract-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.extract-action-bar .extract-security {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  align-items: center;
+}
+
+.extract-action-bar .extract-cta {
+  width: auto;
+  min-width: 168px;
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+/* Step 04: Extracted Fields Grid */
+.extract-workspace .extracted-fields {
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+@media (max-width: 1040px) {
+  .extract-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .extract-client-row {
+    grid-template-columns: 1fr;
+  }
+
+  .extract-workspace .category-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .extract-action-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .extract-action-bar .extract-cta {
+    width: 100%;
+  }
+}
+
+/* Clipboard Paste Confirmation Card */
+.extract-paste-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--bg) 68%, transparent);
+  backdrop-filter: blur(8px);
+  animation: extractIn 0.18s ease both;
+}
+
+.extract-paste-card {
+  width: min(470px, 100%);
+  padding: 20px;
+  border: 1px solid var(--line2);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+  display: grid;
+  gap: 14px;
+}
+
+.extract-paste-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.extract-paste-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--cyan) 40%, var(--line2));
+  background: color-mix(in srgb, var(--cyan) 12%, var(--panel));
+  color: var(--cyan);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.extract-paste-head h2 {
+  margin: 4px 0 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--tx);
+}
+
+.extract-paste-file-box {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.extract-paste-preview {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  background: var(--card2);
+}
+
+.extract-paste-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.extract-paste-file-badge {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, var(--line2));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--blue) 12%, var(--card));
+  color: var(--blue);
+}
+
+.extract-paste-file-badge span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.extract-paste-file-meta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.extract-paste-file-meta b {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.extract-paste-file-meta span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--tx3);
+}
+
+.extract-paste-file-meta small {
+  font-size: 11.5px;
+  color: var(--tx2);
+}
+
+.extract-paste-file-meta small strong {
+  color: var(--tx);
+  font-weight: 600;
+}
+
+.extract-paste-question {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--tx2);
+}
+
+.extract-paste-question strong {
+  color: var(--tx);
+  font-weight: 600;
+}
+
+.extract-paste-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+@media (max-width: 480px) {
+  .extract-paste-card {
+    padding: 16px;
+  }
+
+  .extract-paste-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+}
