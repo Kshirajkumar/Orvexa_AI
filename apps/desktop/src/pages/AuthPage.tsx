@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Icon } from '../components/Icon';
 import { BrandLogo } from '../components/BrandLogo';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { AuthFormBackground } from '../components/AuthFormBackground';
 import { apiLogin, apiSignup, apiForgotPassword, apiResendEmailOtp, apiVerifyEmailOtp, AuthUser } from '../lib/api';
 import '../styles/forgot-password.css';
 import { useDispatch } from '../state/store';
@@ -616,14 +617,17 @@ export function AuthPage() {
           onMouseEnter={() => setIsPaused(true)}
           onMouseLeave={() => setIsPaused(false)}
         >
-          {/* Subtle Ambient Glow Orbs */}
-          <div className="auth-glow auth-glow-1" />
-          <div className="auth-glow auth-glow-2" />
+          {/* Subtle Ambient Glow Orbs & Architectural Grid */}
+          <div className="showcase-bg-grid" aria-hidden="true" />
+          <div className="auth-glow auth-glow-1" aria-hidden="true" />
+          <div className="auth-glow auth-glow-2" aria-hidden="true" />
+          <div className="auth-glow auth-glow-3" aria-hidden="true" />
 
           <div className="auth-showcase-content">
             {/* Top Pill / Badge */}
             <div className="showcase-top-meta">
               <span className="showcase-tag-badge">
+                <span className="showcase-live-dot" aria-hidden="true" />
                 <Icon name={activePoint.icon} size={14} />
                 {activePoint.tag}
               </span>
@@ -632,7 +636,7 @@ export function AuthPage() {
             </div>
 
             {/* Pain Point Heading with Typewriter Effect */}
-            <div className="showcase-problem-block">
+            <div className="showcase-problem-block" key={`problem-${currentSlide}`}>
               <span className="showcase-section-kicker">PROBLEM SOLVED</span>
               <h2 className="showcase-heading">
                 {typedProblem}
@@ -641,7 +645,7 @@ export function AuthPage() {
             </div>
 
             {/* AI Solution Card with Typewriter Effect */}
-            <div className="showcase-solution-card">
+            <div className="showcase-solution-card" key={`solution-${currentSlide}`}>
               <div className="solution-card-header">
                 <div className="solution-badge-icon">
                   <Icon name="spark" size={16} />
@@ -738,6 +742,7 @@ export function AuthPage() {
 
         {/* ─── RIGHT COLUMN: Sliding Sign Up & Login Cards ─── */}
         <section className="auth-form-panel">
+          <AuthFormBackground />
           <div className="auth-card-container">
             {/* Top Mode Segmented Pill Switcher */}
             <div className="auth-mode-switcher">

@@ -612,7 +612,7 @@ export function FilesPage() {
       {editingDetails && <div className="vault-lifecycle-form">
         <label>File name<input className="modal-input" value={detailsForm.fileName} onChange={event => setDetailsForm(previous => ({ ...previous, fileName: event.target.value }))} /></label>
         <label>Category<select className="modal-input" value={detailsForm.category} onChange={event => setDetailsForm(previous => ({ ...previous, category: event.target.value }))}>
-          {['GST', 'IncomeTax', 'Form16', 'BankStatement', 'Notice', 'TDS', 'Audit', 'General', 'Extracted', 'Generated'].map(category => <option key={category} value={category}>{category}</option>)}
+          {['GST', 'ITR1', 'ITR2', 'Form16', 'BankStatement', 'Notice', 'TDS', 'Audit', 'General', 'Extracted', 'Generated'].map(category => <option key={category} value={category}>{category}</option>)}
         </select></label>
         <label>Assessment year (optional)<input className="modal-input" value={detailsForm.assessmentYear} placeholder="YYYY or YYYY-YY" onChange={event => setDetailsForm(previous => ({ ...previous, assessmentYear: event.target.value }))} /></label>
         {detailsError && <span className="ob-error" role="alert">{detailsError}</span>}

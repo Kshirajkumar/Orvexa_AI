@@ -3,6 +3,8 @@
 import {
   extractWithOpenRouter,
   generateOpenRouterNoticeResponse,
+  getOpenRouterFallbackSettings,
+  isOpenRouterImageFile,
   type OpenRouterFallbackCallback,
   isUsingLocalOpenRouterKey,
   sendOpenRouterChat,
@@ -1164,6 +1166,31 @@ export async function approveInvoiceReview(
   return result;
 }
 
+async function runBackendDocumentExtraction(
+  documentId: string,
+  category: string,
+  signal?: AbortSignal,
+) {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}/extraction/process`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ documentId, category }),
+      signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    throw new Error('The extraction service is unavailable. The uploaded file is still safe in private Supabase Storage.');
+  }
+
+  let json: any;
+  try { json = await res.json(); } catch { throw new Error(`The extraction service returned an invalid response (HTTP ${res.status}).`); }
+  if (!res.ok || !json.success) throw new Error(json.message || `AI extraction failed (HTTP ${res.status}).`);
+
+  return json;
+}
+
 export async function processDocumentExtraction(
   documentId: string,
   category = 'General',
@@ -1179,65 +1206,93 @@ export async function processDocumentExtraction(
   // This ensures a saved Credential-Manager key is always preferred even when
   // the localStorage toggle has not been set.
   const shouldUseLocal = useLocalKey ?? (await resolveAiProvider() === 'local');
+  const fallbackEnabled = getOpenRouterFallbackSettings().enabled;
+
   if (shouldUseLocal) {
-    if (!file) {
-      throw new Error('The local OpenRouter key needs the original image. Choose a JPG, PNG, WEBP, or GIF image and retry.');
+    const canUseLocalImage = Boolean(file && isOpenRouterImageFile(file));
+    if (!canUseLocalImage) {
+      if (!fallbackEnabled) {
+        throw new Error('The local OpenRouter key needs a JPG, PNG, WEBP, or GIF image. Enable fallback or turn off the local key setting to use the standard extraction service.');
+      }
+      const fallbackResult = await runBackendDocumentExtraction(documentId, category, signal);
+      return {
+        ...fallbackResult,
+        source: 'backend_fallback',
+        message: 'Local OpenRouter supports images only; extracted via the standard service.',
+      };
     }
-    validateOpenRouterExtractionFile(file);
-    const extraction = await extractWithOpenRouter(file, category, onFallback);
-    const saved = await authRequest<{
-      success: boolean;
-      message?: string;
-      data?: Record<string, unknown>;
-    }>(
-      `${API_BASE_URL}/extraction/save`,
-      {
-        method: 'POST',
-        headers: authHeaders(),
+
+    try {
+      validateOpenRouterExtractionFile(file!);
+      const extraction = await extractWithOpenRouter(file!, category, onFallback, {
+        clientName,
         signal,
-        body: JSON.stringify({
-          documentId,
-          category,
-          extractedData: extraction.extractedData,
-          model: extraction.model,
-          inputTokens: extraction.inputTokens,
-          outputTokens: extraction.outputTokens,
-          durationMs: extraction.durationMs,
-          clientName,
-          createdAt,
-          clientId,
-        }),
-      },
-      true,
-    );
-    if (!saved.success || !saved.data) {
-      throw new Error(saved.message || 'The extraction was generated, but could not be saved to this client record.');
+      });
+      const saved = await authRequest<{
+        success: boolean;
+        message?: string;
+        data?: Record<string, unknown>;
+      }>(
+        `${API_BASE_URL}/extraction/save`,
+        {
+          method: 'POST',
+          headers: authHeaders(),
+          signal,
+          body: JSON.stringify({
+            documentId,
+            category,
+            extractedData: extraction.extractedData,
+            providerScore: extraction.providerScore,
+            providerRaw: extraction.providerRaw,
+            fieldConfidence: extraction.fieldConfidence,
+            fieldEvidence: extraction.fieldEvidence,
+            model: extraction.model,
+            inputTokens: extraction.inputTokens,
+            outputTokens: extraction.outputTokens,
+            durationMs: extraction.durationMs,
+            clientName,
+            createdAt,
+            clientId,
+          }),
+        },
+        true,
+      );
+      if (!saved.success || !saved.data) {
+        throw new Error(saved.message || 'The extraction was generated, but could not be saved to this client record.');
+      }
+      return {
+        success: true,
+        source: 'openrouter',
+        message: saved.message || 'Document extracted with your local OpenRouter key.',
+        data: saved.data,
+      };
+    } catch (localError) {
+      if (signal?.aborted || (localError instanceof DOMException && localError.name === 'AbortError')) {
+        throw localError;
+      }
+      const localMessage = localError instanceof Error ? localError.message : 'Local OpenRouter extraction failed.';
+      const isDuplicateOrValidation = /already extracted|not supported yet|DUPLICATE_DOCUMENT/i.test(localMessage);
+      if (!fallbackEnabled || isDuplicateOrValidation) {
+        throw localError;
+      }
+      try {
+        const fallbackResult = await runBackendDocumentExtraction(documentId, category, signal);
+        return {
+          ...fallbackResult,
+          source: 'backend_fallback',
+          message: `Local OpenRouter was unavailable (${localMessage}); extracted via the standard service.`,
+        };
+      } catch (backendError) {
+        if (signal?.aborted || (backendError instanceof DOMException && backendError.name === 'AbortError')) {
+          throw backendError;
+        }
+        const backendMessage = backendError instanceof Error ? backendError.message : 'Standard extraction failed.';
+        throw new Error(`${localMessage} Fallback also failed: ${backendMessage}`);
+      }
     }
-    return {
-      success: true,
-      source: 'openrouter',
-      message: saved.message || 'Document extracted with your local OpenRouter key.',
-      data: saved.data,
-    };
   }
 
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE_URL}/extraction/process`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ documentId, category }),
-      signal,
-    });
-  } catch {
-    throw new Error('The extraction service is unavailable. The uploaded file is still safe in private Supabase Storage.');
-  }
-
-  let json: any;
-  try { json = await res.json(); } catch { throw new Error(`The extraction service returned an invalid response (HTTP ${res.status}).`); }
-  if (!res.ok || !json.success) throw new Error(json.message || `AI extraction failed (HTTP ${res.status}).`);
-
-  return json;
+  return runBackendDocumentExtraction(documentId, category, signal);
 }
 
 // ─── WhatsApp API ──────────────────────────────────────────────

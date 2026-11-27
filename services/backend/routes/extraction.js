@@ -263,6 +263,7 @@ router.post('/save', async (req, res) => {
     return res.status(503).json({ success: false, message: 'Cloud extraction storage is unavailable. Reconnect to Supabase and try again.' });
   }
 
+  let ownedDocument = null;
   try {
     const ownedClientIds = await getOwnedClientIds(req.user.id);
     if (!ownedClientIds.length) {
@@ -271,7 +272,7 @@ router.post('/save', async (req, res) => {
 
     const { data: document, error: documentError } = await supabase
       .from('documents_metadata')
-      .select('id, client_id, client_name, file_name, source, category, current_extraction_version, created_at')
+      .select('id, client_id, client_name, file_name, file_sha256, source, category, current_extraction_version, created_at, assessment_year')
       .eq('id', documentId.trim())
       .in('client_id', ownedClientIds)
       .maybeSingle();
@@ -279,21 +280,58 @@ router.post('/save', async (req, res) => {
     if (!document || document.source === 'Telegram') {
       return res.status(404).json({ success: false, message: 'This document was not found or is not available for extraction.' });
     }
+    ownedDocument = document;
 
-    const { data: documentWithOwnership, error: ownershipError } = await supabase
+    if (document.file_sha256) {
+      const { data: duplicateDocument, error: duplicateError } = await supabase
+        .from('documents_metadata')
+        .select('id, file_name, status')
+        .eq('client_id', document.client_id)
+        .eq('file_sha256', document.file_sha256)
+        .neq('id', document.id)
+        .in('status', ['Extracted', 'Verified'])
+        .not('extracted_data', 'is', null)
+        .limit(1)
+        .maybeSingle();
+      if (duplicateError) throw duplicateError;
+      if (duplicateDocument) {
+        return res.status(409).json({
+          success: false,
+          code: 'DUPLICATE_DOCUMENT',
+          message: 'This exact document was already extracted for this client. Review the existing result instead of running another extraction.',
+          data: { existingDocumentId: duplicateDocument.id, existingFileName: duplicateDocument.file_name },
+        });
+      }
+    }
+
+    const { error: processingError } = await supabase
       .from('documents_metadata')
-      .select('id, client_id, client_name, file_name, source, category, current_extraction_version, created_at, assessment_year')
+      .update({
+        extraction_status: 'processing',
+        category,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', document.id)
-      .eq('client_id', document.client_id)
-      .single();
-    if (ownershipError) throw ownershipError;
+      .eq('client_id', document.client_id);
+    if (processingError) throw processingError;
+
     const model = typeof req.body.model === 'string' ? req.body.model.slice(0, 200) : 'OpenRouter';
     const inputTokens = Number.isSafeInteger(req.body.inputTokens) && req.body.inputTokens >= 0 ? req.body.inputTokens : 0;
     const outputTokens = Number.isSafeInteger(req.body.outputTokens) && req.body.outputTokens >= 0 ? req.body.outputTokens : 0;
     const durationMs = Number.isSafeInteger(req.body.durationMs) && req.body.durationMs >= 0 ? req.body.durationMs : 0;
+    const fieldConfidence = req.body.fieldConfidence && typeof req.body.fieldConfidence === 'object' && !Array.isArray(req.body.fieldConfidence)
+      ? req.body.fieldConfidence
+      : {};
+    const fieldEvidence = req.body.fieldEvidence && typeof req.body.fieldEvidence === 'object' && !Array.isArray(req.body.fieldEvidence)
+      ? req.body.fieldEvidence
+      : {};
+    const providerRaw = req.body.providerRaw && typeof req.body.providerRaw === 'object' && !Array.isArray(req.body.providerRaw)
+      ? req.body.providerRaw
+      : null;
+
     extractionRunId = await startExtractionRun({
       userId: req.user.id,
-      document: documentWithOwnership,
+      document,
       provider: 'openrouter_local',
       model,
       schemaVersion: `${category.toLowerCase()}-v1`,
@@ -301,20 +339,27 @@ router.post('/save', async (req, res) => {
     });
     const versionResult = await saveExtractionVersion({
       userId: req.user.id,
-      document: documentWithOwnership,
+      document,
       data: extractedData,
       category,
+      versionKind: document.current_extraction_version ? 'ai_rerun' : 'ai',
       providerScore: req.body.providerScore,
-      fieldEvidence: req.body.fieldEvidence,
+      providerRaw,
+      fieldConfidence,
+      fieldEvidence,
       validationWarnings: validateExtractedDataQuality(extractedData, category),
       extractionRunId,
     });
+    const reviewScore = versionResult?.envelope?.overall_score?.review_score
+      ?? versionResult?.envelope?.overall_score?.computed_score
+      ?? null;
     const { data: updatedDocument, error: updateError } = await supabase
       .from('documents_metadata')
       .update({
         status: 'Extracted',
         extracted_data: extractedData,
-        confidence_score: versionResult?.envelope.overall_score.computed_score ?? null,
+        category,
+        confidence_score: reviewScore,
       })
       .eq('id', document.id)
       .eq('client_id', document.client_id)
@@ -364,13 +409,26 @@ router.post('/save', async (req, res) => {
       },
     });
   } catch (error) {
+    if (ownedDocument && supabase) {
+      try {
+        await supabase.from('documents_metadata')
+          .update({ extraction_status: 'extraction_failed', updated_at: new Date().toISOString() })
+          .eq('id', ownedDocument.id)
+          .eq('client_id', ownedDocument.client_id);
+      } catch (statusError) {
+        console.warn('[Extraction] Could not record failed extraction status:', statusError.message);
+      }
+    }
     await finishExtractionRun(extractionRunId, {
       status: 'failed',
-      errorCode: 'LOCAL_EXTRACTION_SAVE_FAILED',
+      errorCode: error.status ? String(error.status) : 'LOCAL_EXTRACTION_SAVE_FAILED',
       errorMessage: error.message,
     });
     console.error('[Extraction] Could not save local-key results:', error.message);
-    return res.status(500).json({ success: false, message: 'Could not save extraction results. Try again.' });
+    return res.status(Number.isInteger(error.status) ? error.status : 500).json({
+      success: false,
+      message: error.status ? error.message : 'Could not save extraction results. Try again.',
+    });
   }
 });
 

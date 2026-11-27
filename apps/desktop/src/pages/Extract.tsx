@@ -11,7 +11,7 @@ import {
   type DocumentItem,
   type DocumentTreeEntry,
 } from '../lib/api';
-import { validateOpenRouterExtractionFile, type OpenRouterFallbackProgress } from '../lib/openRouter';
+import { type OpenRouterFallbackProgress } from '../lib/openRouter';
 import { emitToast } from '../lib/toast';
 import '../styles/extract.css';
 
@@ -52,7 +52,8 @@ interface QueueItem {
 const CATEGORIES = [
   ['GST', 'GST invoice'],
   ['Form16', 'Form 16'],
-  ['IncomeTax', 'Income tax'],
+  ['ITR1', 'ITR-1 (Sahaj)'],
+  ['ITR2', 'ITR-2'],
   ['BankStatement', 'Bank statement'],
   ['Notice', 'Tax notice'],
   ['General', 'Other document'],
@@ -547,7 +548,6 @@ export function ExtractPage() {
             if (!nextItem.localFile) {
               throw new Error('The selected local file is no longer available.');
             }
-            if (useLocalOpenRouter) validateOpenRouterExtractionFile(nextItem.localFile);
             updateQueueItem(nextItem.id, { status: 'uploading', progress: 15, error: undefined, message: undefined });
             const upload = await uploadDocument({
               clientId: nextItem.clientId,
@@ -573,12 +573,12 @@ export function ExtractPage() {
               throw new Error('Missing cloud document reference.');
             }
             updateQueueItem(nextItem.id, { status: 'extracting', progress: 25, error: undefined, message: undefined });
-            if (useLocalOpenRouter && !fileForExtraction) {
+            const isPdf = nextItem.fileName.toLowerCase().endsWith('.pdf');
+            if (useLocalOpenRouter && !fileForExtraction && !isPdf) {
               const blob = await fetchCloudDocumentFile(currentDocId, undefined, controller.signal);
               fileForExtraction = new File([blob], nextItem.fileName, {
                 type: blob.type || mimeTypeFromFileName(nextItem.fileName),
               });
-              validateOpenRouterExtractionFile(fileForExtraction);
             }
           }
 

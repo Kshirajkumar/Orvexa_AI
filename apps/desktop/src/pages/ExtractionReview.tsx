@@ -21,6 +21,12 @@ const NUMERIC_FIELDS = new Set([
   'tax_deducted', 'surcharge', 'cess', 'total_tds', 'opening_balance',
   'closing_balance', 'total_credits', 'total_debits', 'transaction_count',
   'demand_amount',
+  'salary_gross', 'house_property_income', 'other_sources_income',
+  'short_term_capital_gains', 'long_term_capital_gains', 'number_of_house_properties',
+  'total_deductions_chapter_vi_a', 'total_income',
+  'ded_80c', 'ded_80ccd_1b', 'ded_80d', 'ded_80g', 'ded_80tta_ttb', 'ded_other',
+  'tds_total', 'tcs_total', 'self_assessment_tax', 'total_taxes_paid',
+  'refund_amount', 'tax_due_amount',
 ]);
 const JSON_FIELDS = new Set(['hsn_codes', 'line_items']);
 
