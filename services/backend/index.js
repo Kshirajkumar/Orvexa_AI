@@ -57,9 +57,10 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 // Request logger
 app.use((req, res, next) => {
   const startedAt = Date.now();
+  const requestPath = (req.originalUrl || req.url || req.path || '/').split('?')[0];
   res.on('finish', () => {
     const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
-    logger[level]('HTTP', `${req.method} ${req.path}`, {
+    logger[level]('HTTP', `${req.method} ${requestPath}`, {
       status: res.statusCode,
       durationMs: Date.now() - startedAt
     });

@@ -321,35 +321,54 @@ router.get('/clients/:clientId/access', requireAuth, async (req, res) => {
     if (error) throw error;
     let invitation = null;
     let invitationStatus = 'not_started';
+    let accessWarning = null;
     if (!data?.user_id && client.email && data?.access_status !== 'revoked') {
-      // Reuse an active invite, or rotate an expired unused invite into a
-      // fresh 30-day invite while loading access. A claimed account is handled
-      // above and never receives another account-creation link.
-      const pendingInvite = await getActiveClientPortalInvite(client.id, client.email);
-      if (pendingInvite?.token_ciphertext) {
-        try {
-          const token = decryptPortalInviteToken(pendingInvite.token_ciphertext);
-          if (hashInviteToken(token) === pendingInvite.token_hash) {
-            invitation = { status: 'pending', link: getClientPortalInvitationLink(token), expiresAt: pendingInvite.expires_at };
-            invitationStatus = 'invitation_pending';
+      try {
+        // Reuse an active invite, or rotate an expired unused invite into a
+        // fresh 30-day invite while loading access. A claimed account is handled
+        // above and never receives another account-creation link.
+        const pendingInvite = await getActiveClientPortalInvite(client.id, client.email);
+        if (pendingInvite?.token_ciphertext) {
+          try {
+            const token = decryptPortalInviteToken(pendingInvite.token_ciphertext);
+            if (hashInviteToken(token) === pendingInvite.token_hash) {
+              invitation = { status: 'pending', link: getClientPortalInvitationLink(token), expiresAt: pendingInvite.expires_at };
+              invitationStatus = 'invitation_pending';
+            }
+          } catch (inviteError) {
+            console.error('[Client Portal] Could not restore pending invitation link:', inviteError.message);
           }
-        } catch (inviteError) {
-          console.error('[Client Portal] Could not restore pending invitation link:', inviteError.message);
         }
+        if (!invitation) {
+          const renewedInvite = await getOrCreateClientPortalInvite({
+            clientId: client.id,
+            email: client.email,
+            createdBy: req.user.id,
+            storeEncryptedToken: true,
+          });
+          invitation = {
+            status: 'pending',
+            link: getClientPortalInvitationLink(renewedInvite.token),
+            expiresAt: renewedInvite.expiresAt,
+          };
+          invitationStatus = 'invitation_pending';
+        }
+      } catch (inviteError) {
+        console.error('[Client Portal] Could not prepare portal invitation while loading access:', inviteError.message);
+        accessWarning = getSupabaseConfigurationMessage(inviteError, 'client portal invitations')
+          || (/CLIENT_PORTAL_URL|Portal invitation/i.test(String(inviteError.message || ''))
+            ? 'Client portal links are not configured on the backend. Set CLIENT_PORTAL_URL and retry.'
+            : 'Portal invitation link could not be generated right now.');
       }
-      if (!invitation) {
-        const renewedInvite = await getOrCreateClientPortalInvite({
-          clientId: client.id,
-          email: client.email,
-          createdBy: req.user.id,
-          storeEncryptedToken: true,
-        });
-        invitation = {
-          status: 'pending',
-          link: getClientPortalInvitationLink(renewedInvite.token),
-          expiresAt: renewedInvite.expiresAt,
-        };
-        invitationStatus = 'invitation_pending';
+    }
+    let portalLink = invitation?.link || null;
+    if (data?.active && data.user_id) {
+      try {
+        portalLink = getClientPortalBaseUrl();
+      } catch (urlError) {
+        console.error('[Client Portal] Could not resolve CLIENT_PORTAL_URL:', urlError.message);
+        portalLink = null;
+        accessWarning = accessWarning || 'Client portal URL is not configured on the backend. Set CLIENT_PORTAL_URL and retry.';
       }
     }
     return res.json({
@@ -370,9 +389,8 @@ router.get('/clients/:clientId/access', requireAuth, async (req, res) => {
         email: client.email || null,
         createdAt: data?.created_at || null,
         invitation,
-        portalLink: data?.active && data.user_id
-          ? getClientPortalBaseUrl()
-          : invitation?.link || null,
+        portalLink,
+        ...(accessWarning ? { warning: accessWarning } : {}),
         telegramLinked: Boolean(client.telegram_chat_id)
       }
     });
@@ -396,7 +414,15 @@ router.post('/clients/:clientId/send-access-link', requireAuth, async (req, res)
     return res.json({ success: true, data: result });
   } catch (error) {
     console.error('[Client Portal] Telegram portal-link delivery failed:', error.message);
-    return res.status(error.status || 500).json({ success: false, message: error.message || 'Could not send the client portal link through Telegram.' });
+    const configMessage = getSupabaseConfigurationMessage(error, 'client portal delivery');
+    if (configMessage) {
+      return res.status(503).json({ success: false, message: configMessage });
+    }
+    const isConfigOrUpstreamError = /CLIENT_PORTAL_URL|Portal invitation|Telegram bot|Telegram API/i.test(String(error.message || ''));
+    return res.status(error.status || (isConfigOrUpstreamError ? 503 : 500)).json({
+      success: false,
+      message: error.message || 'Could not send the client portal link through Telegram.',
+    });
   }
 });
 
@@ -592,6 +618,16 @@ router.post('/clients/:clientId/invite', requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('[Client Portal] Portal invitation creation failed:', error.message);
+    const configMessage = getSupabaseConfigurationMessage(error, 'client portal invitations');
+    if (configMessage) {
+      return res.status(503).json({ success: false, message: configMessage });
+    }
+    if (/CLIENT_PORTAL_URL|Portal invitation/i.test(String(error.message || ''))) {
+      return res.status(503).json({
+        success: false,
+        message: 'Secure client portal invitations are not configured. Set CLIENT_PORTAL_URL and SUPABASE_SECRET_KEY on the backend, then retry.',
+      });
+    }
     const friendlyMsg = error.message && error.message.length < 200 ? error.message : 'Could not create the portal invitation. Check the client profile (email, Active status) and try again.';
     return res.status(500).json({ success: false, message: friendlyMsg });
   }

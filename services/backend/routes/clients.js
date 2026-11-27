@@ -183,6 +183,7 @@ router.get('/', async (req, res) => {
     }
     res.json({ success: true, count: fallbackClients.length, source: 'demo', data: fallbackClients });
   } catch (err) {
+    console.error('[Clients] Could not list clients:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });

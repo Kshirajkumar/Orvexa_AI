@@ -7,6 +7,7 @@ const router = express.Router();
 const crypto = require('node:crypto');
 const { supabase, isConnected } = require('../db/supabase');
 const { getOwnedClientIds, assertOwnedClient } = require('../lib/ownership');
+const { getSupabaseConfigurationMessage } = require('../lib/supabaseErrors');
 const { validateExtractionData } = require('../lib/extractionSchema');
 const { buildExtractionEnvelope, diffFields } = require('../lib/extractionVersioning');
 const {
@@ -135,8 +136,11 @@ router.get('/', async (req, res) => {
   try {
     if (isConnected && supabase) {
       const ownedClientIds = await getOwnedClientIds(req.user.id);
+      if (ownedClientIds.length === 0) {
+        return res.json({ success: true, count: 0, source: 'supabase', data: [] });
+      }
       let query = supabase.from('documents_metadata').select('*')
-        .in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000'])
+        .in('client_id', ownedClientIds)
         .is('deletion_requested_at', null)
         .neq('source', 'Telegram')
         .order('created_at', { ascending: false });
@@ -151,6 +155,11 @@ router.get('/', async (req, res) => {
     if (req.query.clientId) docs = docs.filter(d => d.client_id === req.query.clientId);
     res.json({ success: true, count: docs.length, source: 'demo', data: docs });
   } catch (err) {
+    console.error('[Documents] Could not list documents:', err.message);
+    const configMessage = getSupabaseConfigurationMessage(err, 'documents');
+    if (configMessage) {
+      return res.status(503).json({ success: false, message: configMessage });
+    }
     res.status(500).json({ success: false, message: err.message });
   }
 });

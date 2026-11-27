@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
 const { getOwnedClientIds, assertOwnedClient } = require('../lib/ownership');
+const { getSupabaseConfigurationMessage } = require('../lib/supabaseErrors');
 const { validateTaskPatch } = require('../lib/deadlinePatch');
 
 // --- In-Memory Fallback ---
@@ -48,7 +49,10 @@ router.get('/', async (req, res) => {
   try {
     if (isConnected) {
       const ownedClientIds = await getOwnedClientIds(req.user.id);
-      let query = supabase.from('compliance_tasks').in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000']).select('*').order('due_date', { ascending: true });
+      if (ownedClientIds.length === 0) {
+        return res.json({ success: true, count: 0, source: 'supabase', data: [] });
+      }
+      let query = supabase.from('compliance_tasks').in('client_id', ownedClientIds).select('*').order('due_date', { ascending: true });
       if (req.query.clientId) query = query.eq('client_id', req.query.clientId);
       if (req.query.status) query = query.eq('status', req.query.status);
       if (req.query.assignedTo) query = query.eq('assigned_to', req.query.assignedTo);
@@ -61,6 +65,11 @@ router.get('/', async (req, res) => {
     if (req.query.status) tasks = tasks.filter(t => t.status === req.query.status);
     res.json({ success: true, count: tasks.length, source: 'demo', data: tasks });
   } catch (err) {
+    console.error('[Deadlines] Could not list compliance tasks:', err.message);
+    const configMessage = getSupabaseConfigurationMessage(err, 'compliance tasks');
+    if (configMessage) {
+      return res.status(503).json({ success: false, message: configMessage });
+    }
     res.status(500).json({ success: false, message: err.message });
   }
 });

@@ -16,6 +16,7 @@ const router = express.Router();
 const { supabase, isConnected } = require('../db/supabase');
 const { requireAuth } = require('../middleware/requireAuth');
 const { getOwnedClientIds } = require('../lib/ownership');
+const { getSupabaseConfigurationMessage } = require('../lib/supabaseErrors');
 const { verifyWhatsAppWebhookSignature } = require('../lib/whatsappWebhookSecurity');
 
 const WA_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -88,7 +89,10 @@ router.get('/messages', requireAuth, async (req, res) => {
   try {
     if (isConnected) {
       const ownedClientIds = await getOwnedClientIds(req.user.id);
-      let query = supabase.from('whatsapp_messages').select('*').in('client_id', ownedClientIds.length ? ownedClientIds : ['00000000-0000-0000-0000-000000000000']).order('created_at', { ascending: false });
+      if (ownedClientIds.length === 0) {
+        return res.json({ success: true, count: 0, source: 'supabase', data: [] });
+      }
+      let query = supabase.from('whatsapp_messages').select('*').in('client_id', ownedClientIds).order('created_at', { ascending: false });
       if (req.query.clientId) query = query.eq('client_id', req.query.clientId);
       const { data, error } = await query;
       if (error) throw error;
@@ -98,6 +102,11 @@ router.get('/messages', requireAuth, async (req, res) => {
     if (req.query.clientId) msgs = msgs.filter(m => m.client_id === req.query.clientId);
     res.json({ success: true, count: msgs.length, source: 'demo', data: msgs });
   } catch (err) {
+    console.error('[WhatsApp] Could not list messages:', err.message);
+    const configMessage = getSupabaseConfigurationMessage(err, 'WhatsApp messages');
+    if (configMessage) {
+      return res.status(503).json({ success: false, message: configMessage });
+    }
     res.status(500).json({ success: false, message: err.message });
   }
 });

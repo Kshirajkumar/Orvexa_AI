@@ -128,12 +128,61 @@ function publicTelegramMessage(message) {
   };
 }
 
+const TELEGRAM_READ_ONLY_METHODS = new Set(['getMe', 'getWebhookInfo']);
+let inFlightTelegramStatusPromise = null;
+let cachedBotUsername = '';
+
 async function telegramCall(method, payload) {
   if (!botToken()) throw new Error('Telegram bot is not configured');
-  const response = await fetch(`https://api.telegram.org/bot${botToken()}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(10000) });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok || !result.ok) throw new Error(result.description || `Telegram API request failed (${response.status})`);
-  return result.result;
+  const maxAttempts = TELEGRAM_READ_ONLY_METHODS.has(method) ? 2 : 1;
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${botToken()}/${method}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10000)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) {
+        const retryableStatus = response.status === 429 || response.status >= 500;
+        const err = new Error(result.description || `Telegram API request failed (${response.status})`);
+        if (retryableStatus && attempt < maxAttempts) {
+          lastError = err;
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          continue;
+        }
+        throw err;
+      }
+      if (method === 'getMe' && result.result?.username) {
+        cachedBotUsername = String(result.result.username).replace(/^@/, '');
+      }
+      return result.result;
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        continue;
+      }
+      throw lastError;
+    }
+  }
+  throw lastError;
+}
+
+async function fetchTelegramBotAndWebhookStatus() {
+  if (inFlightTelegramStatusPromise) return inFlightTelegramStatusPromise;
+  inFlightTelegramStatusPromise = (async () => {
+    const bot = await telegramCall('getMe', {});
+    const webhookInfo = await telegramCall('getWebhookInfo', {});
+    return { bot, webhookInfo };
+  })();
+  try {
+    return await inFlightTelegramStatusPromise;
+  } finally {
+    inFlightTelegramStatusPromise = null;
+  }
 }
 
 function getClientPortalBaseUrl() {
@@ -516,9 +565,9 @@ router.get('/status', requireAuth, async (_req, res) => {
   let webhookInfo = null;
   let telegramSchemaReady = false;
   try {
-    bot = await telegramCall('getMe', {});
-    webhookInfo = await telegramCall('getWebhookInfo', {});
+    ({ bot, webhookInfo } = await fetchTelegramBotAndWebhookStatus());
   } catch (error) {
+    console.error('[Telegram] Status check failed:', error.message);
     return res.status(503).json({ success: false, connected: false, message: error.message });
   }
 
@@ -608,7 +657,28 @@ router.post('/clients/:clientId/link', requireAuth, async (req, res) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail) || clientEmail.length > 254) {
       return res.status(422).json({ success: false, message: 'Add a valid client email address before creating their secure portal invitation.' });
     }
-    const username = botUsername() || (await telegramCall('getMe', {})).username;
+    let username = botUsername();
+    if (!username) {
+      try {
+        username = String((await telegramCall('getMe', {})).username || '').replace(/^@/, '');
+      } catch (botError) {
+        if (cachedBotUsername) {
+          console.warn('[Telegram] getMe failed during link creation; using cached bot username:', botError.message);
+          username = cachedBotUsername;
+        } else {
+          return res.status(503).json({
+            success: false,
+            message: 'Telegram bot is not configured or temporarily unavailable. Please try again shortly.',
+          });
+        }
+      }
+    }
+    if (!username) {
+      return res.status(503).json({
+        success: false,
+        message: 'Telegram bot username could not be resolved. Set TELEGRAM_BOT_USERNAME or check TELEGRAM_BOT_TOKEN.',
+      });
+    }
     const raw = crypto.randomBytes(32).toString('base64url');
     const portalInviteToken = deriveTelegramPortalInviteToken(raw);
     getClientPortalLink(portalInviteToken);

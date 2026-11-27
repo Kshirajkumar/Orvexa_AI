@@ -25,6 +25,7 @@ router.get('/', async (req, res) => {
       unreadCount: result.unreadCount
     });
   } catch (error) {
+    console.error('[Notifications] Could not list notifications:', error.message);
     return res.status(500).json({ success: false, message: error.message || 'Could not load notifications.' });
   }
 });
