@@ -4582,6 +4582,7 @@ body.sidebar-collapsed.chat-hidden .shell {
 .sugg-btn { padding: 6px 10px; border-radius: 9px; background: color-mix(in srgb, var(--card) 92%, var(--cyan)); font-size: 10.5px; }
 
 .ch-f {
+  position: relative;
   align-items: stretch;
   flex-direction: column;
   gap: 7px;
@@ -4594,6 +4595,109 @@ body.sidebar-collapsed.chat-hidden .shell {
 .ch-f-row { display: flex; align-items: center; gap: 8px; }
 .ch-f input { height: 40px; border-radius: 12px; background: var(--card); }
 .ch-send { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, var(--cyan), var(--blue)); box-shadow: 0 5px 14px color-mix(in srgb, var(--cyan) 18%, transparent); }
+
+.chat-mention-menu {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: calc(100% + 6px);
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .35);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.chat-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--tx);
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-mention-item:hover,
+.chat-mention-item.active {
+  background: var(--card2);
+  outline: 1px solid color-mix(in srgb, var(--cyan) 40%, transparent);
+}
+
+.chat-mention-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cyan) 16%, var(--card2));
+  color: var(--cyan);
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.chat-mention-meta { display: flex; flex-direction: column; min-width: 0; }
+.chat-mention-meta b { font-size: 12px; font-weight: 600; color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-mention-meta small { font-size: 10.5px; color: var(--tx3); }
+.chat-mention-empty { padding: 10px 12px; font-size: 12px; color: var(--tx3); text-align: center; }
+
+.chat-mention-pill-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.chat-mention-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 10px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--cyan) 14%, var(--card2));
+  border: 1px solid color-mix(in srgb, var(--cyan) 35%, transparent);
+  color: var(--cyan);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.chat-mention-pill button {
+  border: 0;
+  background: transparent;
+  color: var(--tx2);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.chat-mention-pill button:hover { color: var(--tx); }
+
+.chat-mention-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .16);
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.chat-sent-badge {
+  display: inline-block;
+  color: var(--green);
+  font-weight: 700;
+}
+
+.chat-sent-preview {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--tx2);
+  font-style: italic;
+}
 
 @media (max-width:600px) {
   .ch-msgs { padding-inline: 12px; }
